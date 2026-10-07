@@ -1,0 +1,40 @@
+# Native app checks on macOS (macOS 26.6.2, arm64), 2026-10-07T15:44Z
+# Build: LEXPAD_API_ORIGIN=http://localhost:8091 LEXPAD_APP_ORIGIN=http://localhost:4173 pnpm tauri build --bundles app
+
+## Bundle
+size: 3.9M
+  "CFBundleIdentifier" => "app.lexpad.desktop"
+  "LSMinimumSystemVersion" => "11.0"
+  "LSUIElement" => true
+        "default" => "Add to Lexpad"
+      "NSMessage" => "addToLexpad"
+
+## Running (started from a shell, first run)
+type="Foreground"
+(Foreground while the Settings window is open; LSUIElement makes it a menu-bar app otherwise)
+
+## Single instance: start a second copy
+second copy exited at once; Lexpad processes now: 1
+
+## Settings file (no secrets)
+{
+  "deviceId": "<random uuid>",
+  "shortcut": "CommandOrControl+Shift+L",
+  "startOnLogin": true,
+  "notebookId": null
+}
+## Login items: a development build never registers itself
+no Lexpad LaunchAgent
+
+## Services menu: macOS lists "Add to Lexpad"
+ NSMenuItem = {
+ default = "Add to Lexpad";
+
+## Services → Add to Lexpad, invoked with NSPerformService (no Accessibility needed)
+before: Lexpad onscreen: false layer: 5 bounds: 961 825 360 172
+NSPerformService: true
+after:  Lexpad onscreen: 1 layer: 5 bounds: 807 213 360 172
+(the popup: a floating window, 360 points wide, placed beside the pointer and kept on screen)
+
+## Accessibility for this app when started from this shell
+AX trusted: false

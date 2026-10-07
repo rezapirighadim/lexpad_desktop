@@ -1,0 +1,13 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.60s
+     Running unittests src/lib.rs (target/debug/deps/lexpad_desktop_lib-562bcd8a14521d48)
+
+running 1 test
+connect: done
+popup: added
+test e2e::local_stack_end_to_end ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 17 filtered out; finished in 18.96s
+
+done
+end-to-end: passed
+EXIT 0

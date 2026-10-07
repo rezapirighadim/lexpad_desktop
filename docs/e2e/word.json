@@ -1,0 +1,69 @@
+{
+  "category": "nature",
+  "collocations": [
+    "nimble fingers",
+    "nimble mind",
+    "nimble feet",
+    "nimble movements",
+    "nimble athlete"
+  ],
+  "createdAt": "2026-10-07T15:43:32.750009Z",
+  "expressions": [],
+  "headword": "nimble",
+  "id": "01M4BGHGWEM6B4RYY9M626YD7B",
+  "level": "B2",
+  "meanings": [
+    {
+      "examples": [
+        {
+          "sentence": "The old cat was still nimble enough to climb the fence.",
+          "translation": "The old cat could still move quickly and easily to climb the fence."
+        }
+      ],
+      "gloss": "quick and light in movement or action",
+      "meaning": "able to move quickly and easily."
+    },
+    {
+      "examples": [],
+      "gloss": "quick-witted, able to think fast",
+      "meaning": "able to think and understand quickly."
+    }
+  ],
+  "notebookId": "01M43H5KGS4XJQX824GWWRSRVS",
+  "pos": "adjective",
+  "position": 128,
+  "progress": {
+    "box": 1,
+    "correct": 0,
+    "dueDay": 20733,
+    "memo": "Seen in TextEdit",
+    "reps": 0,
+    "retired": false,
+    "spellMisses": 0,
+    "starred": false,
+    "updatedAt": "2026-10-07T15:43:32.761218Z"
+  },
+  "pronunciation": "/ˈnɪm.bəl/",
+  "relatedWordIds": [],
+  "relatedWords": [
+    {
+      "text": "agile",
+      "translation": "quick and able to move easily"
+    },
+    {
+      "text": "lively",
+      "translation": "full of energy and life"
+    },
+    {
+      "text": "spry",
+      "translation": "active and energetic, especially for older people"
+    },
+    {
+      "text": "clumsy",
+      "translation": "awkward and not graceful"
+    }
+  ],
+  "source": "ai",
+  "trickySpelling": false,
+  "updatedAt": "2026-10-07T15:43:32.750009Z"
+}
