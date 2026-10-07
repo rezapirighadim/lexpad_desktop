@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use serde::Serialize;
 use serde_json::Value;
-use tauri::{AppHandle, Emitter, LogicalSize, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_autostart::ManagerExt as _;
 use tauri_plugin_global_shortcut::GlobalShortcutExt as _;
 use tauri_plugin_opener::OpenerExt as _;
@@ -265,15 +265,13 @@ pub fn hide_popup(app: AppHandle, state: State<'_, AppState>) -> Result<(), Stri
     Ok(())
 }
 
-/// Sizes the popup to its content.
+/// Sizes the popup to its content, inside the work area.
 #[tauri::command]
 pub fn fit_popup(app: AppHandle, height: f64) -> Result<(), String> {
-    if let Some(win) = app.get_webview_window(popup::LABEL) {
-        let h = height.clamp(popup::MIN_HEIGHT, popup::MAX_HEIGHT);
-        win.set_size(LogicalSize::new(popup::WIDTH, h))
-            .map_err(|e| e.to_string())?;
+    if !height.is_finite() {
+        return Err(err(Failure::Error));
     }
-    Ok(())
+    popup::fit(&app, height).map_err(|e| e.to_string())
 }
 
 /// Whether the app may read selections; with `request`, also asks macOS to

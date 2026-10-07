@@ -59,7 +59,8 @@ pub enum Via {
     None,
 }
 
-/// A rectangle on screen, in logical points, top-left origin.
+/// A rectangle on screen, top-left origin, in placement units (`placement`):
+/// global points on macOS, physical pixels on Windows.
 #[derive(Clone, Copy, Debug, Serialize, PartialEq)]
 pub struct Rect {
     pub x: f64,

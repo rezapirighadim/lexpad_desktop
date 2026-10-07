@@ -17,10 +17,13 @@ mod config;
 #[cfg(test)]
 mod e2e;
 mod panel;
+mod placement;
 mod popup;
 #[cfg(target_os = "macos")]
 mod services_macos;
 mod settings;
+#[cfg(feature = "smoke-test")]
+mod smoke;
 mod state;
 mod store;
 mod tray;
@@ -78,12 +81,32 @@ pub fn open_web(app: &AppHandle, word_id: Option<&str>) {
     }
 }
 
+/// Where the session is kept: the system's credential store, or nothing at
+/// all for the CI smoke test.
+fn session_store(smoke: bool) -> Arc<dyn store::SessionStore> {
+    #[cfg(feature = "smoke-test")]
+    if smoke {
+        return Arc::new(smoke::Nothing);
+    }
+    let _ = smoke;
+    Arc::new(store::Keyring::new(config::API_ORIGIN))
+}
+
 pub fn run() {
-    tauri::Builder::default()
-        // First, so a second launch only brings this one forward.
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+    #[cfg(feature = "smoke-test")]
+    let smoke = smoke::requested();
+    #[cfg(not(feature = "smoke-test"))]
+    let smoke = false;
+
+    let mut builder = tauri::Builder::default();
+    // First, so a second launch only brings this one forward. The CI smoke
+    // test runs beside an installed copy, so it is not "a second launch".
+    if !smoke {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             show_settings(app)
-        }))
+        }));
+    }
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
@@ -98,18 +121,25 @@ pub fn run() {
                 })
                 .build(),
         )
-        .setup(|app| {
+        .setup(move |app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
-            let dir = app.path().app_config_dir()?;
+            // A smoke-test build run with --smoke-test (CI only) keeps its
+            // settings in a temporary folder and never touches the
+            // credential store, the shortcut or the login items.
+            let dir = if smoke {
+                std::env::temp_dir().join("lexpad-desktop-smoke-test")
+            } else {
+                app.path().app_config_dir()?
+            };
             let file = SettingsFile::new(&dir);
             let (settings, first_run) = file.load();
             if first_run {
                 file.save(&settings)
                     .map_err(Box::<dyn std::error::Error>::from)?;
             }
-            let store = Arc::new(store::Keyring::new(config::API_ORIGIN));
+            let store = session_store(smoke);
             let shortcut = settings.shortcut.clone();
             let start_on_login = settings.start_on_login;
             app.manage(AppState {
@@ -122,6 +152,13 @@ pub fn run() {
             });
 
             let handle = app.handle().clone();
+            if smoke {
+                panel::create(&handle)?;
+                tray::build(&handle)?;
+                #[cfg(feature = "smoke-test")]
+                smoke::start(handle);
+                return Ok(());
+            }
             if let Err(e) = handle.global_shortcut().register(shortcut.as_str()) {
                 log::warn!("shortcut {shortcut} not available: {e}");
             }

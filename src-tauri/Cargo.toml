@@ -11,6 +11,11 @@ publish = false
 name = "lexpad_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# CI's placement smoke test (src/smoke.rs, `--smoke-test`). Never in a
+# shipped build.
+smoke-test = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
