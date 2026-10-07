@@ -69,10 +69,12 @@ the connect protocol with the app's own code). The rest is a two-minute check fo
 
 # Lexpad's window, end to end (0.2.0, 7 October 2026)
 
-`scripts/e2e-main.sh`, against the same LOCAL stack (API from `lexpad_back` `origin/main`,
-`abed267`, on :8091 with `lexpad_desktop_e2e` migrated to 0054; the web app's connect page from
-`lexpad_front` `feat/desktop-app` on :4173; the LOCAL demo account). The window's page is the
-built `dist/index.html` (the web app from `web/`, `feat/desktop-app` `5e2d228`) in Chromium, with
+`scripts/e2e-main.sh`, against a LOCAL stack (API from `lexpad_back` `feat/desktop-notifications`
+`382a4b3`, rebased on `origin/main` `4c225da`, on :8091 with `lexpad_desktop_e2e` migrated to 0055;
+the web app's connect page from `lexpad_front` `feat/desktop-app` `b15dae0`, rebased on the
+large-screen layout, on :4185 (4173 was taken by another checkout; the scripts accept only the
+localhost origin named by `LEXPAD_E2E_APP`); the LOCAL demo account). The window's page is the
+built `dist/index.html` (the web app from `web/`, `feat/desktop-app` `b15dae0`) in Chromium, with
 `window.__LEXPAD_CONFIG` as the app injects it and every `invoke` answered by the app's own core
 code (`src-tauri/src/e2e_main.rs`: the real `connect`, and every API call through `proxy::check`
 and `Api::forward` with the session the test holds in its own Keychain entry). Passed:
@@ -86,13 +88,15 @@ and `Api::forward` with the session the test holds in its own Keychain entry). P
 4. Settings → This computer ([main-06](main-06-settings-this-computer.png)), and Account
    ([main-07](main-07-settings-account.png)); signing out there goes through the core, which revokes
    the session and empties its Keychain entry; the window is back at sign-in.
+   Today and This computer also at two window sizes: 1200×800, where Settings is two panes
+   ([today](main-02-today-1200x800.png), [This computer](main-06-settings-this-computer-1200x800.png)),
+   and 900×700, with the rail and the page alone ([today](main-02-today-900x700.png),
+   [This computer](main-06-settings-this-computer-900x700.png)).
 5. Every request the page made reached the core without an Authorization header
    ([requests.json](requests.json), asserted), and the page synced. Log: [main-log.txt](main-log.txt).
 
-Found on the way, not in the desktop app: on this local database copy the API answers `/reviews`
-with `rejected: stale` for the demo account, from the plain web app in a browser too (the
-reviews' progress still syncs through `/sync/push`). Worth a look in `lexpad_back`; see the to-do
-list.
+The `/reviews` `rejected: stale` seen in the first run is fixed in `lexpad_back` (`4c225da`,
+part of this API).
 
 Not covered from an automated shell (no Accessibility or Screen Recording here): the native
 window itself (title bar, Dock icon, restoring its place), native notifications appearing and

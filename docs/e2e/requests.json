@@ -27,16 +27,6 @@
       ]
     ],
     "method": "GET",
-    "url": "http://localhost:8091/api/v1/me/surfaces"
-  },
-  {
-    "headers": [
-      [
-        "accept",
-        "application/json"
-      ]
-    ],
-    "method": "GET",
     "url": "http://localhost:8091/api/v1/notifications?limit=30"
   },
   {
@@ -64,6 +54,16 @@
       [
         "accept",
         "application/json"
+      ]
+    ],
+    "method": "GET",
+    "url": "http://localhost:8091/api/v1/me/surfaces"
+  },
+  {
+    "headers": [
+      [
+        "accept",
+        "application/json"
       ],
       [
         "content-type",
@@ -81,7 +81,7 @@
       ]
     ],
     "method": "GET",
-    "url": "http://localhost:8091/api/v1/sync/pull?since=5868&limit=200"
+    "url": "http://localhost:8091/api/v1/sync/pull?since=5872&limit=200"
   },
   {
     "headers": [
@@ -95,7 +95,7 @@
       ],
       [
         "idempotency-key",
-        "06acecf4-7638-4850-aeae-ced63e564391"
+        "7eb392c3-9ee1-45a9-871e-058501cf9448"
       ]
     ],
     "method": "POST",
@@ -109,7 +109,7 @@
       ]
     ],
     "method": "GET",
-    "url": "http://localhost:8091/api/v1/sync/pull?since=5868&limit=200"
+    "url": "http://localhost:8091/api/v1/sync/pull?since=5872&limit=200"
   },
   {
     "headers": [
@@ -123,7 +123,7 @@
       ],
       [
         "idempotency-key",
-        "59ca77ec-2374-4b70-897d-9b2b2c808c22"
+        "bd39adf2-718e-42d3-93f0-1a969905665e"
       ]
     ],
     "method": "POST",
@@ -137,45 +137,7 @@
       ]
     ],
     "method": "GET",
-    "url": "http://localhost:8091/api/v1/sync/pull?since=5868&limit=200"
-  },
-  {
-    "headers": [
-      [
-        "accept",
-        "application/json"
-      ],
-      [
-        "content-type",
-        "application/json"
-      ],
-      [
-        "idempotency-key",
-        "ecedf028-97e7-42f7-a0b0-666004003d91"
-      ]
-    ],
-    "method": "POST",
-    "url": "http://localhost:8091/api/v1/reviews"
-  },
-  {
-    "headers": [
-      [
-        "accept",
-        "application/json"
-      ]
-    ],
-    "method": "GET",
-    "url": "http://localhost:8091/api/v1/sync/pull?since=5868&limit=200"
-  },
-  {
-    "headers": [
-      [
-        "accept",
-        "application/json"
-      ]
-    ],
-    "method": "GET",
-    "url": "http://localhost:8091/api/v1/me/surfaces"
+    "url": "http://localhost:8091/api/v1/sync/pull?since=5874&limit=200"
   },
   {
     "headers": [
@@ -195,7 +157,77 @@
       ]
     ],
     "method": "GET",
+    "url": "http://localhost:8091/api/v1/me/surfaces"
+  },
+  {
+    "headers": [
+      [
+        "accept",
+        "application/json"
+      ]
+    ],
+    "method": "GET",
     "url": "http://localhost:8091/api/v1/me/nudges"
+  },
+  {
+    "headers": [
+      [
+        "accept",
+        "application/json"
+      ]
+    ],
+    "method": "GET",
+    "url": "http://localhost:8091/api/v1/me/connections"
+  },
+  {
+    "headers": [
+      [
+        "accept",
+        "application/json"
+      ]
+    ],
+    "method": "GET",
+    "url": "http://localhost:8091/api/v1/billing/state"
+  },
+  {
+    "headers": [
+      [
+        "accept",
+        "application/json"
+      ]
+    ],
+    "method": "GET",
+    "url": "http://localhost:8091/api/v1/me/connections"
+  },
+  {
+    "headers": [
+      [
+        "accept",
+        "application/json"
+      ]
+    ],
+    "method": "GET",
+    "url": "http://localhost:8091/api/v1/billing/state"
+  },
+  {
+    "headers": [
+      [
+        "accept",
+        "application/json"
+      ]
+    ],
+    "method": "GET",
+    "url": "http://localhost:8091/api/v1/billing/state"
+  },
+  {
+    "headers": [
+      [
+        "accept",
+        "application/json"
+      ]
+    ],
+    "method": "GET",
+    "url": "http://localhost:8091/api/v1/me/connections"
   },
   {
     "headers": [
