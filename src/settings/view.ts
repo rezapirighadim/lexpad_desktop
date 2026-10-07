@@ -220,12 +220,20 @@ export class SettingsView {
         void this.backend.openAccessibilitySettings();
       }),
     );
+    s.append(row);
+    if (!allowed && state.permissionStale === true)
+      s.append(
+        el(
+          'p',
+          'note bad',
+          'Lexpad was updated, and macOS no longer applies the permission it had. In System Settings, Privacy & Security, Accessibility, turn Lexpad off and on again (or remove it with − and add it back).',
+        ),
+      );
     s.append(
-      row,
       el(
         'p',
         'dim small',
-        'macOS asks before an app may read what you select in other apps. Lexpad reads only the selected text (and the sentence around it, to keep as an example), and only when you press the shortcut. If an app does not share its selection, Lexpad copies it and then puts your clipboard back exactly as it was. Without the permission you can still type a word.',
+        'After an update, macOS may ask again: then turn Lexpad off and on in Accessibility. macOS asks before an app may read what you select in other apps. Lexpad reads only the selected text (and the sentence around it, to keep as an example), and only when you press the shortcut. If an app does not share its selection, Lexpad copies it and then puts your clipboard back exactly as it was. Without the permission you can still type a word.',
       ),
     );
     return s;
@@ -276,6 +284,14 @@ export class SettingsView {
     box.addEventListener('change', () => void this.backend.setStartOnLogin(box.checked));
     label.append(el('div', 'grow', 'Open Lexpad when I log in'), box);
     s.append(label);
+    s.append(
+      this.toggle('Show Lexpad’s window when the app starts', settings.openOnLaunch, (on) =>
+        this.backend.setOpenOnLaunch(on),
+      ),
+      this.toggle('Open Lexpad in my browser instead of this app’s window', settings.openInBrowser, (on) =>
+        this.backend.setOpenInBrowser(on),
+      ),
+    );
     if (settings.developmentBuild) {
       s.append(
         el(
@@ -287,6 +303,22 @@ export class SettingsView {
     }
     s.append(el('p', 'dim small', 'Lexpad follows your system’s light or dark appearance.'));
     return s;
+  }
+
+  /** A row with a switch that saves itself, and goes back if saving fails. */
+  private toggle(text: string, on: boolean, save: (on: boolean) => Promise<boolean>): HTMLElement {
+    const label = el('label', 'row');
+    const box = el('input');
+    box.type = 'checkbox';
+    box.checked = on;
+    box.addEventListener('change', () => {
+      const wanted = box.checked;
+      save(wanted).catch(() => {
+        box.checked = !wanted;
+      });
+    });
+    label.append(el('div', 'grow', text), box);
+    return label;
   }
 
   /* -------------------------------------------------------- privacy */

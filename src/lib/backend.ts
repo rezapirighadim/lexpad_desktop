@@ -49,6 +49,8 @@ export interface SettingsBackend {
   getSettings(): Promise<Settings>;
   setShortcut(shortcut: string): Promise<string>;
   setStartOnLogin(on: boolean): Promise<boolean>;
+  setOpenOnLaunch(on: boolean): Promise<boolean>;
+  setOpenInBrowser(on: boolean): Promise<boolean>;
   appInfo(): Promise<AppInfo>;
 }
 
@@ -87,6 +89,8 @@ export const tauriBackend: Backend & SettingsBackend & PanelBackend = {
   getSettings: () => invoke<Settings>('get_settings'),
   setShortcut: (shortcut) => invoke<string>('set_shortcut', { shortcut }),
   setStartOnLogin: (on) => invoke<boolean>('set_start_on_login', { on }),
+  setOpenOnLaunch: (on) => invoke<boolean>('set_open_on_launch', { on }),
+  setOpenInBrowser: (on) => invoke<boolean>('set_open_in_browser', { on }),
   appInfo: () => invoke<AppInfo>('app_info'),
   recent: () => invoke<RecentWord[]>('recent'),
   addTyped: (text) => invoke<void>('panel_add', { text }),

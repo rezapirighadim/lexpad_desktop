@@ -209,7 +209,9 @@ export class Popup {
       el(
         'p',
         '',
-        'To add the word you select in any app, allow Lexpad under Privacy & Security, Accessibility. Lexpad reads only the selected text, and only when you press the shortcut.',
+        this.state?.permissionStale === true
+          ? 'Lexpad was updated, and macOS no longer applies the permission it had. In System Settings, Privacy & Security, Accessibility, turn Lexpad off and on again (or remove it with − and add it back).'
+          : 'To add the word you select in any app, allow Lexpad under Privacy & Security, Accessibility. Lexpad reads only the selected text, and only when you press the shortcut.',
       ),
     );
     box.append(button('btn', 'Open System Settings', () => void this.backend.openAccessibilitySettings()));

@@ -53,6 +53,8 @@ export interface State {
   capture: Capture | null;
   shortcut: string;
   permission: Permission;
+  /** Accessibility was allowed in an earlier version, and macOS dropped it with the update. */
+  permissionStale?: boolean;
   version: string;
 }
 
@@ -78,6 +80,10 @@ export type Failure =
 export interface Settings {
   shortcut: string;
   startOnLogin: boolean;
+  /** Open Lexpad's window when the app starts. */
+  openOnLaunch: boolean;
+  /** "Open Lexpad" goes to the browser instead of the app's window. */
+  openInBrowser: boolean;
   developmentBuild: boolean;
 }
 

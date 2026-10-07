@@ -150,6 +150,16 @@ describe('Popup', () => {
     expect(root.querySelector('.done')?.textContent).toBe('Added to Persian');
   });
 
+  it('says plainly when an update lost the permission, and how to get it back', async () => {
+    const backend = fakeBackend({
+      capture: capture({ permission: 'missing' }),
+      permission: 'missing',
+      permissionStale: true,
+    });
+    await new Popup(root, backend).open();
+    expect(root.querySelector('.permission')?.textContent).toContain('turn Lexpad off and on again');
+  });
+
   it('offers the type-a-word box, and explains the permission it lacks', async () => {
     const backend = fakeBackend({ capture: capture({ permission: 'missing' }), permission: 'missing' });
     await new Popup(root, backend).open();

@@ -26,10 +26,14 @@ function backend(state: Partial<State>, over: Partial<SettingsBackend> = {}): Se
     getSettings: vi.fn(async () => ({
       shortcut: full.shortcut,
       startOnLogin: true,
+      openOnLaunch: false,
+      openInBrowser: false,
       developmentBuild: false,
     })),
     setShortcut: vi.fn(async (s: string) => s),
     setStartOnLogin: vi.fn(async (on: boolean) => on),
+    setOpenOnLaunch: vi.fn(async (on: boolean) => on),
+    setOpenInBrowser: vi.fn(async (on: boolean) => on),
     appInfo: vi.fn(async () => ({
       version: '0.1.0',
       apiOrigin: 'https://api.lexpad.app',
@@ -54,6 +58,25 @@ describe('Settings', () => {
     expect(root.querySelector('.keys')?.textContent).toBe('⌘⇧L');
     expect(root.textContent).toContain('Accessibility is not allowed yet.');
     expect(root.textContent).toContain('Never a window title');
+  });
+
+  it('saves where Open Lexpad goes and whether the window opens at start, and goes back on a failure', async () => {
+    const b = backend({}, { setOpenOnLaunch: vi.fn(async () => Promise.reject('error')) });
+    await new SettingsView(root, b, true).render();
+    const rows = [...root.querySelectorAll('label.row')];
+    const browser = rows.find((r) => r.textContent?.includes('in my browser'))!.querySelector('input')!;
+    browser.click();
+    expect(b.setOpenInBrowser).toHaveBeenCalledWith(true);
+    const atStart = rows.find((r) => r.textContent?.includes('when the app starts'))!.querySelector('input')!;
+    atStart.click();
+    expect(b.setOpenOnLaunch).toHaveBeenCalledWith(true);
+    await flush();
+    expect(atStart.checked).toBe(false);
+  });
+
+  it('tells an update that lost Accessibility from a refusal', async () => {
+    await new SettingsView(root, backend({ permissionStale: true }), true).render();
+    expect(root.textContent).toContain('macOS no longer applies the permission it had');
   });
 
   it('asks before signing out', async () => {
