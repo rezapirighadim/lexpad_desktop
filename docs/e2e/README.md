@@ -67,6 +67,15 @@ the connect protocol with the app's own code). The rest is a two-minute check fo
 5. Copy an image, select a word in an app that does not share its selection (for example a
    terminal), press ⌘⇧L, then paste: the image is still on the clipboard.
 
+# Lexpad's window, end to end (0.2.1, 8 October 2026)
+
+`scripts/e2e-main.sh` again for 0.2.1, against a LOCAL stack: the API from `lexpad_back`
+`origin/main` `382a4b3` on :8091 (`lexpad_desktop_e2e`, migrations at 0055), and the web app's
+connect page from `lexpad_front` `origin/main` `742db7f` under `vite preview` on :4191 (proxying
+`/api` to :8091; the API's CORS allowed only that origin); the LOCAL demo account. The window's
+page is the new `web/` (`main` `742db7f`, the new sidebar). Every step below passed again; the
+`main-0*` screenshots and `requests.json` are from this run and show the new sidebar.
+
 # Lexpad's window, end to end (0.2.0, 7 October 2026)
 
 `scripts/e2e-main.sh`, against a LOCAL stack (API from `lexpad_back` `feat/desktop-notifications`

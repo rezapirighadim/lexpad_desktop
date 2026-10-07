@@ -47,7 +47,7 @@
       ]
     ],
     "method": "GET",
-    "url": "http://localhost:8091/api/v1/me/nudges"
+    "url": "http://localhost:8091/api/v1/me/surfaces"
   },
   {
     "headers": [
@@ -57,7 +57,7 @@
       ]
     ],
     "method": "GET",
-    "url": "http://localhost:8091/api/v1/me/surfaces"
+    "url": "http://localhost:8091/api/v1/me/nudges"
   },
   {
     "headers": [
@@ -81,7 +81,7 @@
       ]
     ],
     "method": "GET",
-    "url": "http://localhost:8091/api/v1/sync/pull?since=5872&limit=200"
+    "url": "http://localhost:8091/api/v1/sync/pull?since=5876&limit=200"
   },
   {
     "headers": [
@@ -95,7 +95,7 @@
       ],
       [
         "idempotency-key",
-        "7eb392c3-9ee1-45a9-871e-058501cf9448"
+        "3d622d16-15b0-4478-a253-0f6a52c3a9be"
       ]
     ],
     "method": "POST",
@@ -109,7 +109,7 @@
       ]
     ],
     "method": "GET",
-    "url": "http://localhost:8091/api/v1/sync/pull?since=5872&limit=200"
+    "url": "http://localhost:8091/api/v1/sync/pull?since=5876&limit=200"
   },
   {
     "headers": [
@@ -123,7 +123,7 @@
       ],
       [
         "idempotency-key",
-        "bd39adf2-718e-42d3-93f0-1a969905665e"
+        "415e4ee4-cf23-415d-9bad-10a24f1a8317"
       ]
     ],
     "method": "POST",
@@ -137,7 +137,17 @@
       ]
     ],
     "method": "GET",
-    "url": "http://localhost:8091/api/v1/sync/pull?since=5874&limit=200"
+    "url": "http://localhost:8091/api/v1/sync/pull?since=5878&limit=200"
+  },
+  {
+    "headers": [
+      [
+        "accept",
+        "application/json"
+      ]
+    ],
+    "method": "GET",
+    "url": "http://localhost:8091/api/v1/me/nudges"
   },
   {
     "headers": [
@@ -167,36 +177,6 @@
       ]
     ],
     "method": "GET",
-    "url": "http://localhost:8091/api/v1/me/nudges"
-  },
-  {
-    "headers": [
-      [
-        "accept",
-        "application/json"
-      ]
-    ],
-    "method": "GET",
-    "url": "http://localhost:8091/api/v1/me/connections"
-  },
-  {
-    "headers": [
-      [
-        "accept",
-        "application/json"
-      ]
-    ],
-    "method": "GET",
-    "url": "http://localhost:8091/api/v1/billing/state"
-  },
-  {
-    "headers": [
-      [
-        "accept",
-        "application/json"
-      ]
-    ],
-    "method": "GET",
     "url": "http://localhost:8091/api/v1/me/connections"
   },
   {
@@ -228,6 +208,26 @@
     ],
     "method": "GET",
     "url": "http://localhost:8091/api/v1/me/connections"
+  },
+  {
+    "headers": [
+      [
+        "accept",
+        "application/json"
+      ]
+    ],
+    "method": "GET",
+    "url": "http://localhost:8091/api/v1/me/connections"
+  },
+  {
+    "headers": [
+      [
+        "accept",
+        "application/json"
+      ]
+    ],
+    "method": "GET",
+    "url": "http://localhost:8091/api/v1/billing/state"
   },
   {
     "headers": [
