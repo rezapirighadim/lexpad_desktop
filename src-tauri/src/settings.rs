@@ -18,6 +18,45 @@ pub struct Settings {
     pub start_on_login: bool,
     /// The notebook words go to, unless the word cannot be in its language.
     pub notebook_id: Option<String>,
+    /// The last words added from this computer, newest first, for the panel.
+    /// Each names the account it was added to, so another account signed in
+    /// on the same computer never sees them.
+    pub recent: Vec<RecentWord>,
+}
+
+/// How many recently added words the panel shows. A handful is what fits
+/// under the "Add a word" box without scrolling; the notebook has the rest.
+pub const RECENT_MAX: usize = 5;
+
+/// A word added from this computer: enough to list it and open it in the web app.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentWord {
+    pub id: String,
+    pub headword: String,
+    pub notebook_id: String,
+    pub user_id: String,
+    /// Milliseconds since the Unix epoch.
+    pub added_at: u64,
+}
+
+/// `list` with `word` first, without an older entry for the same word, and
+/// no longer than RECENT_MAX.
+pub fn remember(list: &[RecentWord], word: RecentWord) -> Vec<RecentWord> {
+    let mut out = Vec::with_capacity(RECENT_MAX);
+    out.push(word.clone());
+    out.extend(
+        list.iter()
+            .filter(|w| {
+                w.id != word.id
+                    && !(w.user_id == word.user_id
+                        && w.notebook_id == word.notebook_id
+                        && w.headword == word.headword)
+            })
+            .cloned(),
+    );
+    out.truncate(RECENT_MAX);
+    out
 }
 
 impl Default for Settings {
@@ -27,6 +66,7 @@ impl Default for Settings {
             shortcut: DEFAULT_SHORTCUT.into(),
             start_on_login: true,
             notebook_id: None,
+            recent: Vec::new(),
         }
     }
 }
@@ -82,11 +122,39 @@ mod tests {
         std::fs::remove_dir_all(dir).unwrap();
     }
 
+    fn word(id: &str, headword: &str, user: &str) -> RecentWord {
+        RecentWord {
+            id: id.into(),
+            headword: headword.into(),
+            notebook_id: "n1".into(),
+            user_id: user.into(),
+            added_at: 1,
+        }
+    }
+
+    #[test]
+    fn recent_words_are_newest_first_without_repeats_and_at_most_five() {
+        let mut list = Vec::new();
+        for (i, w) in ["a", "b", "c", "d", "e", "f"].iter().enumerate() {
+            list = remember(&list, word(&i.to_string(), w, "u1"));
+        }
+        let heads: Vec<_> = list.iter().map(|w| w.headword.as_str()).collect();
+        assert_eq!(heads, ["f", "e", "d", "c", "b"]);
+        // The same word again moves to the top instead of showing twice.
+        list = remember(&list, word("9", "d", "u1"));
+        let heads: Vec<_> = list.iter().map(|w| w.headword.as_str()).collect();
+        assert_eq!(heads, ["d", "f", "e", "c", "b"]);
+        // Another account's word of the same spelling is its own entry.
+        list = remember(&list, word("10", "d", "u2"));
+        assert_eq!(list.iter().filter(|w| w.headword == "d").count(), 2);
+    }
+
     #[test]
     fn a_file_from_an_older_version_keeps_what_it_has() {
         let s: Settings = serde_json::from_str(r#"{"deviceId":"d1","shortcut":"Alt+L"}"#).unwrap();
         assert_eq!(s.device_id, "d1");
         assert_eq!(s.shortcut, "Alt+L");
         assert!(s.start_on_login);
+        assert!(s.recent.is_empty());
     }
 }

@@ -1,0 +1,115 @@
+/*
+ * The web app's design tokens (lexpad_front apps/web/src/styles/tokens.css,
+ * the Forest palette) and its faces (fonts.css), for the panel.
+ *
+ * The web app writes its colours in oklch; here each is the same colour in
+ * hex, with the oklch it came from beside it, because the macOS web view on
+ * an un-updated macOS 11 predates oklch and would draw nothing at all. The
+ * theme follows the system: light by default, dark when the system is dark.
+ */
+
+@font-face {
+  font-family: 'Schibsted Grotesk';
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url('../assets/fonts/schibsted-grotesk-latin.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Schibsted Grotesk';
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url('../assets/fonts/schibsted-grotesk-latin-ext.woff2') format('woff2');
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF,
+    U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Vazirmatn';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('../assets/fonts/vazirmatn-arabic.woff2') format('woff2');
+  unicode-range:
+    U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011,
+    U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC;
+}
+
+:root {
+  /* The interface face, then the system's for every script it has no cut of. */
+  --sans:
+    'Schibsted Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', 'Helvetica Neue',
+    Helvetica, Arial, sans-serif;
+  --fa: 'Vazirmatn', 'Schibsted Grotesk', -apple-system, 'Segoe UI', sans-serif;
+
+  --ease-spring: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-out: cubic-bezier(0.32, 0.72, 0, 1);
+  --press: 0.97;
+  --press-time: 0.13s;
+
+  --r-card: 18px;
+  --r-ctl: 14px;
+  --r-sm: 10px;
+  --r-pill: 999px;
+
+  --t-section: 1.25rem;
+  --t-lead: 1.0625rem;
+  --t-body: 1rem;
+  --t-sub: 0.875rem;
+  --t-meta: 0.8125rem;
+
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+
+  /* Forest, light (the web app's [data-theme='light']). */
+  --bg: #f2f7f3; /* oklch(0.971 0.007 152) */
+  --surface: #fcfffc; /* oklch(0.996 0.004 152) */
+  --surface2: #e8f0ea; /* oklch(0.948 0.012 152) */
+  --line: #dce4de; /* oklch(0.912 0.012 152) */
+  --line2: #c5d0c7; /* oklch(0.846 0.016 152) */
+  --fg: #132218; /* oklch(0.235 0.029 155) */
+  --dim: #515e55; /* oklch(0.468 0.022 155) */
+  --dim2: #5b685f; /* oklch(0.503 0.02 155) */
+  --accent: #00773d; /* oklch(0.492 0.138 156) */
+  --accent-fg: #ffffff;
+  --accent-soft: #e1f3e5; /* oklch(0.947 0.027 152) */
+  --bad: #b7453b; /* oklch(0.545 0.15 28) */
+  --bad-soft: #ffeae7; /* oklch(0.955 0.025 28) */
+  /* --btn-fill: the accent mixed 94% with white at the top (color-mix in oklch). */
+  --btn-fill: linear-gradient(180deg, #007f48 0%, var(--accent) 100%);
+  --btn-lift: 0 1px 2px rgba(0, 119, 61, 0.28), 0 6px 16px -8px rgba(0, 119, 61, 0.5);
+  --shadow-float: 0 4px 10px rgba(20, 37, 27, 0.08), 0 16px 32px -14px rgba(20, 37, 27, 0.22);
+  --edge: rgba(255, 255, 255, 0.75); /* --glass-edge */
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Forest, dark (the web app's default). */
+    --bg: #08110c; /* oklch(0.166 0.017 158) */
+    --surface: #121e16; /* oklch(0.219 0.022 158) */
+    --surface2: #1b2921; /* oklch(0.266 0.025 158) */
+    --line: #29362e; /* oklch(0.318 0.023 158) */
+    --line2: #3c4c44; /* oklch(0.4 0.024 162) */
+    --fg: #f2f6f0; /* oklch(0.968 0.009 135) */
+    --dim: #a9b4ab; /* oklch(0.76 0.018 150) */
+    --dim2: #939d95; /* oklch(0.685 0.016 150) */
+    --accent: #7eebaf; /* oklch(0.858 0.132 158) */
+    --accent-fg: #092617; /* oklch(0.24 0.045 158) */
+    --accent-soft: #163022; /* oklch(0.285 0.042 158) */
+    --bad: #eb9287; /* oklch(0.75 0.11 28) */
+    --bad-soft: #4b2723; /* oklch(0.32 0.055 28) */
+    --btn-fill: linear-gradient(180deg, #87ecb4 0%, var(--accent) 100%);
+    --btn-lift: 0 1px 2px rgba(126, 235, 175, 0.28), 0 6px 16px -8px rgba(126, 235, 175, 0.5);
+    --shadow-float: 0 4px 10px rgba(0, 0, 0, 0.45), 0 14px 32px -12px rgba(0, 0, 0, 0.6);
+    --edge: rgba(255, 255, 255, 0.08);
+  }
+}

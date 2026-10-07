@@ -1,0 +1,373 @@
+/*
+ * The menu-bar / tray panel, in the web app's tokens and face
+ * (../styles/tokens.css). On macOS the window is transparent and the panel
+ * draws its own rounded edge; on Windows 11 the system rounds the window.
+ */
+@import '../styles/tokens.css';
+
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+  font-family: var(--sans);
+  font-size: 16px;
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+:root[data-platform='windows'] body {
+  background: var(--surface);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  width: 100%;
+  padding: var(--s4) var(--s4) var(--s3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  /* The lit top edge the web app gives floating chrome. */
+  box-shadow: inset 0 1px 0 var(--edge);
+  animation: drop 0.14s var(--ease-out);
+}
+:root[data-platform='windows'] .panel {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+@keyframes drop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel {
+    animation: none;
+  }
+}
+
+/* --------------------------------------------------------------- header */
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+.logo {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: flex;
+}
+.who {
+  min-width: 0;
+  flex: 1;
+}
+.name {
+  font-size: var(--t-sub);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+.account {
+  font-size: var(--t-meta);
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+/* ----------------------------------------------------------- add a word */
+
+.add {
+  position: relative;
+  margin: 0;
+}
+.add input {
+  width: 100%;
+  height: 44px;
+  padding: 0 40px 0 var(--s3);
+  font: inherit;
+  font-size: var(--t-body);
+  font-weight: 500;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--line2);
+  border-radius: var(--r-ctl);
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+  transition:
+    border-color var(--press-time) var(--ease-out),
+    box-shadow var(--press-time) var(--ease-out);
+}
+.add input[dir='rtl'] {
+  font-family: var(--fa);
+  padding: 0 var(--s3) 0 40px;
+}
+.add input::placeholder {
+  color: var(--dim2);
+  font-weight: 400;
+}
+.add input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.enter {
+  position: absolute;
+  top: 50%;
+  right: var(--s3);
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: var(--dim2);
+  background: var(--surface2);
+  opacity: 0;
+  transition: opacity var(--press-time) var(--ease-out);
+}
+.add.typed .enter {
+  opacity: 1;
+  color: var(--accent-fg);
+  background: var(--accent);
+}
+.add input[dir='rtl'] + .enter {
+  right: auto;
+  left: var(--s3);
+}
+
+.hint,
+.warn {
+  margin: calc(var(--s1) * -1) 0 0;
+  font-size: var(--t-meta);
+  color: var(--dim);
+  line-height: 1.4;
+}
+.warn {
+  margin: 0;
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--bad-soft);
+  color: var(--fg);
+}
+kbd {
+  display: inline-block;
+  padding: 0 6px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--fg);
+  background: var(--surface2);
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+}
+
+/* --------------------------------------------------------------- recent */
+
+.recent {
+  border-top: 1px solid var(--line);
+  padding-top: var(--s3);
+}
+.recent h2 {
+  margin: 0 0 var(--s1);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim2);
+}
+.recent ul {
+  list-style: none;
+  margin: 0 calc(var(--s2) * -1);
+  padding: 0;
+}
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  width: 100%;
+  min-height: 32px;
+  padding: 5px var(--s2);
+  border: 0;
+  border-radius: var(--s2);
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.row:hover {
+  background: var(--surface2);
+}
+.hw {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--t-sub);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hw[dir='rtl'] {
+  font-family: var(--fa);
+  text-align: right;
+}
+.when {
+  flex: none;
+  font-size: var(--t-meta);
+  color: var(--dim2);
+  font-variant-numeric: tabular-nums;
+}
+.empty {
+  margin: var(--s1) 0 0;
+  font-size: var(--t-meta);
+  color: var(--dim);
+}
+
+/* ------------------------------------------------------------- notebook */
+
+.notebook {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  border-top: 1px solid var(--line);
+  padding-top: var(--s3);
+}
+.notebook label {
+  font-size: var(--t-meta);
+  color: var(--dim);
+}
+.notebook select {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 var(--s2);
+  font: inherit;
+  font-size: var(--t-sub);
+  font-weight: 600;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--line2);
+  border-radius: var(--r-sm);
+}
+.notebook select:disabled {
+  opacity: 1;
+  border-color: var(--line);
+}
+
+/* -------------------------------------------------------------- connect */
+
+.connect p {
+  margin: 0 0 var(--s3);
+  font-size: var(--t-sub);
+  color: var(--dim);
+  line-height: 1.45;
+}
+.btn {
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  border-radius: var(--r-ctl);
+  font: inherit;
+  font-size: var(--t-body);
+  font-weight: 650;
+  cursor: pointer;
+  transition: transform var(--press-time) var(--ease-spring);
+}
+.btn.primary {
+  background: var(--btn-fill);
+  color: var(--accent-fg);
+  box-shadow: var(--btn-lift);
+}
+.btn:active:not(:disabled) {
+  transform: scale(var(--press));
+}
+.btn:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+.note {
+  margin: var(--s2) 0 0;
+  font-size: var(--t-meta);
+  color: var(--dim);
+}
+.note:empty {
+  display: none;
+}
+.note.bad {
+  color: var(--bad);
+}
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* --------------------------------------------------------------- footer */
+
+.foot {
+  display: flex;
+  gap: var(--s1);
+  border-top: 1px solid var(--line);
+  padding-top: var(--s2);
+}
+.act {
+  flex: none;
+  min-height: 30px;
+  padding: 0 var(--s2);
+  border: 0;
+  border-radius: var(--s2);
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--t-meta);
+  font-weight: 600;
+  cursor: pointer;
+}
+.act:first-child {
+  /* Text lines up with the rows above; the hover tint reaches into the padding. */
+  margin-left: calc(var(--s2) * -1);
+  color: var(--accent);
+}
+.act.quit {
+  margin-left: auto;
+  margin-right: calc(var(--s2) * -1);
+  color: var(--dim);
+}
+.act:hover {
+  background: var(--surface2);
+}
+
+.row:focus-visible,
+.act:focus-visible,
+.btn:focus-visible,
+.link:focus-visible,
+.notebook select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

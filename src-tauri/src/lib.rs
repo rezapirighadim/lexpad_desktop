@@ -3,7 +3,8 @@
 //!
 //! - `capture`: reads the selection in the app in front (accessibility API,
 //!   then the clipboard, put back exactly).
-//! - `popup`: the card near the selection; `commands`: what the windows may ask.
+//! - `popup`: the card near the selection; `panel`: the menu-bar / tray panel;
+//!   `tray`: the icon and its fallback menu; `commands`: what the windows may ask.
 //! - `api`: the only holder of tokens; `auth`: RFC 8252 sign-in in the browser;
 //!   `store`: the session in the system's credential store.
 //! - `services_macos`: "Add to Lexpad" in the macOS Services menu.
@@ -15,22 +16,22 @@ mod commands;
 mod config;
 #[cfg(test)]
 mod e2e;
+mod panel;
 mod popup;
 #[cfg(target_os = "macos")]
 mod services_macos;
 mod settings;
 mod state;
 mod store;
+mod tray;
 
 use std::sync::{Arc, Mutex};
 
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
-use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt as _};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt as _, ShortcutState};
+use tauri_plugin_opener::OpenerExt as _;
 
-use crate::capture::{Capture, Permission};
 use crate::settings::SettingsFile;
 use crate::state::AppState;
 
@@ -64,61 +65,17 @@ pub fn apply_start_on_login(app: &AppHandle, on: bool) {
     }
 }
 
-/// "Add a word" from the tray: the type-a-word box, nothing read.
-fn add_from_tray(app: &AppHandle) {
-    let permission = capture::permission();
-    popup::open(
-        app,
-        Capture::empty(
-            if permission == Permission::Missing {
-                Permission::Missing
-            } else {
-                permission
-            },
-            None,
-        ),
-    );
-}
-
-fn build_tray(app: &AppHandle, shortcut: &str) -> tauri::Result<()> {
-    let label = format!("Add a word…\t{}", pretty_shortcut(shortcut));
-    let add = MenuItem::with_id(app, "add", label, true, None::<&str>)?;
-    let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Lexpad", true, None::<&str>)?;
-    let menu = Menu::with_items(
-        app,
-        &[&add, &settings, &PredefinedMenuItem::separator(app)?, &quit],
-    )?;
-    let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?;
-    TrayIconBuilder::with_id("main")
-        .icon(icon)
-        .icon_as_template(true)
-        .tooltip("Lexpad")
-        .menu(&menu)
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "add" => add_from_tray(app),
-            "settings" => show_settings(app),
-            "quit" => app.exit(0),
-            _ => {}
-        })
-        .build(app)?;
-    Ok(())
-}
-
-/// "CommandOrControl+Shift+L" as the platform writes it: ⌘⇧L or Ctrl+Shift+L.
-pub fn pretty_shortcut(s: &str) -> String {
-    let mac = cfg!(target_os = "macos");
-    s.split('+')
-        .map(|part| match part {
-            "CommandOrControl" | "CmdOrCtrl" => if mac { "⌘" } else { "Ctrl" }.to_owned(),
-            "Command" | "Cmd" | "Super" => if mac { "⌘" } else { "Win" }.to_owned(),
-            "Control" | "Ctrl" => if mac { "⌃" } else { "Ctrl" }.to_owned(),
-            "Shift" => if mac { "⇧" } else { "Shift" }.to_owned(),
-            "Alt" | "Option" => if mac { "⌥" } else { "Alt" }.to_owned(),
-            other => other.to_owned(),
-        })
-        .collect::<Vec<_>>()
-        .join(if mac { "" } else { "+" })
+/// Opens the web app in the browser: its home, or a word's page when `word_id`
+/// is an API id (the command checks it). The address is built here, from
+/// APP_ORIGIN; nothing else is ever opened from the tray or the panel.
+pub fn open_web(app: &AppHandle, word_id: Option<&str>) {
+    let url = match word_id {
+        Some(id) => format!("{}/words/{id}", config::APP_ORIGIN),
+        None => format!("{}/", config::APP_ORIGIN),
+    };
+    if let Err(e) = app.opener().open_url(url, None::<&str>) {
+        log::warn!("could not open the web app: {e}");
+    }
 }
 
 pub fn run() {
@@ -168,7 +125,8 @@ pub fn run() {
             if let Err(e) = handle.global_shortcut().register(shortcut.as_str()) {
                 log::warn!("shortcut {shortcut} not available: {e}");
             }
-            build_tray(&handle, &shortcut)?;
+            panel::create(&handle)?;
+            tray::build(&handle)?;
             if first_run || start_on_login {
                 apply_start_on_login(&handle, start_on_login);
             }
@@ -186,6 +144,10 @@ pub fn run() {
             // A click anywhere else puts the popup away, like a menu.
             (popup::LABEL, WindowEvent::Focused(false)) => {
                 let _ = window.hide();
+            }
+            // The panel too; the app clicked into already has the keyboard.
+            (panel::LABEL, WindowEvent::Focused(false)) => {
+                panel::hide(window.app_handle(), false);
             }
             (SETTINGS, WindowEvent::CloseRequested { api, .. }) => {
                 api.prevent_close();
@@ -214,6 +176,12 @@ pub fn run() {
             commands::set_start_on_login,
             commands::open_settings,
             commands::app_info,
+            commands::recent,
+            commands::panel_add,
+            commands::hide_panel,
+            commands::fit_panel,
+            commands::open_web,
+            commands::quit,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Lexpad")
@@ -225,17 +193,4 @@ pub fn run() {
                 }
             }
         });
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn shortcuts_read_the_way_the_platform_writes_them() {
-        let s = super::pretty_shortcut("CommandOrControl+Shift+L");
-        if cfg!(target_os = "macos") {
-            assert_eq!(s, "⌘⇧L");
-        } else {
-            assert_eq!(s, "Ctrl+Shift+L");
-        }
-    }
 }

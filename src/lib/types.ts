@@ -42,7 +42,7 @@ export interface Capture {
   /** The app's display name ("TextEdit", "Microsoft Word"); never a window title. */
   app: string | null;
   permission: Permission;
-  via: 'accessibility' | 'clipboard' | 'service' | 'none';
+  via: 'accessibility' | 'clipboard' | 'service' | 'typed' | 'none';
 }
 
 export interface State {
@@ -86,4 +86,14 @@ export interface AppInfo {
   apiOrigin: string;
   appOrigin: string;
   autostartEnabled: boolean;
+}
+
+/** A word added from this computer, for the panel's list (newest first). */
+export interface RecentWord {
+  id: string;
+  headword: string;
+  notebookId: string;
+  userId: string;
+  /** Milliseconds since the Unix epoch. */
+  addedAt: number;
 }

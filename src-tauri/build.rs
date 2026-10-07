@@ -1,5 +1,5 @@
 fn main() {
-    // Every command the webviews may call is listed here, so each window gets
+    // Every command the webviews (popup, panel, Settings) may call is listed here, so each window gets
     // only the ones its capability grants (capabilities/*.json). A command
     // not listed is not callable from any window at all.
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
@@ -20,6 +20,12 @@ fn main() {
             "set_start_on_login",
             "open_settings",
             "app_info",
+            "recent",
+            "panel_add",
+            "hide_panel",
+            "fit_panel",
+            "open_web",
+            "quit",
         ]),
     ))
     .expect("failed to run tauri-build");

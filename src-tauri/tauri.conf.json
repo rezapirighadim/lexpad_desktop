@@ -11,6 +11,7 @@
   },
   "app": {
     "withGlobalTauri": false,
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "popup",
@@ -54,7 +55,7 @@
         "frame-ancestors": "'none'"
       },
       "freezePrototype": true,
-      "capabilities": ["popup", "settings"]
+      "capabilities": ["popup", "panel", "settings"]
     }
   },
   "bundle": {

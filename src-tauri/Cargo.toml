@@ -15,7 +15,12 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon", "image-png"] }
+# Pinned to the minor version: tray.rs reaches the inner tray-icon crate
+# (with_inner_tray_icon), which Tauri may update in a minor release.
+# macos-private-api: the panel window is transparent so it can have rounded
+# corners (the app is not for the Mac App Store; see README).
+tauri = { version = "~2.12", features = ["tray-icon", "image-png", "macos-private-api"] }
+ico = "0.5"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-single-instance = "2"
@@ -40,7 +45,7 @@ core-foundation = "0.10"
 core-graphics = "0.24"
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSString", "NSArray", "NSData", "NSObject"] }
-objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSPasteboard", "NSPasteboardItem", "NSRunningApplication", "NSWorkspace", "NSResponder"] }
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSPasteboard", "NSPasteboardItem", "NSRunningApplication", "NSWorkspace", "NSResponder", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSStatusItem", "NSStatusBarButton", "NSButton", "NSControl", "NSView"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61", features = [
@@ -50,6 +55,7 @@ windows = { version = "0.61", features = [
   "Win32_System_Variant",
   "Win32_UI_Accessibility",
   "Win32_UI_WindowsAndMessaging",
+  "Win32_UI_HiDpi",
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_System_Threading",
   "Win32_System_DataExchange",

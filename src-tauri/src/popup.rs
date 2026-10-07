@@ -48,6 +48,13 @@ pub fn hide(app: &AppHandle) {
     if let Some(win) = app.get_webview_window(LABEL) {
         let _ = win.hide();
     }
+    give_focus_back(app);
+}
+
+/// Gives the keyboard back to the app that was in front before Lexpad.
+/// Windows does that by itself when the window hides.
+#[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
+pub fn give_focus_back(app: &AppHandle) {
     #[cfg(target_os = "macos")]
     {
         // Hiding the (Dock-less) app makes macOS reactivate the previous app,

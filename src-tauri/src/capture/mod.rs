@@ -54,6 +54,8 @@ pub enum Via {
     /// The macOS Services menu.
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     Service,
+    /// Typed into the menu-bar / tray panel's "Add a word" box.
+    Typed,
     None,
 }
 

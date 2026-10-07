@@ -1,4 +1,4 @@
-//! What the two windows may ask of the core. Each window gets only the
+//! What the windows (popup, panel, Settings) may ask of the core. Each window gets only the
 //! commands its capability lists (capabilities/*.json). None of them returns
 //! a token, and none of them opens an arbitrary address.
 
@@ -13,9 +13,11 @@ use tauri_plugin_opener::OpenerExt as _;
 
 use crate::api::{Device, Failure};
 use crate::auth::{self, Answer};
-use crate::capture::{self, Capture, Permission};
+use crate::capture::{self, Capture, Permission, Via};
 use crate::config;
+use crate::panel;
 use crate::popup;
+use crate::settings::{remember, RecentWord};
 use crate::state::AppState;
 use crate::store::User;
 
@@ -115,6 +117,7 @@ pub async fn lookup(
 /// composed it from the meaning card, the sentence and the private note.
 #[tauri::command]
 pub async fn add_word(
+    app: AppHandle,
     state: State<'_, AppState>,
     notebook_id: String,
     word: Value,
@@ -132,7 +135,36 @@ pub async fn add_word(
     if !is_id(&notebook_id) || !headword_ok || !memo_ok {
         return Err(err(Failure::Error));
     }
-    state.api.add_word(&notebook_id, &word).await.map_err(err)
+    let id = state.api.add_word(&notebook_id, &word).await.map_err(err)?;
+    // Remembered for the panel's "Added from this computer" list.
+    if let Some(user) = state.api.user().await {
+        let added = RecentWord {
+            id: id.clone(),
+            headword: obj
+                .get("headword")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .trim()
+                .to_owned(),
+            notebook_id,
+            user_id: user.id,
+            added_at: now_ms(),
+        };
+        if state
+            .update_settings(|s| s.recent = remember(&s.recent, added))
+            .is_ok()
+        {
+            let _ = app.emit("recent:changed", ());
+        }
+    }
+    Ok(id)
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
+        .unwrap_or(0)
 }
 
 #[tauri::command]
@@ -212,8 +244,15 @@ pub fn cancel_connect(state: State<'_, AppState>) -> Result<(), String> {
 /// Signs out: the session is revoked on the server and forgotten here.
 #[tauri::command]
 pub async fn disconnect(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let user = state.api.user().await;
     state.api.sign_out().await;
-    state.update_settings(|s| s.notebook_id = None)?;
+    state.update_settings(|s| {
+        s.notebook_id = None;
+        // Signing out forgets what this account added from here.
+        if let Some(user) = &user {
+            s.recent.retain(|w| w.user_id != user.id);
+        }
+    })?;
     state.notebooks.lock().map_err(|_| "lock")?.clear();
     let _ = app.emit("session:changed", ());
     Ok(())
@@ -312,7 +351,74 @@ pub fn set_start_on_login(
 #[tauri::command]
 pub fn open_settings(app: AppHandle) {
     popup::hide(&app);
+    panel::hide(&app, false);
     crate::show_settings(&app);
+}
+
+/* ------------------------------------------------------------- panel */
+
+/// The words added from this computer to the signed-in account, newest first.
+#[tauri::command]
+pub async fn recent(state: State<'_, AppState>) -> Result<Vec<RecentWord>, String> {
+    let Some(user) = state.api.user().await else {
+        return Ok(Vec::new());
+    };
+    let settings = state.settings.lock().map_err(|_| "lock")?;
+    Ok(settings
+        .recent
+        .iter()
+        .filter(|w| w.user_id == user.id)
+        .cloned()
+        .collect())
+}
+
+/// The panel's "Add a word" box: the card opens for the typed text, from
+/// where the panel was, exactly as for a selection (a phrase is looked up,
+/// a whole sentence offers its words to pick from).
+#[tauri::command]
+pub fn panel_add(app: AppHandle, text: String) -> Result<(), String> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Err(err(Failure::Error));
+    }
+    let mut typed = Capture::empty(capture::permission(), None);
+    typed.text = Some(capture::clip(text, capture::MAX_TEXT));
+    typed.via = Via::Typed;
+    typed.anchor = panel::last_icon();
+    panel::hide(&app, false);
+    popup::open(&app, typed);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn hide_panel(app: AppHandle) {
+    panel::hide(&app, true);
+}
+
+/// Sizes the panel to its content.
+#[tauri::command]
+pub fn fit_panel(app: AppHandle, height: f64) -> Result<(), String> {
+    if !height.is_finite() {
+        return Err(err(Failure::Error));
+    }
+    panel::fit(&app, height).map_err(|e| e.to_string())
+}
+
+/// Opens the web app in the browser: its home, or one word's page. The
+/// address is always built here from APP_ORIGIN; a window passes at most an id.
+#[tauri::command]
+pub fn open_web(app: AppHandle, word_id: Option<String>) -> Result<(), String> {
+    if word_id.as_deref().is_some_and(|id| !is_id(id)) {
+        return Err(err(Failure::Error));
+    }
+    panel::hide(&app, false);
+    crate::open_web(&app, word_id.as_deref());
+    Ok(())
+}
+
+#[tauri::command]
+pub fn quit(app: AppHandle) {
+    app.exit(0);
 }
 
 #[derive(Serialize)]

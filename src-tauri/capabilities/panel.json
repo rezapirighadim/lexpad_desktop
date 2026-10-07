@@ -1,0 +1,22 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "panel",
+  "description": "The menu-bar / tray panel: account, add a word (opens the card), recent words, default notebook, Open Lexpad, Settings, Quit. Nothing else.",
+  "windows": ["panel"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-state",
+    "allow-recent",
+    "allow-set-notebook",
+    "allow-connect",
+    "allow-cancel-connect",
+    "allow-panel-add",
+    "allow-hide-panel",
+    "allow-fit-panel",
+    "allow-open-web",
+    "allow-open-settings",
+    "allow-open-accessibility-settings",
+    "allow-quit"
+  ]
+}
