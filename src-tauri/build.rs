@@ -1,5 +1,5 @@
 fn main() {
-    // Every command the webviews (popup, panel, Settings) may call is listed here, so each window gets
+    // Every command the webviews (popup, panel, Settings, Lexpad's window) may call is listed here, so each window gets
     // only the ones its capability grants (capabilities/*.json). A command
     // not listed is not callable from any window at all.
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
@@ -26,6 +26,16 @@ fn main() {
             "fit_panel",
             "open_web",
             "quit",
+            "api_fetch",
+            "main_signed_in",
+            "main_take_pending",
+            "open_in_browser",
+            "set_open_on_launch",
+            "set_open_in_browser",
+            "desktop_settings",
+            "set_notifications",
+            "schedule_reminders",
+            "open_notification_settings",
         ]),
     ))
     .expect("failed to run tauri-build");

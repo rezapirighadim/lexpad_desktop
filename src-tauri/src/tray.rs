@@ -45,7 +45,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "open" => crate::open_web(app, None),
-            "settings" => crate::show_settings(app),
+            "settings" => crate::open_desktop_settings(app),
             "quit" => app.exit(0),
             _ => {}
         })

@@ -8,6 +8,8 @@
 //! - `api`: the only holder of tokens; `auth`: RFC 8252 sign-in in the browser;
 //!   `store`: the session in the system's credential store.
 //! - `services_macos`: "Add to Lexpad" in the macOS Services menu.
+//! - `main_window`: Lexpad's own window, the whole web app, whose calls go
+//!   through the core (`proxy`) so the page never holds a session.
 
 mod api;
 mod auth;
@@ -16,9 +18,14 @@ mod commands;
 mod config;
 #[cfg(test)]
 mod e2e;
+#[cfg(test)]
+mod e2e_main;
+mod main_window;
+mod notify;
 mod panel;
 mod placement;
 mod popup;
+mod proxy;
 #[cfg(target_os = "macos")]
 mod services_macos;
 mod settings;
@@ -42,12 +49,53 @@ pub const SETTINGS: &str = "settings";
 
 /// Opens Settings, with a Dock icon on macOS while it is open.
 pub fn show_settings(app: &AppHandle) {
-    #[cfg(target_os = "macos")]
-    let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+    refresh_dock(app, true);
     if let Some(win) = app.get_webview_window(SETTINGS) {
         let _ = win.show();
         let _ = win.unminimize();
         let _ = win.set_focus();
+    }
+}
+
+/// Settings, from the tray, the panel or the card: the desktop section of
+/// Settings in Lexpad's window when the learner is signed in and uses the
+/// window, else the small Settings window (which also says hello on the
+/// first run and connects a signed-out app).
+pub fn open_desktop_settings(app: &AppHandle) {
+    let Some(state) = app.try_state::<AppState>() else {
+        return;
+    };
+    let signed_in = tauri::async_runtime::block_on(state.api.user()).is_some();
+    let in_browser = state
+        .settings
+        .lock()
+        .map(|s| s.open_in_browser)
+        .unwrap_or(false);
+    if signed_in && !in_browser {
+        main_window::open(app, Some(main_window::DESKTOP_SETTINGS.into()));
+    } else {
+        show_settings(app);
+    }
+}
+
+/// Shows the Dock icon (macOS) while Lexpad's window or Settings is open,
+/// or about to open (`opening`), and hides it when neither is: idle, the app
+/// lives in the menu bar only.
+#[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
+pub fn refresh_dock(app: &AppHandle, opening: bool) {
+    #[cfg(target_os = "macos")]
+    {
+        let visible = |label: &str| {
+            app.get_webview_window(label)
+                .and_then(|w| w.is_visible().ok())
+                .unwrap_or(false)
+        };
+        let policy = if opening || visible(SETTINGS) || visible(main_window::LABEL) {
+            tauri::ActivationPolicy::Regular
+        } else {
+            tauri::ActivationPolicy::Accessory
+        };
+        let _ = app.set_activation_policy(policy);
     }
 }
 
@@ -68,10 +116,24 @@ pub fn apply_start_on_login(app: &AppHandle, on: bool) {
     }
 }
 
-/// Opens the web app in the browser: its home, or a word's page when `word_id`
-/// is an API id (the command checks it). The address is built here, from
-/// APP_ORIGIN; nothing else is ever opened from the tray or the panel.
+/// Opens Lexpad: its own window, or the web app in the browser when the
+/// learner prefers that (Settings). At its home, or at a word's page when
+/// `word_id` is an API id (the command checks it). Every address is built
+/// here, from APP_ORIGIN; nothing else is ever opened from the tray or the panel.
 pub fn open_web(app: &AppHandle, word_id: Option<&str>) {
+    let in_browser = app
+        .try_state::<AppState>()
+        .and_then(|s| s.settings.lock().ok().map(|s| s.open_in_browser))
+        .unwrap_or(false);
+    if !in_browser {
+        main_window::open(app, word_id.map(|id| format!("/words/{id}")));
+        return;
+    }
+    open_in_browser(app, word_id);
+}
+
+/// The web app in the system browser: its home, or a word's page.
+pub fn open_in_browser(app: &AppHandle, word_id: Option<&str>) {
     let url = match word_id {
         Some(id) => format!("{}/words/{id}", config::APP_ORIGIN),
         None => format!("{}/", config::APP_ORIGIN),
@@ -103,7 +165,7 @@ pub fn run() {
     // test runs beside an installed copy, so it is not "a second launch".
     if !smoke {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            show_settings(app)
+            open_web(app, None)
         }));
     }
     builder
@@ -142,6 +204,7 @@ pub fn run() {
             let store = session_store(smoke);
             let shortcut = settings.shortcut.clone();
             let start_on_login = settings.start_on_login;
+            let open_on_launch = settings.open_on_launch;
             app.manage(AppState {
                 api: api::Api::new(config::API_ORIGIN, store),
                 settings: Mutex::new(settings),
@@ -169,11 +232,16 @@ pub fn run() {
             }
             #[cfg(target_os = "macos")]
             services_macos::register(&handle);
+            notify::init(&handle);
+            notify::start(&handle);
 
             // First run, or not signed in yet: open Settings to say hello.
             let api_user = tauri::async_runtime::block_on(handle.state::<AppState>().api.user());
             if first_run || api_user.is_none() {
                 show_settings(&handle);
+            }
+            if open_on_launch {
+                open_web(&handle, None);
             }
             Ok(())
         })
@@ -189,10 +257,14 @@ pub fn run() {
             (SETTINGS, WindowEvent::CloseRequested { api, .. }) => {
                 api.prevent_close();
                 let _ = window.hide();
-                #[cfg(target_os = "macos")]
-                let _ = window
-                    .app_handle()
-                    .set_activation_policy(tauri::ActivationPolicy::Accessory);
+                refresh_dock(window.app_handle(), false);
+            }
+            // Lexpad's window is let go when closed; where it was is kept.
+            (main_window::LABEL, WindowEvent::CloseRequested { .. }) => {
+                main_window::remember(window.app_handle());
+            }
+            (main_window::LABEL, WindowEvent::Destroyed) => {
+                refresh_dock(window.app_handle(), false);
             }
             _ => {}
         })
@@ -219,15 +291,31 @@ pub fn run() {
             commands::fit_panel,
             commands::open_web,
             commands::quit,
+            commands::api_fetch,
+            commands::main_signed_in,
+            commands::main_take_pending,
+            commands::open_in_browser,
+            commands::set_open_on_launch,
+            commands::set_open_in_browser,
+            commands::desktop_settings,
+            commands::set_notifications,
+            commands::schedule_reminders,
+            commands::open_notification_settings,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Lexpad")
-        .run(|_app, event| {
+        .run(|app, event| match event {
             // Closing every window keeps the app in the menu bar / tray.
-            if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
+            tauri::RunEvent::ExitRequested { api, code, .. } => {
                 if code.is_none() {
                     api.prevent_exit();
+                } else {
+                    main_window::remember(app);
                 }
             }
+            // A click on the Dock icon (macOS) opens Lexpad's window.
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen { .. } => open_web(app, None),
+            _ => {}
         });
 }

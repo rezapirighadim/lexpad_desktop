@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use serde::Serialize;
 use serde_json::Value;
+use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_autostart::ManagerExt as _;
 use tauri_plugin_global_shortcut::GlobalShortcutExt as _;
@@ -15,8 +16,11 @@ use crate::api::{Device, Failure};
 use crate::auth::{self, Answer};
 use crate::capture::{self, Capture, Permission, Via};
 use crate::config;
+use crate::main_window;
+use crate::notify;
 use crate::panel;
 use crate::popup;
+use crate::proxy;
 use crate::settings::{remember, RecentWord};
 use crate::state::AppState;
 use crate::store::User;
@@ -34,7 +38,29 @@ pub struct StateDto {
     capture: Option<Capture>,
     shortcut: String,
     permission: Permission,
+    /// Accessibility was allowed in an earlier version and macOS dropped it
+    /// with the update (see `settings::stale_accessibility`).
+    permission_stale: bool,
     version: &'static str,
+}
+
+/// Reads the Accessibility permission, remembers the version that last had
+/// it, and says whether a missing one was lost to an update.
+fn accessibility_now(state: &AppState) -> (Permission, bool) {
+    let now = capture::permission();
+    let granted_in = state
+        .settings
+        .lock()
+        .ok()
+        .and_then(|s| s.accessibility_granted_in.clone());
+    if now == Permission::Granted && granted_in.as_deref() != Some(config::VERSION) {
+        let _ =
+            state.update_settings(|s| s.accessibility_granted_in = Some(config::VERSION.into()));
+    }
+    (
+        now,
+        crate::settings::stale_accessibility(now, granted_in.as_deref(), config::VERSION),
+    )
 }
 
 fn err(f: Failure) -> String {
@@ -83,6 +109,7 @@ pub async fn state(app: AppHandle, state: State<'_, AppState>) -> Result<StateDt
                 .and_then(|n| n["id"].as_str().map(str::to_owned))
         });
     let capture = state.capture.lock().map_err(|_| "lock")?.clone();
+    let (permission, permission_stale) = accessibility_now(&state);
     Ok(StateDto {
         connected,
         user: if connected { user } else { None },
@@ -90,7 +117,8 @@ pub async fn state(app: AppHandle, state: State<'_, AppState>) -> Result<StateDt
         notebook_id,
         capture,
         shortcut: settings.shortcut,
-        permission: capture::permission(),
+        permission,
+        permission_stale,
         version: config::VERSION,
     })
 }
@@ -277,11 +305,11 @@ pub fn fit_popup(app: AppHandle, height: f64) -> Result<(), String> {
 /// Whether the app may read selections; with `request`, also asks macOS to
 /// list it under Accessibility (the system shows its own prompt).
 #[tauri::command]
-pub fn accessibility(request: bool) -> Permission {
+pub fn accessibility(state: State<'_, AppState>, request: bool) -> Permission {
     if request && capture::permission() == Permission::Missing {
         capture::request_permission();
     }
-    capture::permission()
+    accessibility_now(&state).0
 }
 
 #[tauri::command]
@@ -301,6 +329,8 @@ pub fn open_accessibility_settings(app: AppHandle) -> Result<(), String> {
 pub struct SettingsDto {
     shortcut: String,
     start_on_login: bool,
+    open_on_launch: bool,
+    open_in_browser: bool,
     development_build: bool,
 }
 
@@ -310,6 +340,8 @@ pub fn get_settings(state: State<'_, AppState>) -> Result<SettingsDto, String> {
     Ok(SettingsDto {
         shortcut: s.shortcut.clone(),
         start_on_login: s.start_on_login,
+        open_on_launch: s.open_on_launch,
+        open_in_browser: s.open_in_browser,
         development_build: config::is_development_build(),
     })
 }
@@ -350,7 +382,7 @@ pub fn set_start_on_login(
 pub fn open_settings(app: AppHandle) {
     popup::hide(&app);
     panel::hide(&app, false);
-    crate::show_settings(&app);
+    crate::open_desktop_settings(&app);
 }
 
 /* ------------------------------------------------------------- panel */
@@ -419,6 +451,253 @@ pub fn quit(app: AppHandle) {
     app.exit(0);
 }
 
+/* ------------------------------------------------------- main window */
+
+/// The answer to a request from Lexpad's window, before its body.
+#[derive(Serialize)]
+pub struct Head {
+    status: u16,
+    headers: Vec<(String, String)>,
+}
+
+/// One piece of a response body for Lexpad's window, its end, or a failure.
+#[derive(Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum BodyEvent {
+    Chunk { data: String },
+    End,
+    Error,
+}
+
+/// Response headers the page may read: what the client looks at. Nothing
+/// about cookies or the session.
+const RESPONSE_HEADERS: &[&str] = &["content-type", "etag", "retry-after", "content-disposition"];
+
+/// Sends one request from Lexpad's window to the API with the session only
+/// the core holds (see `proxy.rs` for what the window may send), and
+/// streams the body back through `events`. A failure to send is "offline";
+/// a refused request is "error": either way the page sees a failed fetch.
+#[tauri::command]
+pub async fn api_fetch(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    request: proxy::Request,
+    events: Channel<BodyEvent>,
+) -> Result<Head, String> {
+    let checked = proxy::check(config::API_ORIGIN, &request).map_err(|refused| {
+        log::warn!("a request from the window was refused: {refused:?}");
+        err(Failure::Error)
+    })?;
+    let had_session = state.api.user().await.is_some();
+    let mut res = state.api.forward(&checked).await.map_err(err)?;
+    let status = res.status().as_u16();
+    // A 401 the core could not refresh away has ended the session: the
+    // other windows (the panel, Settings) hear it too.
+    if status == 401 && had_session && state.api.user().await.is_none() {
+        let _ = app.emit("session:changed", ());
+    }
+    let headers = res
+        .headers()
+        .iter()
+        .filter(|(name, _)| RESPONSE_HEADERS.contains(&name.as_str()))
+        .filter_map(|(name, value)| Some((name.to_string(), value.to_str().ok()?.to_owned())))
+        .collect();
+    tauri::async_runtime::spawn(async move {
+        use base64::Engine as _;
+        loop {
+            match res.chunk().await {
+                Ok(Some(bytes)) => {
+                    let data = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                    if events.send(BodyEvent::Chunk { data }).is_err() {
+                        return;
+                    }
+                }
+                Ok(None) => {
+                    let _ = events.send(BodyEvent::End);
+                    return;
+                }
+                Err(_) => {
+                    let _ = events.send(BodyEvent::Error);
+                    return;
+                }
+            }
+        }
+    });
+    Ok(Head { status, headers })
+}
+
+/// Whether the core holds a session, for Lexpad's window.
+#[tauri::command]
+pub async fn main_signed_in(state: State<'_, AppState>) -> Result<bool, String> {
+    Ok(state.api.user().await.is_some())
+}
+
+/// A page Lexpad's window was asked to open before it was listening.
+#[tauri::command]
+pub fn main_take_pending() -> Option<String> {
+    main_window::take_pending()
+}
+
+/// Whether `path` is a plain path of the web app: one leading slash, no
+/// second one after it, no backslash, no whitespace or control characters,
+/// and still the web app's origin once joined to it. The same rule as the
+/// web app's `returnPath`.
+pub fn app_path(path: &str) -> Option<url::Url> {
+    if !path.starts_with('/')
+        || path.starts_with("//")
+        || path.contains('\\')
+        || path.chars().any(|c| c.is_whitespace() || c.is_control())
+        || path.len() > 512
+    {
+        return None;
+    }
+    let origin = url::Url::parse(config::APP_ORIGIN).ok()?;
+    let url = origin.join(path).ok()?;
+    (url.origin() == origin.origin() && url.username().is_empty()).then_some(url)
+}
+
+/// Opens a page of the web app in the system browser, for what the window's
+/// delegated session may not do there (a password). Only a path of the web
+/// app is accepted; the address is built here.
+#[tauri::command]
+pub fn open_in_browser(app: AppHandle, path: String) -> Result<(), String> {
+    let url = app_path(&path).ok_or_else(|| err(Failure::Error))?;
+    app.opener()
+        .open_url(url.as_str(), None::<&str>)
+        .map_err(|_| err(Failure::Error))
+}
+
+#[tauri::command]
+pub fn set_open_on_launch(state: State<'_, AppState>, on: bool) -> Result<bool, String> {
+    state.update_settings(|s| s.open_on_launch = on)?;
+    Ok(on)
+}
+
+#[tauri::command]
+pub fn set_open_in_browser(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    on: bool,
+) -> Result<bool, String> {
+    state.update_settings(|s| s.open_in_browser = on)?;
+    let _ = app.emit("settings:changed", ());
+    Ok(on)
+}
+
+/* ------------------------------------------- desktop section, window */
+
+/// Everything the desktop section of Settings in Lexpad's window shows.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopDto {
+    os: &'static str,
+    version: &'static str,
+    development_build: bool,
+    shortcut: String,
+    start_on_login: bool,
+    open_on_launch: bool,
+    open_in_browser: bool,
+    /// The notebook the shortcut adds to (None: the account's default).
+    notebook_id: Option<String>,
+    accessibility: Permission,
+    accessibility_stale: bool,
+    notifications: bool,
+    notification_access: notify::Access,
+}
+
+#[tauri::command]
+pub async fn desktop_settings(state: State<'_, AppState>) -> Result<DesktopDto, String> {
+    let (accessibility, accessibility_stale) = accessibility_now(&state);
+    let notification_access = tauri::async_runtime::spawn_blocking(notify::access)
+        .await
+        .unwrap_or(notify::Access::Unsupported);
+    let s = state.settings.lock().map_err(|_| "lock")?.clone();
+    Ok(DesktopDto {
+        os: if cfg!(target_os = "macos") {
+            "macos"
+        } else {
+            "windows"
+        },
+        version: config::VERSION,
+        development_build: config::is_development_build(),
+        shortcut: s.shortcut,
+        start_on_login: s.start_on_login,
+        open_on_launch: s.open_on_launch,
+        open_in_browser: s.open_in_browser,
+        notebook_id: s.notebook_id,
+        accessibility,
+        accessibility_stale,
+        notifications: s.notifications,
+        notification_access,
+    })
+}
+
+/// Notifications on this computer on or off. Off takes back the reminders
+/// the system holds; on asks for permission when it was never asked (macOS
+/// shows its own prompt) and reads the inbox's state.
+#[tauri::command]
+pub async fn set_notifications(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    on: bool,
+) -> Result<notify::Access, String> {
+    state.update_settings(|s| s.notifications = on)?;
+    if !on {
+        tauri::async_runtime::spawn_blocking(notify::silence)
+            .await
+            .map_err(|_| err(Failure::Error))?;
+        return Ok(notify::Access::Denied);
+    }
+    let access = tauri::async_runtime::spawn_blocking(notify::request)
+        .await
+        .unwrap_or(notify::Access::Unsupported);
+    let _ = app.emit("settings:changed", ());
+    Ok(access)
+}
+
+/// The reminder plan Lexpad's window worked out (`sync/reminder.ts`), for
+/// the system to deliver; null cancels it. Answers what the web app's
+/// `ReminderStatus` means: scheduled, off, denied or unsupported.
+#[tauri::command]
+pub async fn schedule_reminders(
+    state: State<'_, AppState>,
+    plan: Option<Vec<notify::Notice>>,
+) -> Result<&'static str, String> {
+    let on = state.settings.lock().map_err(|_| "lock")?.notifications;
+    let Some(plan) = plan else {
+        tauri::async_runtime::spawn_blocking(notify::silence)
+            .await
+            .map_err(|_| err(Failure::Error))?;
+        return Ok("off");
+    };
+    if !on {
+        // Silenced on this computer: nothing is held here.
+        tauri::async_runtime::spawn_blocking(notify::silence)
+            .await
+            .map_err(|_| err(Failure::Error))?;
+        return Ok("unsupported");
+    }
+    let planned = notify::plan(&plan, chrono::Utc::now());
+    tauri::async_runtime::spawn_blocking(move || match notify::request() {
+        notify::Access::Granted => {
+            notify::replace_reminders(&planned);
+            "scheduled"
+        }
+        notify::Access::Denied => "denied",
+        _ => "unsupported",
+    })
+    .await
+    .map_err(|_| err(Failure::Error))
+}
+
+/// The system's notification settings for this app.
+#[tauri::command]
+pub fn open_notification_settings(app: AppHandle) -> Result<(), String> {
+    app.opener()
+        .open_url(notify::settings_url(), None::<&str>)
+        .map_err(|_| err(Failure::Error))
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppInfo {
@@ -440,6 +719,28 @@ pub fn app_info(app: AppHandle) -> AppInfo {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_plain_paths_of_the_web_app_open_in_the_browser() {
+        let ok = super::app_path("/settings/account").unwrap();
+        assert_eq!(
+            ok.as_str(),
+            format!("{}/settings/account", crate::config::APP_ORIGIN)
+        );
+        assert!(super::app_path("/words/01M43H5KGS4XJQX824GWWRSRVS?x=1").is_some());
+        for bad in [
+            "settings",
+            "//evil.example/x",
+            "/\\evil.example",
+            "https://evil.example/",
+            "/ space",
+            "/tab\t",
+            "/new\nline",
+            "",
+        ] {
+            assert!(super::app_path(bad).is_none(), "{bad:?}");
+        }
+    }
+
     #[test]
     fn only_api_ids_reach_an_address() {
         assert!(super::is_id("01M43H5KGS4XJQX824GWWRSRVS"));

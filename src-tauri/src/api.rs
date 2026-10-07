@@ -45,6 +45,9 @@ impl Failure {
 /// A refresh this close to expiry happens before the request rather than
 /// after a 401, so a lookup never starts with a token about to lapse.
 const EXPIRY_MARGIN: Duration = Duration::from_secs(30);
+/// The longest a response to the main window may go quiet before it is
+/// treated as cut off: longer than the API's own keep-alive on a stream.
+const FORWARD_SILENCE: Duration = Duration::from_secs(90);
 /// How often a queued AI job is asked about, and how many times.
 const POLL_EVERY: Duration = Duration::from_millis(1200);
 const POLL_TIMES: usize = 40;
@@ -94,6 +97,10 @@ struct Inner {
 
 pub struct Api {
     http: reqwest::Client,
+    /// For the main window's calls (`forward`): no limit on the whole
+    /// exchange, because Lex's answers stream for as long as they take, but
+    /// a limit on connecting and on each silence.
+    stream_http: reqwest::Client,
     base: String,
     store: Arc<dyn SessionStore>,
     inner: Mutex<Inner>,
@@ -106,8 +113,15 @@ impl Api {
             .user_agent(format!("Lexpad-Desktop/{}", crate::config::VERSION))
             .build()
             .expect("HTTP client");
+        let stream_http = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(15))
+            .read_timeout(FORWARD_SILENCE)
+            .user_agent(format!("Lexpad-Desktop/{}", crate::config::VERSION))
+            .build()
+            .expect("HTTP client");
         Self {
             http,
+            stream_http,
             base: format!("{}/api/v1", api_origin.trim_end_matches('/')),
             store,
             inner: Mutex::new(Inner {
@@ -297,6 +311,49 @@ impl Api {
                 status,
                 problem.get("code").and_then(Value::as_str).unwrap_or(""),
             ));
+        }
+        Err(Failure::SignedOut)
+    }
+
+    /// Sends a request from the main window (already checked by `proxy`)
+    /// with the session, refreshed once on a 401, and hands back the
+    /// response for its body to be streamed. Without a session it goes
+    /// without one, as an anonymous call from a browser would. A 401 that
+    /// survives a refusal to refresh comes back as it is: the session has
+    /// ended, and the caller tells the windows.
+    pub async fn forward(&self, req: &crate::proxy::Checked) -> Result<reqwest::Response, Failure> {
+        let mut token = match self.token().await {
+            Ok(t) => Some(t),
+            Err(Failure::SignedOut) => None,
+            Err(e) => return Err(e),
+        };
+        for attempt in 0..2 {
+            let mut out = self
+                .stream_http
+                .request(req.method.clone(), req.url.clone());
+            for (name, value) in &req.headers {
+                out = out.header(name.as_str(), value.as_str());
+            }
+            if let Some(t) = &token {
+                out = out.bearer_auth(t);
+            }
+            if let Some(body) = &req.body {
+                out = out.body(body.clone());
+            }
+            let res = out.send().await.map_err(|_| Failure::Offline)?;
+            if res.status().as_u16() == 401 && attempt == 0 {
+                if let Some(used) = token.clone() {
+                    match self.token_after_401(&used).await {
+                        Ok(next) => {
+                            token = Some(next);
+                            continue;
+                        }
+                        Err(Failure::SignedOut) => return Ok(res),
+                        Err(e) => return Err(e),
+                    }
+                }
+            }
+            return Ok(res);
         }
         Err(Failure::SignedOut)
     }
@@ -543,6 +600,56 @@ mod tests {
         assert_eq!(failure(500, ""), Failure::Error);
         let api = Api::new("http://127.0.0.1:9", Arc::new(Memory::default()));
         assert_eq!(api.notebooks().await.unwrap_err(), Failure::SignedOut);
+    }
+
+    fn checked(base: &str, path: &str) -> crate::proxy::Checked {
+        crate::proxy::check(
+            base,
+            &crate::proxy::Request {
+                method: "GET".into(),
+                url: format!("{base}/api/v1{path}"),
+                headers: vec![("Authorization".into(), "Bearer forged".into())],
+                body: None,
+            },
+        )
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn forwarding_adds_the_session_and_never_a_token_from_the_window() {
+        let base = serve(|line, auth, _| {
+            if line.starts_with("POST /api/v1/auth/refresh") {
+                return (200, SESSION.into());
+            }
+            assert!(line.starts_with("GET /api/v1/me "));
+            // The window's own Authorization header was dropped.
+            assert_eq!(auth, "at-2");
+            (200, r#"{"id":"u"}"#.into())
+        })
+        .await;
+        let api = Api::new(&base, signed_in());
+        let res = api.forward(&checked(&base, "/me")).await.unwrap();
+        assert_eq!(res.status().as_u16(), 200);
+        assert_eq!(res.text().await.unwrap(), r#"{"id":"u"}"#);
+    }
+
+    #[tokio::test]
+    async fn forwarding_without_a_session_goes_anonymous_and_a_refused_refresh_ends_it() {
+        let base = serve(|_, auth, _| {
+            assert_eq!(auth, "");
+            (401, "{}".into())
+        })
+        .await;
+        let api = Api::new(&base, Arc::new(Memory::default()));
+        let res = api.forward(&checked(&base, "/me")).await.unwrap();
+        assert_eq!(res.status().as_u16(), 401);
+
+        let base = serve(|_, _, _| (401, "{}".into())).await;
+        let store = signed_in();
+        let api = Api::new(&base, store.clone());
+        let res = api.forward(&checked(&base, "/words")).await.unwrap();
+        assert_eq!(res.status().as_u16(), 401);
+        assert!(store.load().is_none());
     }
 
     #[tokio::test]

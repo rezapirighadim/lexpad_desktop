@@ -46,7 +46,8 @@
         "default-src": "'self'",
         "script-src": "'self'",
         "style-src": "'self'",
-        "img-src": "'self' data:",
+        "img-src": "'self' data: blob:",
+        "media-src": "'self' data: blob:",
         "font-src": "'self'",
         "connect-src": "ipc: http://ipc.localhost",
         "object-src": "'none'",
@@ -55,7 +56,7 @@
         "frame-ancestors": "'none'"
       },
       "freezePrototype": true,
-      "capabilities": ["popup", "panel", "settings"]
+      "capabilities": ["popup", "panel", "settings", "main"]
     }
   },
   "bundle": {

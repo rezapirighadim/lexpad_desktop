@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// The shortcut on first run: ⌘⇧L on a Mac, Ctrl+Shift+L on Windows.
 pub const DEFAULT_SHORTCUT: &str = "CommandOrControl+Shift+L";
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
     /// Identifies this install to the API, so signing in again replaces this
@@ -22,6 +22,36 @@ pub struct Settings {
     /// Each names the account it was added to, so another account signed in
     /// on the same computer never sees them.
     pub recent: Vec<RecentWord>,
+    /// Open Lexpad's window when the app starts (at login, or by hand).
+    pub open_on_launch: bool,
+    /// "Open Lexpad" and a word opened from the panel go to the web app in
+    /// the browser instead of this app's own window.
+    pub open_in_browser: bool,
+    /// Where Lexpad's window was when it last closed: its content rectangle
+    /// in placement units (`placement`), and whether it filled the screen.
+    pub main_window: Option<WindowPlace>,
+    /// Notifications on this computer (the daily reminder and the server's
+    /// messages). The account's reminder time is the account's; this only
+    /// silences this computer.
+    pub notifications: bool,
+    /// What this computer remembers about the inbox (`notify::pick`).
+    pub inbox: crate::notify::InboxMemory,
+    /// The version that last found Accessibility allowed. An unsigned build
+    /// has a new code signature each release, and macOS then no longer
+    /// applies the old grant though the switch still looks on: missing
+    /// after it was allowed in another version is that, not a refusal.
+    pub accessibility_granted_in: Option<String>,
+}
+
+/// A window's place on screen, remembered between runs.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowPlace {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+    pub maximized: bool,
 }
 
 /// How many recently added words the panel shows. A handful is what fits
@@ -67,6 +97,12 @@ impl Default for Settings {
             start_on_login: true,
             notebook_id: None,
             recent: Vec::new(),
+            open_on_launch: false,
+            open_in_browser: false,
+            main_window: None,
+            notifications: true,
+            inbox: crate::notify::InboxMemory::default(),
+            accessibility_granted_in: None,
         }
     }
 }
@@ -101,6 +137,17 @@ impl SettingsFile {
         std::fs::write(&tmp, json).map_err(|e| e.to_string())?;
         std::fs::rename(&tmp, &self.path).map_err(|e| e.to_string())
     }
+}
+
+/// Whether a missing Accessibility permission is one macOS dropped because
+/// the app changed (an update of an unsigned build), rather than one the
+/// learner never gave or took back: it was allowed in another version.
+pub fn stale_accessibility(
+    now: crate::capture::Permission,
+    granted_in: Option<&str>,
+    version: &str,
+) -> bool {
+    now == crate::capture::Permission::Missing && granted_in.is_some_and(|v| v != version)
 }
 
 #[cfg(test)]
@@ -156,5 +203,22 @@ mod tests {
         assert_eq!(s.shortcut, "Alt+L");
         assert!(s.start_on_login);
         assert!(s.recent.is_empty());
+        // 0.1 had no window of its own: nothing opens by itself, Open Lexpad
+        // opens the window, and the window starts where the app chooses.
+        assert!(!s.open_on_launch);
+        assert!(!s.open_in_browser);
+        assert!(s.main_window.is_none());
+        assert!(s.notifications);
+        assert!(s.accessibility_granted_in.is_none());
+    }
+
+    #[test]
+    fn accessibility_lost_to_an_update_is_told_apart_from_a_refusal() {
+        use crate::capture::Permission::*;
+        assert!(stale_accessibility(Missing, Some("0.1.1"), "0.2.0"));
+        assert!(!stale_accessibility(Missing, Some("0.2.0"), "0.2.0"));
+        assert!(!stale_accessibility(Missing, None, "0.2.0"));
+        assert!(!stale_accessibility(Granted, Some("0.1.1"), "0.2.0"));
+        assert!(!stale_accessibility(NotNeeded, Some("0.1.1"), "0.2.0"));
     }
 }
