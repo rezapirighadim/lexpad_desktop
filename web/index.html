@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Lexpad</title>
+    <meta name="description" content="Your vocabulary notebook with spaced repetition." />
+
+    <!-- Painted before React mounts, so the first frame is already themed. -->
+    <meta name="theme-color" content="#0c0d0f" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Lexpad" />
+    <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png" />
+
+    <script>
+      // Apply the stored theme and palette before the first paint so the app
+      // never flashes the wrong colours. Data lives in IndexedDB; these two
+      // tiny preferences are the only thing localStorage is used for.
+      (function () {
+        try {
+          var root = document.documentElement;
+          var theme = localStorage.getItem('wb.theme') || 'system';
+          var palette = localStorage.getItem('wb.palette') || 'forest';
+          var dark =
+            theme === 'dark' ||
+            (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          root.dataset.theme = dark ? 'dark' : 'light';
+          root.dataset.palette = palette;
+        } catch (_) {
+          /* private mode: fall back to the stylesheet defaults */
+        }
+      })();
+    </script>
+    <script type="module" crossorigin src="./assets/index-Butc54ow.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/rolldown-runtime-hePW80VL.js">
+    <link rel="modulepreload" crossorigin href="./assets/react-BdEttOCa.js">
+    <link rel="modulepreload" crossorigin href="./assets/db-C2puJ4lo.js">
+    <link rel="modulepreload" crossorigin href="./assets/format-BD1eDIOz.js">
+    <link rel="modulepreload" crossorigin href="./assets/dist-D4dGxAkj.js">
+    <link rel="stylesheet" crossorigin href="./assets/index-BLldEl1C.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

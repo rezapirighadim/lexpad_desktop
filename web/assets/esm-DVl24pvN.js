@@ -1,0 +1,3 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./web-CasyA_yH.js","./dist-D4dGxAkj.js","./rolldown-runtime-hePW80VL.js"])))=>i.map(i=>d[i]);
+import{_ as e}from"./react-BdEttOCa.js";import{o as t}from"./dist-D4dGxAkj.js";var n=t(`SplashScreen`,{web:()=>e(()=>import(`./web-CasyA_yH.js`).then(e=>new e.SplashScreenWeb),__vite__mapDeps([0,1,2]),import.meta.url)});export{n as SplashScreen};
+//# sourceMappingURL=esm-DVl24pvN.js.map

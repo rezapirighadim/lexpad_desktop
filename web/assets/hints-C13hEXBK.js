@@ -1,0 +1,2 @@
+var e=[{key:`simpler`,labelKey:`ai.refineSimpler`,hint:`simpler: shorter meanings and easier example sentences, for a beginner`},{key:`examples`,labelKey:`ai.refineExamples`,hint:`more example sentences, from everyday situations`},{key:`formal`,labelKey:`ai.refineFormal`,hint:`formal register: how the word is used in writing and at work`}];export{e as t};
+//# sourceMappingURL=hints-C13hEXBK.js.map

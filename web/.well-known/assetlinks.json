@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.lexpad.android",
+      "sha256_cert_fingerprints": [
+        "CF:59:15:4B:69:98:BE:10:29:F3:12:45:84:08:7E:3E:18:62:48:EC:B0:54:D7:76:8B:28:75:CC:B4:69:C2:A7"
+      ]
+    }
+  }
+]

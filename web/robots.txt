@@ -1,0 +1,6 @@
+# The app lives behind sign-in; the public site is lexpad.app.
+User-agent: *
+Disallow: /
+Allow: /$
+
+Sitemap: https://lexpad.app/sitemap.xml

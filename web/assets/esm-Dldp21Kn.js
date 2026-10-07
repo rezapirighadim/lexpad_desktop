@@ -1,0 +1,3 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./web-CXNYlk_C.js","./dist-D4dGxAkj.js","./rolldown-runtime-hePW80VL.js"])))=>i.map(i=>d[i]);
+import{_ as e}from"./react-BdEttOCa.js";import{o as t}from"./dist-D4dGxAkj.js";var n=t(`Network`,{web:()=>e(()=>import(`./web-CXNYlk_C.js`).then(e=>new e.NetworkWeb),__vite__mapDeps([0,1,2]),import.meta.url)});export{n as Network};
+//# sourceMappingURL=esm-Dldp21Kn.js.map
