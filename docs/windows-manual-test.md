@@ -1,4 +1,4 @@
-# Windows manual test (about 15 minutes)
+# Windows manual test (about 20 minutes)
 
 Use the installer from the latest `build` run on GitHub (Actions → build → artifact
 `lexpad-desktop-Windows`). It is unsigned, so SmartScreen warns: More info → Run anyway.
@@ -36,10 +36,23 @@ Use the installer from the latest `build` run on GitHub (Actions → build → a
     working, the new one works. Try a shortcut another app holds: Settings says it is taken.
 13. **Start on login.** Turn it off and on in Settings. Sign out of Windows and back in: Lexpad
     is in the tray (when on).
-14. **Dark mode.** Switch Windows to dark mode; the card and Settings follow.
+14. **Dark mode.** Switch Windows to dark mode; the card, the tray panel and Settings follow.
 15. **Sign out.** Settings → Sign out → Sign out. The device disappears from Signed-in devices in
     the web app, and the credential disappears from Credential Manager.
-16. **Uninstall.** Settings → Apps → Lexpad → Uninstall. The tray icon is gone, and the login
+16. **Tray icon.** The tray shows the green Lexpad mark, sharp (not blurred) at 100%, 125%,
+    150% and 200% display scaling (Settings → System → Display → Scale; sign out and in if the
+    icon does not refresh).
+17. **Tray panel.** Left-click the tray icon: a panel opens just above the icon, inside the
+    screen, with rounded corners (Windows 11), your e-mail, an "Add a word…" box with the
+    keyboard in it, "Select text anywhere and press Ctrl+Shift+L", the last words added from this
+    computer, the notebook picker, and Open Lexpad / Settings… / Quit. Type "serene" and press
+    Enter: the panel closes and the card opens for "serene". Click a recent word: its page opens
+    in the browser. Click the tray icon again, or anywhere else, or press Esc: the panel closes.
+    Tab reaches every control. With the taskbar on the left or the top, the panel opens beside or
+    below the icon. With two monitors, it opens on the one whose tray was clicked. Signed out, it
+    shows "Connect to Lexpad" instead.
+18. **Right-click menu.** Right-click the tray icon: Open Lexpad, Settings…, Quit Lexpad.
+19. **Uninstall.** Settings → Apps → Lexpad → Uninstall. The tray icon is gone, and the login
     item with it.
 
 Report anything that differs, with a screenshot, in the to-do list.

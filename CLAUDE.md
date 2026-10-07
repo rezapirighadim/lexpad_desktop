@@ -3,7 +3,7 @@
 The desktop app for Lexpad, on macOS and Windows: select a word in **any** app, press the
 shortcut (⌘⇧L / Ctrl+Shift+L), and a small card shows its meaning while it goes into your
 notebook with the sentence you met it in. It is the browser extension's card for the whole
-computer. Tauri 2: a Rust core (`src-tauri/`) and two small TypeScript pages (`src/`). It is a
+computer. Tauri 2: a Rust core (`src-tauri/`) and three small TypeScript pages (`src/`). It is a
 client of the same API as the web app (`lexpad_back`); the connect page lives in the web app
 (`lexpad_front`), and the extension is `lexpad_extension`.
 
@@ -34,11 +34,15 @@ them, and no deadline is a reason to bend one.
 
 ```
 src/popup.html, src/popup/       the add-a-word popup (view.ts is the card; tested with happy-dom)
+src/panel.html, src/panel/       the menu-bar / tray panel (tested with happy-dom)
 src/settings.html, src/settings/ the Settings window
+src/styles/tokens.css            the web app's tokens (hex) and faces (src/assets/fonts), for the panel
 src/lib/text.ts, script.ts       copied from lexpad_extension; keep them identical
 src/lib/compose.ts               the word as saved, and what a capture turns into (tested)
 src/lib/backend.ts               the only bridge to the core: typed `invoke` wrappers
-src-tauri/src/lib.rs             wiring: tray, shortcut, windows, plugins
+src-tauri/src/lib.rs             wiring: shortcut, windows, plugins
+src-tauri/src/tray.rs            the menu-bar / tray icon (1x+2x template on macOS, tray.ico frame on Windows), right-click menu
+src-tauri/src/panel.rs           the panel window: placing it from the icon's rect on any monitor (tested), showing, hiding
 src-tauri/src/capture/           reading the selection: macos.rs (AX, then ⌘C), windows.rs (UIA, then Ctrl+C)
 src-tauri/src/services_macos.rs  "Add to Lexpad" in the macOS Services menu
 src-tauri/src/api.rs             the API client: the only holder of tokens (tested with a local server)
@@ -49,6 +53,8 @@ src-tauri/src/popup.rs           showing, placing and hiding the popup
 src-tauri/Info.plist             LSUIElement (no Dock icon) and the NSServices entry
 src-tauri/src/e2e.rs             the local end-to-end test (ignored by default), with scripts/e2e-*.{sh,mjs}
 docs/e2e/                        the last end-to-end run: what ran, screenshots, evidence
+docs/screenshots/                the panel in light and dark, and the tray icons (scripts/panel-screenshots.mjs, icons.py --preview)
+scripts/icons.py                 every icon, drawn from landing/site/assets/favicon-v2.svg (`pnpm icons`)
 docs/windows-manual-test.md      the Windows checklist, since Windows cannot run here
 ```
 
@@ -88,9 +94,16 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
   enriches that word; nothing suggests words or fills a notebook.
 - **Limits are enforced, never announced.**
 - **Permissions stay minimal.** Capabilities grant the event listener and our own commands per
-  window, nothing else: no shell, no fs, no http from the windows. The only address the app
-  opens is the connect page on `APP_ORIGIN` (and, on macOS, the Accessibility pane of System
-  Settings), both from Rust. No remote code; the updater is off (TODO before 1.0).
+  window, nothing else: no shell, no fs, no http from the windows. The only addresses the app
+  opens are on `APP_ORIGIN`: the connect page, the web app's home and a word's page
+  (`/words/<id>`, the id checked as an API id), and on macOS the Accessibility pane of System
+  Settings, all built in Rust. A window passes at most an id, never an address. No remote
+  code; the updater is off (TODO before 1.0).
+- **No Dock icon while idle.** `LSUIElement` and the Accessory activation policy; only the
+  Settings window brings a Dock icon while it is open. The panel and the card never do.
+- **Recently added words are this computer's own record** (`settings.json`, at most five, each
+  tagged with the account): the panel lists them; signing out forgets that account's. Nothing is
+  suggested and nothing is fetched to fill the list.
 - **Development builds never register themselves to start at login** (`config::is_development_build`:
   debug, or built against a non-production API).
 

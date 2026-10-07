@@ -10,9 +10,19 @@ Word". Nothing selected? A small box lets you type the word. Selected a whole se
 word out of it, and the sentence comes along.
 
 Lexpad lives in the menu bar (macOS) or the system tray (Windows), starts when you log in (you
-can turn that off), and runs once. It never asks for your password: you allow it from Lexpad in
-your browser, and it appears under Settings → Signed-in devices as "Desktop app", where it can be
-signed out on its own.
+can turn that off), and runs once. Click its icon for a small panel: type a word to add it, see
+your shortcut, the last words you added from this computer (click one to open it in Lexpad),
+pick the notebook new words go to, and Open Lexpad, Settings or Quit. Esc or a click elsewhere
+closes it. Right-click the icon for a short menu with the same three actions.
+
+| Light                                                 | Dark                                                |
+| ----------------------------------------------------- | --------------------------------------------------- |
+| ![The panel, light](docs/screenshots/panel-light.png) | ![The panel, dark](docs/screenshots/panel-dark.png) |
+
+The icons: ![Menu-bar and tray icons](docs/screenshots/tray-icons.png)
+
+Lexpad never asks for your password: you allow it from Lexpad in your browser, and it appears
+under Settings → Signed-in devices as "Desktop app", where it can be signed out on its own.
 
 On macOS there is also **Services → Add to Lexpad** when you right-click a selection.
 
@@ -57,7 +67,17 @@ open src-tauri/target/release/bundle/macos/Lexpad.app
 ```
 
 A development build keeps its session in its own Keychain entry and never adds itself to the
-login items. Icons are drawn by `pnpm icons` from the Lexpad mark.
+login items. Icons are drawn by `pnpm icons` from the Lexpad mark (the landing site's
+`favicon-v2.svg`): the app icon, the macOS menu-bar template at 1x and 2x, and the Windows
+`tray.ico` (16, 20, 24, 32 and 48 px). `python3 scripts/icons.py --preview` also writes
+`docs/screenshots/tray-icons.png`.
+
+Screenshots of the panel (`docs/screenshots/`) are drawn from the built page in Chromium, with a
+sample account that lives only in the script:
+
+```
+pnpm build && node scripts/panel-screenshots.mjs ../front/node_modules/.pnpm/playwright@1.62.1/node_modules/playwright/index.mjs
+```
 
 Conventions and rules are in `CLAUDE.md`.
 
@@ -91,7 +111,8 @@ Still to do before a public release (marked `TODO(signing)` in the workflow):
 - **Updater.** Off in 0.1 (no `tauri-plugin-updater`). Turn it on with a signing key pair and an
   update endpoint before 1.0.
 - **Mac App Store** is not planned: it forbids reading other apps' selections through the
-  Accessibility API, which is the point of the app.
+  Accessibility API, which is the point of the app. (The app also uses Tauri's
+  `macos-private-api` for the panel's transparent, rounded window, which the store refuses too.)
 
 ## Manual test on Windows
 
