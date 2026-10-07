@@ -1,0 +1,21 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "settings",
+  "description": "The Settings window: account, shortcut, start on login, default notebook, permission, sign out.",
+  "windows": ["settings"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-state",
+    "allow-set-notebook",
+    "allow-connect",
+    "allow-cancel-connect",
+    "allow-disconnect",
+    "allow-accessibility",
+    "allow-open-accessibility-settings",
+    "allow-get-settings",
+    "allow-set-shortcut",
+    "allow-set-start-on-login",
+    "allow-app-info"
+  ]
+}

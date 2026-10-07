@@ -1,0 +1,36 @@
+{
+  "name": "lexpad-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lexpad for macOS and Windows: select a word in any app, press the shortcut, and it goes into your notebook with its meaning.",
+  "type": "module",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "tauri": "tauri",
+    "app:dev": "tauri dev",
+    "app:build": "tauri build",
+    "icons": "python3 scripts/icons.py && tauri icon icons-src/app-1024.png",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "rust:check": "cargo fmt --manifest-path src-tauri/Cargo.toml --check && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings && cargo test --manifest-path src-tauri/Cargo.toml",
+    "check": "pnpm format:check && pnpm typecheck && pnpm test && pnpm build && pnpm rust:check"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.12.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.1",
+    "happy-dom": "^20.14.5",
+    "prettier": "^3.9.9",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.3",
+    "vitest": "^4.1.11"
+  }
+}

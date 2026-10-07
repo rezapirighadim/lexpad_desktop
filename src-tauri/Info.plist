@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- A menu-bar app: no Dock icon while idle. The Settings window brings one
+       back while it is open (see lib.rs). -->
+  <key>LSUIElement</key>
+  <true/>
+  <!-- Right-click a selection > Services > Add to Lexpad. The provider object
+       is registered at start-up (services_macos.rs). -->
+  <key>NSServices</key>
+  <array>
+    <dict>
+      <key>NSMenuItem</key>
+      <dict>
+        <key>default</key>
+        <string>Add to Lexpad</string>
+      </dict>
+      <key>NSMessage</key>
+      <string>addToLexpad</string>
+      <key>NSPortName</key>
+      <string>Lexpad</string>
+      <key>NSSendTypes</key>
+      <array>
+        <string>NSStringPboardType</string>
+        <string>public.utf8-plain-text</string>
+      </array>
+      <key>NSRequiredContext</key>
+      <dict/>
+    </dict>
+  </array>
+</dict>
+</plist>

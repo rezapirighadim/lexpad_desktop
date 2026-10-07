@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+# Rejects commit messages that carry AI-tool attribution.
+# Project rule: commits describe the change, nothing about how it was produced.
+msg_file="$1"
+# Allow references to the CLAUDE.md convention files themselves.
+if sed -E 's/CLAUDE\.md//g' "$msg_file" | grep -Eiq 'claude|anthropic|co-authored-by|generated (with|by)|🤖'; then
+  echo "commit-msg: message contains AI attribution (Claude/Anthropic/Co-Authored-By/Generated). Remove it." >&2
+  exit 1
+fi
+# Conventional Commits header: type(scope)?: subject
+first_line=$(grep -v '^#' "$msg_file" | head -n1)
+if ! printf '%s' "$first_line" | grep -Eq '^(feat|fix|docs|chore|refactor|test|build|ci|perf|style|revert)(\([a-z0-9-]+\))?!?: .+'; then
+  echo "commit-msg: first line must follow Conventional Commits, e.g. 'feat(api): add health endpoints'." >&2
+  exit 1
+fi
