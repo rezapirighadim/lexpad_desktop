@@ -40,6 +40,22 @@ Settings → Privacy & Security → Accessibility). Lexpad explains this and ope
 without it you can still type a word. Where an app does not share its selection, Lexpad copies
 it (⌘C / Ctrl+C) and then puts your clipboard back exactly as it was.
 
+## Changelog
+
+**0.1.1** (7 October 2026)
+
+- The card always opens wholly on the screen, on the monitor under the pointer: never under the
+  menu bar, the Dock or the Windows taskbar (on any edge), below and to the right of the pointer
+  or above and to the left where there is no room. It stays on the screen when it grows as the
+  meanings arrive, and a card taller than the screen scrolls with Add and Cancel still showing.
+- Drag the card by its header to move it; the next shortcut opens it near the pointer again.
+- The menu-bar / tray panel keeps to the screen the same way.
+- Windows: the card and the panel are placed by what you see, not by the window's invisible
+  border, at any display scaling and with monitors left of or above the main one.
+
+**0.1.0** (7 October 2026): first beta. The shortcut and the card, the Services menu on macOS,
+the menu-bar / tray panel, Settings, and signing in through the browser.
+
 ## Develop
 
 Needs Node 22, pnpm 9 and Rust (stable). Rust was installed with the official installer into

@@ -1,6 +1,6 @@
 [package]
 name = "lexpad-desktop"
-version = "0.1.0"
+version = "0.1.1"
 description = "Lexpad for macOS and Windows: add a word from any app"
 authors = ["Lexpad"]
 edition = "2021"
