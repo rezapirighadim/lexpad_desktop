@@ -10,7 +10,8 @@ Word". Nothing selected? A small box lets you type the word. Selected a whole se
 word out of it, and the sentence comes along.
 
 Lexpad lives in the menu bar (macOS) or the system tray (Windows), starts when you log in (you
-can turn that off), and runs once. Click its icon for a small panel: type a word to add it, see
+can turn that off), and runs once. From 0.2 it is also the whole Lexpad app in a window of its
+own: Today, practice (offline too), the notebook, Lex, Progress and Settings. Click its icon for a small panel: type a word to add it, see
 your shortcut, the last words you added from this computer (click one to open it in Lexpad),
 pick the notebook new words go to, and Open Lexpad, Settings or Quit. Esc or a click elsewhere
 closes it. Right-click the icon for a short menu with the same three actions.
@@ -41,6 +42,22 @@ without it you can still type a word. Where an app does not share its selection,
 it (⌘C / Ctrl+C) and then puts your clipboard back exactly as it was.
 
 ## Changelog
+
+**0.2.0** (built, not yet released)
+
+- **The whole Lexpad app in a window of its own**: Today, practice, the notebook, Lex, Progress and
+  Settings, the same app as on the web and Android, bundled with the app (not loaded from the
+  web). Practice works offline and catches up when the connection is back. Open it from the
+  panel or the tray menu (Open Lexpad), the Dock, a word in the panel, or at start; Settings can
+  send Open Lexpad to the browser instead. The window keeps its size and place.
+- It signs in through your browser, like the rest of the app (Google and Apple accounts work),
+  and the app's core keeps the only session: the window never holds a token.
+- **This computer** in the app's Settings: the shortcut, the notebook it adds to, reading the
+  selection, notifications, start-up and the version.
+- **Notifications on this computer**: your daily reminder (from your account's reminder time,
+  with real counts) and Lexpad's messages such as a gift. A click opens the window.
+- After an update, macOS may stop applying the Accessibility permission while the switch still
+  looks on; Lexpad now says so and how to fix it.
 
 **0.1.1** (7 October 2026)
 

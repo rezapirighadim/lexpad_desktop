@@ -36,8 +36,31 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
 
+  # The Rust core again on Windows: clippy and the tests, so the code only
+  # Windows compiles (UI Automation, toasts) is linted and tested on every push.
+  check-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: windows-check
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+
   build:
-    needs: check
+    needs: [check, check-windows]
     if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false

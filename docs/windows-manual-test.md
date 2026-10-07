@@ -59,8 +59,17 @@ Use the installer from the latest `build` run on GitHub (Actions → build → a
     one). Drag the card by its header to another place: it moves; × still closes it. The next
     shortcut opens it near the pointer again. On a short screen (1366 × 768 at 125 %) a card
     with three meanings is cut to the screen and scrolls, with Add and Cancel still showing.
-19. **Right-click menu.** Right-click the tray icon: Open Lexpad, Settings…, Quit Lexpad.
-20. **Uninstall.** Settings → Apps → Lexpad → Uninstall. The tray icon is gone, and the login
+19. **Lexpad's window (0.2).** Click Open Lexpad in the panel: a window opens with the sign-in
+    screen ("Continue in your browser") or, signed in, Today. Sign in through the browser: the
+    window opens your notebook. Start a session, answer a few cards, turn Wi-Fi off, answer more,
+    turn it back on: nothing is lost (Progress shows the reviews). Click a recent word in the
+    panel: the window opens on that word. Settings → This computer: change the shortcut, the
+    notebook, notifications and the start-up switches. Close the window and open it again: same
+    size and place; move it to a second monitor, unplug that monitor, open it again: it comes
+    back on the remaining screen. Set a reminder time a few minutes ahead (Settings →
+    Notifications), close the window: a toast arrives at that time; click it: the window opens.
+20. **Right-click menu.** Right-click the tray icon: Open Lexpad, Settings…, Quit Lexpad.
+21. **Uninstall.** Settings → Apps → Lexpad → Uninstall. The tray icon is gone, and the login
     item with it.
 
 Report anything that differs, with a screenshot, in the to-do list.

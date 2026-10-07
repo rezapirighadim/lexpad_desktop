@@ -3,8 +3,10 @@
 The desktop app for Lexpad, on macOS and Windows: select a word in **any** app, press the
 shortcut (⌘⇧L / Ctrl+Shift+L), and a small card shows its meaning while it goes into your
 notebook with the sentence you met it in. It is the browser extension's card for the whole
-computer. Tauri 2: a Rust core (`src-tauri/`) and three small TypeScript pages (`src/`). It is a
-client of the same API as the web app (`lexpad_back`); the connect page lives in the web app
+computer. Since 0.2 it is also **the whole Lexpad app** in a window of its own (Today, practice,
+the notebook, Lex, Progress, Settings), working offline. Tauri 2: a Rust core (`src-tauri/`),
+three small TypeScript pages (`src/`) and the web app's own build (`web/`). It is a client of the
+same API as the web app (`lexpad_back`); the connect page and the window's app live in the web app
 (`lexpad_front`), and the extension is `lexpad_extension`.
 
 ## Three rules that come before everything else
@@ -52,13 +54,63 @@ src-tauri/src/commands.rs        everything a window may ask; capabilities/*.jso
 src-tauri/src/popup.rs           showing, placing and hiding the popup; it grows inside the work area
 src-tauri/src/placement.rs       where windows go: the work area of the monitor under the pointer, units per platform (tested)
 src-tauri/src/smoke.rs           CI's placement smoke test, only with `--features smoke-test` (never shipped)
+src-tauri/src/main_window.rs     Lexpad's window: the web app from web/, its config, navigation lock, place (tested)
+src-tauri/src/proxy.rs           what the window may send to the API through the core (tested)
+src-tauri/src/notify/            notifications: the reminder plan, the inbox poll and its rules (tested), macos.rs, windows.rs
+web/                             the web app built for the window by scripts/build-web.sh (committed; never edit; PROVENANCE.txt)
 src-tauri/Info.plist             LSUIElement (no Dock icon) and the NSServices entry
-src-tauri/src/e2e.rs             the local end-to-end test (ignored by default), with scripts/e2e-*.{sh,mjs}
+src-tauri/src/e2e.rs             the local end-to-end test (ignored by default), with scripts/e2e-local.sh
+src-tauri/src/e2e_main.rs        the window's end-to-end test (ignored), with scripts/e2e-main.{sh,mjs}
 docs/e2e/                        the last end-to-end run: what ran, screenshots, evidence
 docs/screenshots/                the panel in light and dark, and the tray icons (scripts/panel-screenshots.mjs, icons.py --preview)
 scripts/icons.py                 every icon, drawn from landing/site/assets/favicon-v2.svg (`pnpm icons`)
 docs/windows-manual-test.md      the Windows checklist, since Windows cannot run here
 ```
+
+## Lexpad's window (0.2): the design
+
+- **The web app, bundled, never loaded from app.lexpad.app.** Like the Android shell, the app
+  ships a build of `lexpad_front` (`LEXPAD_TARGET=native`, made by `scripts/build-web.sh` into
+  `web/`, copied beside the small pages by `vite.config.ts`). It runs offline from its own
+  IndexedDB (reads local first, writes to the outbox, sync when online), and a release says
+  exactly which front commit it carries (`web/PROVENANCE.txt`). The web app picks its desktop
+  platform (`lib/platform/desktop.ts` in front) when the core has injected
+  `window.__LEXPAD_CONFIG` (platform `desktop`) and Tauri's IPC is there.
+- **The core stays the only holder of tokens.** The window never gets a session of its own: every
+  API call goes to the core (`api_fetch`), which checks it (`proxy.rs`: the API's own origin under
+  `/api/v1/`, the client's headers only, no sign-in, refresh, password, other-session or assistant
+  calls) and sends it with the desktop app's own delegated session from the credential store,
+  refreshing it single-flight, streaming the body back over a channel. No server change was
+  needed: the delegated session may do everything the app does day to day, and what it may not
+  (a password, linking Google or Apple, connecting another client or an assistant) the window
+  opens in the browser (`open_in_browser`, a checked same-origin path).
+- **Signing in is the same RFC 8252 connect**: the window's sign-in screen is one button that
+  runs `connect` (system browser, loopback, PKCE). No password is ever typed in the window, and
+  Google and Apple accounts work, since their sign-in happens in the real browser.
+- **The window may only show the app's own pages** (`is_app_page`); any other address goes to the
+  system browser (https and mailto only, `may_open_outside`), never into the window. Files the
+  page saves go to Downloads.
+- **Opening it**: Open Lexpad (panel, tray menu), a click on the Dock icon, a second launch, a
+  word from the panel (`/words/<id>`, also before the page listens: `main_take_pending`), a
+  clicked notification, and at start when the learner asks (Settings). "Open Lexpad in my
+  browser instead" sends all of those to the browser. The window is made when opened and
+  destroyed when closed; its place is remembered and brought back inside the work area.
+- **Settings live in the app's Settings**: "This computer" (`/settings/desktop` in the web app,
+  shown only on the desktop platform) holds the shortcut, the quick-add notebook, Accessibility,
+  notifications, start-up and the version, through the core's commands. The small Settings
+  window stays as the fallback for a signed-out app and the first run, and for someone who
+  prefers the browser; tray "Settings…" opens the window's page when signed in.
+- **Notifications** (`notify/`): the daily reminder's plan is the web app's own
+  (`sync/reminder.ts`, real counts only), handed to the core (`schedule_reminders`) and to the
+  system (UNUserNotificationCenter / scheduled toasts) so it arrives with the window shut. The
+  server's messages (gifts, announcements) cannot come through Firebase here, so the core reads
+  the inbox (`GET /notifications`) at start and every 30 minutes and pops up only what `pick`
+  lets through (see its doc: unread, fresh, not come-back, product news only when allowed, not
+  already popped elsewhere when the API says so). A click opens the window.
+- **Accessibility after an update**: an unsigned build gets a new code signature each release,
+  and macOS stops applying the old grant while the switch still looks on. The core remembers
+  the version that last had the permission (`accessibility_granted_in`) and says so plainly
+  (`permissionStale`) instead of "not allowed yet".
 
 ## Hard rules
 
@@ -98,8 +150,10 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
 - **Permissions stay minimal.** Capabilities grant the event listener and our own commands per
   window, nothing else: no shell, no fs, no http from the windows. The only addresses the app
   opens are on `APP_ORIGIN`: the connect page, the web app's home and a word's page
-  (`/words/<id>`, the id checked as an API id), and on macOS the Accessibility pane of System
-  Settings, all built in Rust. A window passes at most an id, never an address. No remote
+  (`/words/<id>`, the id checked as an API id), a checked same-origin path for Lexpad's window,
+  and the system's Accessibility and Notifications settings, all built in Rust. A small window
+  passes at most an id, never an address; Lexpad's window may hand the system browser an https
+  or mailto link the learner clicked, nothing else. No remote
   code; the updater is off (TODO before 1.0).
 - **Every window stays inside the work area** of its monitor: never under the menu bar, the Dock
   or a taskbar on any edge (`placement.rs`, from `Monitor::work_area`, which is
@@ -108,8 +162,9 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
   Placement works in global points on macOS and physical pixels on Windows; never mix them.
   The card is dragged by its header (`data-tauri-drag-region="deep"`, the window's only
   `core:window` permission) and nothing about where it was is remembered.
-- **No Dock icon while idle.** `LSUIElement` and the Accessory activation policy; only the
-  Settings window brings a Dock icon while it is open. The panel and the card never do.
+- **No Dock icon while idle.** `LSUIElement` and the Accessory activation policy; only
+  Lexpad's window and the Settings window bring a Dock icon while open (`refresh_dock`). The
+  panel and the card never do.
 - **Recently added words are this computer's own record** (`settings.json`, at most five, each
   tagged with the account): the panel lists them; signing out forgets that account's. Nothing is
   suggested and nothing is fetched to fill the list.
@@ -129,7 +184,12 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
   `LEXPAD_API_ORIGIN=http://localhost:8091 LEXPAD_APP_ORIGIN=http://localhost:4173 pnpm tauri build --bundles app`
   (the API's CORS must allow the web app's origin).
 - `scripts/e2e-local.sh` runs the end-to-end test against a local API and web app (see
-  `docs/e2e/README.md`); it refuses anything but localhost.
+  `docs/e2e/README.md`); it refuses anything but localhost. `scripts/e2e-main.sh` does the same
+  for Lexpad's window: sign in through the browser, Today, practice online and offline, a word
+  opened from the panel, sign out.
+- After any change in `lexpad_front` that the window should carry: commit it there, run
+  `scripts/build-web.sh <front checkout>` here and commit `web/` with the front commit in the
+  message. The script refuses a dirty front.
 - Rust comes from the official rustup installer into the user's home (`~/.cargo`), no sudo.
 - Releases: see README. Unsigned until the Apple Team ID and a Windows certificate exist; the
   TODOs are marked in `.github/workflows/build.yml`.
