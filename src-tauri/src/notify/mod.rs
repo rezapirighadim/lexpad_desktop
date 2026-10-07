@@ -66,6 +66,7 @@ pub enum Access {
     Granted,
     Denied,
     /// Not asked yet (macOS).
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     NotDetermined,
     /// The system cannot show them here (a build run outside its bundle).
     Unsupported,
@@ -91,6 +92,8 @@ pub struct Planned {
 }
 
 /// The identifier a reminder is filed under, so a new plan replaces it.
+// A click comes back with its identifier on macOS; Windows starts the app instead.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn reminder_key(id: u32) -> String {
     format!("lexpad.reminder.{id}")
 }
@@ -234,6 +237,8 @@ pub fn pick(
 
 /// Where a click on a notification goes: its own in-app path when it is a
 /// plain one, Today otherwise.
+// A click comes back with its identifier on macOS; Windows starts the app instead.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn click_path(link: Option<&str>) -> String {
     match link {
         Some(p)
@@ -255,6 +260,8 @@ pub fn click_path(link: Option<&str>) -> String {
 static LINKS: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
 
 /// What a click on the notification filed under `key` opens.
+// A click comes back with its identifier on macOS; Windows starts the app instead.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn path_for(key: &str) -> String {
     let link = LINKS
         .lock()
