@@ -12,7 +12,6 @@ html,
 body {
   margin: 0;
   background: transparent;
-  overflow: hidden;
   font-family: var(--sans);
   font-size: 16px;
   color: var(--fg);
@@ -20,6 +19,12 @@ body {
   user-select: none;
   -webkit-user-select: none;
   cursor: default;
+}
+/* As tall as the panel, unless the screen's work area is shorter: then the
+ * window is cut to it and the page scrolls. */
+html {
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 :root[data-platform='windows'] body {
   background: var(--surface);

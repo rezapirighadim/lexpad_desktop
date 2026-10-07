@@ -41,9 +41,15 @@ html,
 body {
   margin: 0;
   background: var(--surface);
-  overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
+}
+/* The window is as tall as the card, unless the card is taller than the
+ * screen's work area: then the window is cut to it and the page scrolls,
+ * with the header and the buttons kept in view (sticky, below). */
+html {
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 .card {
   display: block;
@@ -70,10 +76,16 @@ body {
     animation: none;
   }
 }
+/* The header is the handle the card is dragged by (data-tauri-drag-region). */
 .head {
   display: flex;
   align-items: flex-start;
   gap: 10px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+  cursor: default;
 }
 .mark {
   flex: none;
@@ -209,8 +221,13 @@ body {
 .actions {
   display: flex;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 2px;
+  padding-top: 10px;
   align-items: center;
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  background: var(--surface);
 }
 .btn {
   flex: 1;

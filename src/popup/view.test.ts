@@ -64,6 +64,19 @@ afterEach(() => {
 });
 
 describe('Popup', () => {
+  it('is dragged by its header, and the buttons stay direct children of the card so they stick to its bottom', async () => {
+    const backend = fakeBackend({ capture: capture({ text: 'candid' }) });
+    const popup = new Popup(root, backend);
+    await popup.open();
+    await flush();
+
+    const head = root.querySelector<HTMLElement>('.head');
+    expect(head?.dataset.tauriDragRegion).toBe('deep');
+    // The close button is a button, which the drag region leaves clickable.
+    expect(head?.querySelector('button.close')).not.toBeNull();
+    expect(root.querySelector(':scope > .actions')).not.toBeNull();
+  });
+
   it('shows the card for the selected word and adds it with the sentence and where it was seen', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const backend = fakeBackend({

@@ -1,11 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "popup",
-  "description": "The add-a-word popup: reads the account's notebooks, looks a word up and adds it. Nothing else.",
+  "description": "The add-a-word popup: reads the account's notebooks, looks a word up and adds it, and is dragged by its header. Nothing else.",
   "windows": ["popup"],
   "permissions": [
     "core:event:allow-listen",
     "core:event:allow-unlisten",
+    "core:window:allow-start-dragging",
     "allow-state",
     "allow-lookup",
     "allow-add-word",

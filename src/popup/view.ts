@@ -111,6 +111,8 @@ export class Popup {
     this.enter = undefined;
     this.root.replaceChildren();
     const head = el('div', 'head');
+    // Drag the card by its header; the close button stays a button.
+    head.dataset.tauriDragRegion = 'deep';
     const mark = el('div', 'mark');
     mark.innerHTML = MARK;
     const titles = el('div', 'titles');
