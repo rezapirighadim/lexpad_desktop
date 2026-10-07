@@ -1,0 +1,2 @@
+import{t as e}from"./react--nwWWpNE.js";import{t}from"./pane-D7Pavcf1.js";var n={split:`ei7t1z`,list:`QQNNVI`,detail:`j-xOhB`},r=e();function i({list:e,listLabel:i,detail:a,detailKey:o}){return(0,r.jsxs)(`div`,{className:n.split,children:[(0,r.jsx)(`section`,{className:n.list,"aria-label":i,children:(0,r.jsx)(t.Provider,{value:`list`,children:e})}),(0,r.jsx)(`main`,{className:n.detail,children:(0,r.jsx)(t.Provider,{value:`detail`,children:a})},o)]})}export{i as t};
+//# sourceMappingURL=SplitView-CGazfF8L.js.map

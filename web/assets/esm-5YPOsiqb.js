@@ -1,0 +1,3 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./web-BE5i8yNX.js","./dist-D4dGxAkj.js","./rolldown-runtime-hePW80VL.js"])))=>i.map(i=>d[i]);
+import{v as e}from"./react--nwWWpNE.js";import{o as t}from"./dist-D4dGxAkj.js";var n=t(`Share`,{web:()=>e(()=>import(`./web-BE5i8yNX.js`).then(e=>new e.ShareWeb),__vite__mapDeps([0,1,2]),import.meta.url)});export{n as Share};
+//# sourceMappingURL=esm-5YPOsiqb.js.map

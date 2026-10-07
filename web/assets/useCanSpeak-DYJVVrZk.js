@@ -1,2 +1,0 @@
-import{r as e}from"./rolldown-runtime-hePW80VL.js";import{b as t}from"./react-BdEttOCa.js";import{B as n,nt as r}from"./index-Butc54ow.js";var i=e(t(),1);function a(e){return(0,i.useSyncExternalStore)(e=>r.tts.onVoicesChange(e),()=>r.tts.canSpeak(n(e)),()=>!0)}export{a as t};
-//# sourceMappingURL=useCanSpeak-DYJVVrZk.js.map
