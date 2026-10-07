@@ -43,7 +43,12 @@ it (⌘C / Ctrl+C) and then puts your clipboard back exactly as it was.
 
 ## Changelog
 
-**0.2.0** (built, not yet released)
+**0.2.1** (8 October 2026)
+
+- The window carries the web app's new sidebar: a clear Add a word button at the top, and it
+  remembers whether it is folded or open on this computer.
+
+**0.2.0** (8 October 2026)
 
 - **The whole Lexpad app in a window of its own**: Today, practice, the notebook, Lex, Progress and
   Settings, the same app as on the web and Android, bundled with the app (not loaded from the
