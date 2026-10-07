@@ -1,6 +1,15 @@
 # The gate (format, types, tests, clippy) on every push and pull request, then
 # an unsigned build for macOS (universal .app and .dmg) and Windows (NSIS .exe
 # and .msi) on push to main, uploaded as artifacts. No secrets are needed yet.
+#
+# After building, each runner checks the result for real:
+# - install: the .dmg is mounted and the app copied out (macOS), the NSIS
+#   installer runs silently (Windows); the installed app is started and must
+#   still be running 20 seconds later;
+# - placement smoke test: a build with the `smoke-test` feature (never
+#   shipped; src-tauri/src/smoke.rs) opens the popup at points all over
+#   every monitor and the panel from an icon, and fails unless every window
+#   ends inside its monitor's work area.
 name: build
 on:
   push:
@@ -38,10 +47,14 @@ jobs:
             args: --target universal-apple-darwin
             rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
             bundle: src-tauri/target/universal-apple-darwin/release/bundle
+            smoke-args: --target aarch64-apple-darwin
+            smoke-bin: src-tauri/target/aarch64-apple-darwin/release/lexpad-desktop
           - os: windows-latest
             args: ''
             rust-targets: ''
             bundle: src-tauri/target/release/bundle
+            smoke-args: ''
+            smoke-bin: src-tauri/target/release/lexpad-desktop.exe
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -78,3 +91,53 @@ jobs:
             ${{ matrix.bundle }}/dmg/*.dmg
             ${{ matrix.bundle }}/nsis/*.exe
             ${{ matrix.bundle }}/msi/*.msi
+
+      - name: Install and start (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 5
+        run: |
+          dmg=$(ls ${{ matrix.bundle }}/dmg/*.dmg)
+          hdiutil attach "$dmg" -nobrowse -mountpoint /tmp/lexpad-dmg
+          mkdir -p ~/Applications
+          cp -R /tmp/lexpad-dmg/Lexpad.app ~/Applications/
+          hdiutil detach /tmp/lexpad-dmg
+          ~/Applications/Lexpad.app/Contents/MacOS/lexpad-desktop > started.log 2>&1 &
+          pid=$!
+          sleep 20
+          kill -0 "$pid" || { echo "Lexpad exited early"; cat started.log; exit 1; }
+          echo "Lexpad is running (pid $pid)"
+          kill "$pid"
+
+      - name: Install and start (Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem "${{ matrix.bundle }}/nsis/*.exe" | Select-Object -First 1
+          Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait
+          $exe = Get-ChildItem "$env:LOCALAPPDATA\Lexpad" -Filter *.exe -Recurse |
+            Where-Object { $_.Name -notlike 'uninstall*' } | Select-Object -First 1
+          if (-not $exe) { Get-ChildItem "$env:LOCALAPPDATA\Lexpad" -Recurse; throw 'Lexpad was not installed' }
+          Write-Host "Installed at $($exe.FullName)"
+          $p = Start-Process -FilePath $exe.FullName -PassThru
+          Start-Sleep -Seconds 20
+          if ($p.HasExited) { throw "Lexpad exited early with code $($p.ExitCode)" }
+          Write-Host "Lexpad is running (pid $($p.Id))"
+          Stop-Process -Id $p.Id -Force
+
+      - name: Placement smoke test
+        timeout-minutes: 30
+        shell: bash
+        run: |
+          pnpm tauri build --no-bundle --features smoke-test ${{ matrix.smoke-args }}
+          set +e
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            pwsh -Command "\$p = Start-Process -FilePath '${{ matrix.smoke-bin }}' -ArgumentList '--smoke-test' -RedirectStandardOutput smoke.txt -RedirectStandardError smoke-err.txt -Wait -PassThru; exit \$p.ExitCode"
+          else
+            '${{ matrix.smoke-bin }}' --smoke-test > smoke.txt 2> smoke-err.txt
+          fi
+          code=$?
+          cat smoke.txt
+          echo "exit code $code"
+          grep -q '^SMOKE failures 0' smoke.txt || { cat smoke-err.txt; exit 1; }
+          exit $code

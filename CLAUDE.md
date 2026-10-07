@@ -49,7 +49,9 @@ src-tauri/src/api.rs             the API client: the only holder of tokens (test
 src-tauri/src/auth.rs            RFC 8252 sign-in: PKCE, state, loopback listener (tested)
 src-tauri/src/store.rs           the session in the Keychain / Credential Manager (keyring crate)
 src-tauri/src/commands.rs        everything a window may ask; capabilities/*.json say which window may ask what
-src-tauri/src/popup.rs           showing, placing and hiding the popup
+src-tauri/src/popup.rs           showing, placing and hiding the popup; it grows inside the work area
+src-tauri/src/placement.rs       where windows go: the work area of the monitor under the pointer, units per platform (tested)
+src-tauri/src/smoke.rs           CI's placement smoke test, only with `--features smoke-test` (never shipped)
 src-tauri/Info.plist             LSUIElement (no Dock icon) and the NSServices entry
 src-tauri/src/e2e.rs             the local end-to-end test (ignored by default), with scripts/e2e-*.{sh,mjs}
 docs/e2e/                        the last end-to-end run: what ran, screenshots, evidence
@@ -99,6 +101,13 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
   (`/words/<id>`, the id checked as an API id), and on macOS the Accessibility pane of System
   Settings, all built in Rust. A window passes at most an id, never an address. No remote
   code; the updater is off (TODO before 1.0).
+- **Every window stays inside the work area** of its monitor: never under the menu bar, the Dock
+  or a taskbar on any edge (`placement.rs`, from `Monitor::work_area`, which is
+  `NSScreen.visibleFrame` / `GetMonitorInfoW` `rcWork`). A window taller than the work area is
+  cut to it and its page scrolls; the card keeps its header and its buttons in view (sticky).
+  Placement works in global points on macOS and physical pixels on Windows; never mix them.
+  The card is dragged by its header (`data-tauri-drag-region="deep"`, the window's only
+  `core:window` permission) and nothing about where it was is remembered.
 - **No Dock icon while idle.** `LSUIElement` and the Accessory activation policy; only the
   Settings window brings a Dock icon while it is open. The panel and the card never do.
 - **Recently added words are this computer's own record** (`settings.json`, at most five, each
@@ -111,6 +120,11 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
 
 - `pnpm check` (prettier, tsc, vitest, vite build, rustfmt, clippy `-D warnings`, cargo test) is
   the pre-commit gate and CI. Enable the hooks with `git config core.hooksPath .githooks`.
+- CI also installs and starts the built app on both systems, and runs the placement smoke test
+  (`pnpm tauri build --no-bundle --features smoke-test`, then `lexpad-desktop --smoke-test`; it
+  prints every rectangle and exits 1 if one leaves its work area). Run it locally the same way;
+  it does not touch the credential store, the shortcut or the login items, and runs beside an
+  installed copy.
 - `pnpm app:dev` runs it against production; for a local stack build with
   `LEXPAD_API_ORIGIN=http://localhost:8091 LEXPAD_APP_ORIGIN=http://localhost:4173 pnpm tauri build --bundles app`
   (the API's CORS must allow the web app's origin).

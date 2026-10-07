@@ -51,8 +51,16 @@ Use the installer from the latest `build` run on GitHub (Actions → build → a
     Tab reaches every control. With the taskbar on the left or the top, the panel opens beside or
     below the icon. With two monitors, it opens on the one whose tray was clicked. Signed out, it
     shows "Connect to Lexpad" instead.
-18. **Right-click menu.** Right-click the tray icon: Open Lexpad, Settings…, Quit Lexpad.
-19. **Uninstall.** Settings → Apps → Lexpad → Uninstall. The tray icon is gone, and the login
+18. **Card placement and drag.** Move the pointer to the bottom right corner, just above the
+    taskbar, select a word there and press Ctrl+Shift+L: the card opens above and to the left of
+    the pointer, wholly above the taskbar, and stays there when the meanings load; Add and
+    Cancel are visible and clickable. Repeat with the taskbar on the left and on top, at 125 %
+    and 150 % scaling, and on a second monitor (also one placed left of or above the main
+    one). Drag the card by its header to another place: it moves; × still closes it. The next
+    shortcut opens it near the pointer again. On a short screen (1366 × 768 at 125 %) a card
+    with three meanings is cut to the screen and scrolls, with Add and Cancel still showing.
+19. **Right-click menu.** Right-click the tray icon: Open Lexpad, Settings…, Quit Lexpad.
+20. **Uninstall.** Settings → Apps → Lexpad → Uninstall. The tray icon is gone, and the login
     item with it.
 
 Report anything that differs, with a screenshot, in the to-do list.
