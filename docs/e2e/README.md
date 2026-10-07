@@ -66,3 +66,34 @@ the connect protocol with the app's own code). The rest is a two-minute check fo
    the explanation instead.
 5. Copy an image, select a word in an app that does not share its selection (for example a
    terminal), press ⌘⇧L, then paste: the image is still on the clipboard.
+
+# Lexpad's window, end to end (0.2.0, 7 October 2026)
+
+`scripts/e2e-main.sh`, against the same LOCAL stack (API from `lexpad_back` `origin/main`,
+`abed267`, on :8091 with `lexpad_desktop_e2e` migrated to 0054; the web app's connect page from
+`lexpad_front` `feat/desktop-app` on :4173; the LOCAL demo account). The window's page is the
+built `dist/index.html` (the web app from `web/`, `feat/desktop-app` `5e2d228`) in Chromium, with
+`window.__LEXPAD_CONFIG` as the app injects it and every `invoke` answered by the app's own core
+code (`src-tauri/src/e2e_main.rs`: the real `connect`, and every API call through `proxy::check`
+and `Api::forward` with the session the test holds in its own Keychain entry). Passed:
+
+1. The sign-in screen offers only the browser ([main-01](main-01-sign-in.png)); the browser signs
+   in on /connect-desktop and allows; the window opens Today ([main-02](main-02-today.png)).
+2. A practice session ([main-03](main-03-practice-card.png)): two cards answered online; then the
+   network cut and two more answered, queued in the window's IndexedDB
+   ([main-04](main-04-practice-offline.png)); back online, the queue empties.
+3. A word opened the way the panel does (`main:open`) shows that word ([main-05](main-05-word-from-panel.png)).
+4. Settings → This computer ([main-06](main-06-settings-this-computer.png)), and Account
+   ([main-07](main-07-settings-account.png)); signing out there goes through the core, which revokes
+   the session and empties its Keychain entry; the window is back at sign-in.
+5. Every request the page made reached the core without an Authorization header
+   ([requests.json](requests.json), asserted), and the page synced. Log: [main-log.txt](main-log.txt).
+
+Found on the way, not in the desktop app: on this local database copy the API answers `/reviews`
+with `rejected: stale` for the demo account, from the plain web app in a browser too (the
+reviews' progress still syncs through `/sync/push`). Worth a look in `lexpad_back`; see the to-do
+list.
+
+Not covered from an automated shell (no Accessibility or Screen Recording here): the native
+window itself (title bar, Dock icon, restoring its place), native notifications appearing and
+their clicks, and the global shortcut. These are on the owner's checklist.

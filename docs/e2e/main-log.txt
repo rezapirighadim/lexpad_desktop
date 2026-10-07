@@ -1,0 +1,8 @@
+connect: done
+today: shown
+practice: answered 2 online (3/26), outbox 0
+offline: answered 2 more (5/27), outbox 2
+online again: outbox 0 after sync, 14 calls (was 12)
+open word: #/words/01M43HHJX5Q4NXQYQCT97SVGMP
+settings: This computer shown
+sign out: back to "Continue in your browser"
