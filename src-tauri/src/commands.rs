@@ -39,6 +39,15 @@ fn err(f: Failure) -> String {
     f.as_str().to_owned()
 }
 
+/// Whether `id` is an API id (a ULID). A notebook id goes into an address,
+/// so anything else from a window is refused before it gets there.
+fn is_id(id: &str) -> bool {
+    id.len() == 26
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_digit() || b.is_ascii_uppercase())
+}
+
 /// Everything a window needs to draw itself. Reads the notebooks again each
 /// time, falling back to the last list when offline.
 #[tauri::command]
@@ -91,7 +100,7 @@ pub async fn lookup(
     headword: String,
     hint: Option<String>,
 ) -> Result<Value, String> {
-    if headword.trim().is_empty() || headword.chars().count() > 60 {
+    if !is_id(&notebook_id) || headword.trim().is_empty() || headword.chars().count() > 60 {
         return Err(err(Failure::Error));
     }
     let hint = hint.map(|h| capture::clip(&h, 200));
@@ -120,7 +129,7 @@ pub async fn add_word(
     let memo_ok = obj
         .get("memo")
         .is_none_or(|m| m.as_str().is_some_and(|m| m.chars().count() <= MAX_MEMO));
-    if !headword_ok || !memo_ok {
+    if !is_id(&notebook_id) || !headword_ok || !memo_ok {
         return Err(err(Failure::Error));
     }
     state.api.add_word(&notebook_id, &word).await.map_err(err)
@@ -132,6 +141,9 @@ pub fn set_notebook(
     state: State<'_, AppState>,
     notebook_id: String,
 ) -> Result<(), String> {
+    if !is_id(&notebook_id) {
+        return Err(err(Failure::Error));
+    }
     state.update_settings(|s| s.notebook_id = Some(notebook_id))?;
     let _ = app.emit("settings:changed", ());
     Ok(())
@@ -319,5 +331,16 @@ pub fn app_info(app: AppHandle) -> AppInfo {
         api_origin: config::API_ORIGIN,
         app_origin: config::APP_ORIGIN,
         autostart_enabled: app.autolaunch().is_enabled().unwrap_or(false),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn only_api_ids_reach_an_address() {
+        assert!(super::is_id("01M43H5KGS4XJQX824GWWRSRVS"));
+        assert!(!super::is_id("../me/sessions"));
+        assert!(!super::is_id("01M43H5KGS4XJQX824GWWRSRV/"));
+        assert!(!super::is_id(""));
     }
 }
