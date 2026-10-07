@@ -51,7 +51,10 @@ const web = await context.newPage();
 
 // 1. Connect.
 const url = new URL(await waitForFile('connect-url.txt'));
-if (url.origin !== 'http://localhost:4173') throw new Error('refusing: not the local web app');
+// The web app named by LEXPAD_E2E_APP, and only on this computer: never production.
+if (url.hostname !== 'localhost' || url.origin !== new URL(process.env.LEXPAD_E2E_APP ?? '').origin) {
+  throw new Error('refusing: not the local web app');
+}
 await web.goto(`${url.origin}/robots.txt`);
 await web.evaluate(() => localStorage.setItem('wb.intro', '1'));
 await web.goto(url.href);

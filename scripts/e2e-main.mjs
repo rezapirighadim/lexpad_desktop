@@ -169,7 +169,10 @@ await main.getByRole('button', { name: 'Continue in your browser' }).waitFor({ t
 await main.screenshot({ path: `${shots}/main-01-sign-in.png` });
 await main.getByRole('button', { name: 'Continue in your browser' }).click();
 const url = new URL(await waitForFile('connect-url.txt'));
-if (url.origin !== 'http://localhost:4173') throw new Error('refusing: not the local web app');
+// The web app named by LEXPAD_E2E_APP, and only on this computer: never production.
+if (url.hostname !== 'localhost' || url.origin !== new URL(process.env.LEXPAD_E2E_APP ?? '').origin) {
+  throw new Error('refusing: not the local web app');
+}
 const web = await context.newPage();
 await web.goto(`${url.origin}/robots.txt`);
 await web.evaluate(() => localStorage.setItem('wb.intro', '1'));
@@ -191,11 +194,26 @@ await back;
 await web.close();
 note('connect: done');
 
+// The same screen at two window sizes the desktop app is often given: a
+// laptop window (two panes from 1024) and a narrower one (the rail).
+async function atSizes(name) {
+  for (const [width, height] of [
+    [1200, 800],
+    [900, 700],
+  ]) {
+    await main.setViewportSize({ width, height });
+    await main.waitForTimeout(600);
+    await main.screenshot({ path: `${shots}/${name}-${width}x${height}.png` });
+  }
+  await main.setViewportSize({ width: 1040, height: 760 });
+}
+
 // 3. Today, then practice.
 const start = main.getByRole('button', { name: /^(Start session|Practise anyway)$/ });
 await start.waitFor({ timeout: 90000 });
 await main.waitForTimeout(1500);
 await main.screenshot({ path: `${shots}/main-02-today.png` });
+await atSizes('main-02-today');
 note('today: shown');
 await start.click();
 await main.getByRole('button', { name: 'Close' }).waitFor({ timeout: 30000 });
@@ -350,6 +368,7 @@ await main.evaluate(() => {
 await main.getByRole('heading', { name: 'This computer' }).waitFor({ timeout: 30000 });
 await main.waitForTimeout(800);
 await main.screenshot({ path: `${shots}/main-06-settings-this-computer.png`, fullPage: true });
+await atSizes('main-06-settings-this-computer');
 note('settings: This computer shown');
 
 // 6. Sign out from the app's own Settings, through the core.
