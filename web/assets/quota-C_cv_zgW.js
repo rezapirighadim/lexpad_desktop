@@ -1,0 +1,2 @@
+import{X as e,Z as t}from"./format-CKbYjcMU.js";import{kt as n}from"./index-dY_A_r8w.js";function r(e=new Date){return new Date(Date.UTC(e.getUTCFullYear(),e.getUTCMonth(),e.getUTCDate()+1))}function i(e){return n(e)&&e.status===429}async function a(e,n=new Date){i(e)&&await t(`aiPausedUntil`,r(n).toISOString())}async function o(t=new Date){let n=await e(`aiPausedUntil`);if(typeof n!=`string`)return;let r=new Date(n);return r.getTime()>t.getTime()?r:void 0}export{i as n,a as r,o as t};
+//# sourceMappingURL=quota-C_cv_zgW.js.map
