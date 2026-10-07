@@ -1,0 +1,80 @@
+# The gate (format, types, tests, clippy) on every push and pull request, then
+# an unsigned build for macOS (universal .app and .dmg) and Windows (NSIS .exe
+# and .msi) on push to main, uploaded as artifacts. No secrets are needed yet.
+name: build
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+
+  build:
+    needs: check
+    if: github.event_name != 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            args: --target universal-apple-darwin
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+            bundle: src-tauri/target/universal-apple-darwin/release/bundle
+          - os: windows-latest
+            args: ''
+            rust-targets: ''
+            bundle: src-tauri/target/release/bundle
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.os }}
+      - run: pnpm install --frozen-lockfile
+
+      # TODO(signing, macOS): once the Apple Developer Team ID exists, import the
+      # "Developer ID Application" certificate into a temporary keychain and set
+      # APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
+      # and for notarization APPLE_API_KEY, APPLE_API_ISSUER, APPLE_API_KEY_PATH
+      # (or APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID) as secrets; tauri build signs
+      # and notarizes when they are present. See README, "Release".
+      # TODO(signing, Windows): sign the .exe and .msi with an Authenticode
+      # certificate or Azure Trusted Signing (bundle.windows.signCommand).
+
+      - run: pnpm tauri build ${{ matrix.args }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lexpad-desktop-${{ runner.os }}
+          if-no-files-found: error
+          path: |
+            ${{ matrix.bundle }}/dmg/*.dmg
+            ${{ matrix.bundle }}/nsis/*.exe
+            ${{ matrix.bundle }}/msi/*.msi
