@@ -34,6 +34,8 @@ pub const CONTEXT_EACH_SIDE: usize = 600;
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Permission {
+    /// macOS only: Windows needs no permission (NotNeeded).
+    #[cfg_attr(windows, allow(dead_code))]
     Granted,
     /// macOS: Accessibility is not allowed yet. The popup explains and offers
     /// the type-a-word box.
@@ -49,6 +51,8 @@ pub enum Permission {
 pub enum Via {
     Accessibility,
     Clipboard,
+    /// The macOS Services menu.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     Service,
     None,
 }
@@ -135,6 +139,8 @@ pub fn clip(text: &str, max: usize) -> String {
 
 /// The part of `all` around the selection that starts at character `start`
 /// and runs `len` characters, with `each_side` characters either side.
+/// (macOS's accessibility interface gives the text around a selection.)
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn window_around(all: &[char], start: usize, len: usize, each_side: usize) -> String {
     let start = start.min(all.len());
     let end = (start + len).min(all.len());
