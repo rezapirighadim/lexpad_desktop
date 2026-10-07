@@ -271,35 +271,46 @@ pub fn pointer(app: &AppHandle) -> Option<(f64, f64)> {
     Some(pointer_in_units((p.x, p.y), main_scale, LOGICAL))
 }
 
-/// The window's rectangle on screen, in placement units.
+/// The window's rectangle on screen, in placement units: its content, which
+/// is what the learner sees. On Windows an undecorated window with a shadow
+/// keeps invisible resize borders around it (8 pixels at 100 %), which the
+/// outer rectangle includes and which may hang over the edge harmlessly.
 pub fn window_rect(win: &WebviewWindow) -> Option<Area> {
-    let pos = win.outer_position().ok()?;
-    let size = win.outer_size().ok()?;
+    let pos = win.inner_position().ok()?;
+    let size = win.inner_size().ok()?;
     let by = if LOGICAL {
         1.0 / win.scale_factor().ok()?
     } else {
         1.0
     };
-    Some(Area::new(
-        pos.x as f64,
-        pos.y as f64,
-        size.width as f64,
-        size.height as f64,
-    ))
-    .map(|a| a.scaled(by))
+    Some(
+        Area::new(
+            pos.x as f64,
+            pos.y as f64,
+            size.width as f64,
+            size.height as f64,
+        )
+        .scaled(by),
+    )
 }
 
-/// Moves and sizes the window to `rect` (placement units). On Windows the
-/// window is moved first: arriving on a monitor with another scale makes
-/// the system resize it, and the size set after that is the one that holds.
+/// Moves and sizes the window so its content is `rect` (placement units).
+/// On Windows the window is moved first: arriving on a monitor with another
+/// scale makes the system resize it, and the size set after that is the one
+/// that holds. Then the invisible border is measured and the window moved
+/// by it, so the content, not the border, lands on `rect`.
 pub fn apply(win: &WebviewWindow, rect: Area) -> tauri::Result<()> {
     if LOGICAL {
         win.set_size(LogicalSize::new(rect.w, rect.h))?;
         win.set_position(LogicalPosition::new(rect.x, rect.y))?;
     } else {
-        win.set_position(PhysicalPosition::new(rect.x.round(), rect.y.round()))?;
+        let (x, y) = (rect.x.round(), rect.y.round());
+        win.set_position(PhysicalPosition::new(x, y))?;
         win.set_size(PhysicalSize::new(rect.w.round(), rect.h.round()))?;
-        win.set_position(PhysicalPosition::new(rect.x.round(), rect.y.round()))?;
+        let outer = win.outer_position()?;
+        let inner = win.inner_position()?;
+        let (dx, dy) = ((inner.x - outer.x) as f64, (inner.y - outer.y) as f64);
+        win.set_position(PhysicalPosition::new(x - dx, y - dy))?;
     }
     Ok(())
 }
