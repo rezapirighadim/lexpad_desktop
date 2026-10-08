@@ -43,6 +43,12 @@ it (⌘C / Ctrl+C) and then puts your clipboard back exactly as it was.
 
 ## Changelog
 
+**0.2.2** (8 October 2026)
+
+- In the window, going back from a word puts the notebook where you left it: the same words on
+  screen, with your search, filters and Show switches as they were (from tester feedback). Today,
+  Progress and Settings keep their place on the way back too.
+
 **0.2.1** (8 October 2026)
 
 - The window carries the web app's new sidebar: a clear Add a word button at the top, and it
