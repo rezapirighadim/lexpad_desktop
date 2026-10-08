@@ -6,10 +6,11 @@
 # macOS minute as ten and a Windows minute as two. Building both on every
 # push to main was 1,300 billed minutes in two days, and the same allowance
 # runs the API's deploys. So:
-# - check (Linux, every push and pull request): `pnpm check` (prettier, tsc,
-#   vitest, vite build, rustfmt, clippy -D warnings and the Rust tests, run
-#   on Linux, where the core builds with its no-op capture and notifications),
-#   then clippy again for the Windows target, which compiles every
+# - check (Linux, every push and pull request): what `pnpm check` runs
+#   (prettier, tsc, vitest, vite build, rustfmt, clippy -D warnings and the
+#   Rust tests), on Linux, where the core builds with its no-op capture and
+#   notifications (so dead code is allowed there alone), then clippy again
+#   for the Windows target, which compiles every
 #   Windows-only module (UI Automation, toasts, the tray icon) without a
 #   Windows machine. The macOS-only modules are compiled by the pre-commit
 #   hook on the Mac this is developed on, and by every release build there.
@@ -57,6 +58,7 @@ jobs:
         with:
           workspaces: src-tauri
           key: linux-check
+          cache-on-failure: true
       # What Tauri needs to build on Linux (webkit2gtk, the tray, the menus),
       # and llvm-rc with clang, which the Windows-target clippy uses to
       # compile the app's Windows resources (icon, manifest).
@@ -66,7 +68,15 @@ jobs:
           sudo apt-get install -y -qq --no-install-recommends \
             libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev llvm clang
       - run: pnpm install --frozen-lockfile
-      - run: pnpm check
+      # `pnpm check`, step by step, with one difference: on Linux the capture
+      # and notification modules are stubs, so helpers only macOS and Windows
+      # call are dead here, and dead_code is allowed on this host alone. Every
+      # other lint is denied; the Windows clippy below and the Mac's
+      # pre-commit hook still deny dead code on the real platforms.
+      - run: pnpm format:check && pnpm typecheck && pnpm test && pnpm build
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings -A dead_code
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
       - name: clippy for Windows (every cfg(windows) module)
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --target x86_64-pc-windows-msvc -- -D warnings
 

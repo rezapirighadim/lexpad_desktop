@@ -135,7 +135,7 @@ Conventions and rules are in `CLAUDE.md`.
 | Windows  | `Lexpad_<version>_x64-setup.exe` (NSIS, per-user) and `Lexpad_<version>_x64_en-US.msi` |
 
 GitHub Actions (`.github/workflows/build.yml`) runs the gate on Linux on every push and pull request
-(`pnpm check`, plus clippy for the Windows target). It builds the Windows installers only for a
+(what `pnpm check` runs, plus clippy for the Windows target). It builds the Windows installers only for a
 release: on a `v*` tag, or by hand (`gh workflow run build`). macOS is built on the Mac, not in CI:
 this repository is private, and a macOS runner minute is billed as ten (Windows as two), so one CI
 macOS build cost about as much as a week of the API's deploys.

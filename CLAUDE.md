@@ -177,8 +177,8 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
   the pre-commit gate. Enable the hooks with `git config core.hooksPath .githooks`. The hook on
   this Mac is the only thing that compiles the macOS-only modules on every commit.
 - CI is billed by the minute (private repository; macOS ×10, Windows ×2), so it is kept small:
-  every push and pull request runs one Linux job (`pnpm check` on Linux, then clippy for the
-  Windows target); docs-only pushes run nothing. Only a `v*` tag or a manual run
+  every push and pull request runs one Linux job (what `pnpm check` runs, on Linux with dead code
+  allowed since capture and notifications are stubs there, then clippy for the Windows target); docs-only pushes run nothing. Only a `v*` tag or a manual run
   (`gh workflow run build`) builds on Windows: installers, a silent install and start, and the
   placement smoke test. Do not add a macOS job or a per-push Windows job back.
 - The placement smoke test is `pnpm tauri build --no-bundle --features smoke-test`, then
