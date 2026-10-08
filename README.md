@@ -134,11 +134,28 @@ Conventions and rules are in `CLAUDE.md`.
 | macOS    | `Lexpad.app` and `Lexpad_<version>_universal.dmg` (`--target universal-apple-darwin`)  |
 | Windows  | `Lexpad_<version>_x64-setup.exe` (NSIS, per-user) and `Lexpad_<version>_x64_en-US.msi` |
 
-GitHub Actions (`.github/workflows/build.yml`) runs the gate on every push and pull request and
-builds both on push to `main` (macos-latest, windows-latest), uploading the installers as
-artifacts. No secrets are needed yet.
+GitHub Actions (`.github/workflows/build.yml`) runs the gate on Linux on every push and pull request
+(`pnpm check`, plus clippy for the Windows target). It builds the Windows installers only for a
+release: on a `v*` tag, or by hand (`gh workflow run build`). macOS is built on the Mac, not in CI:
+this repository is private, and a macOS runner minute is billed as ten (Windows as two), so one CI
+macOS build cost about as much as a week of the API's deploys.
 
-Still to do before a public release (marked `TODO(signing)` in the workflow):
+### Release steps
+
+1. Bump `version` in `package.json` and `src-tauri/Cargo.toml`, commit, and tag it:
+   `git tag v<version> && git push origin main v<version>`.
+2. **Windows**: the tag runs CI's `release-windows` job (clippy and tests on Windows, the NSIS
+   `.exe` and `.msi`, a silent install and start, the placement smoke test). Download the
+   `lexpad-desktop-Windows` artifact from the run (`gh run download <run id>`); it is kept 14 days.
+3. **macOS**: on the Mac, from the tagged commit, `scripts/release-mac.sh`. It builds the universal
+   `.app` and `.dmg` against production (it refuses `LEXPAD_API_ORIGIN`/`LEXPAD_APP_ORIGIN` and a
+   dirty tree), checks the `.dmg` holds `Lexpad.app` with both architectures and the right version,
+   runs the placement smoke test, and prints the `.dmg`'s SHA-256.
+4. Put both on the landing's downloads page (`lexpad_landing`) with their SHA-256s, and the
+   release in the changelog.
+
+Still to do before a public release (marked `TODO(signing)` in the workflow for Windows and in
+`scripts/release-mac.sh` for macOS):
 
 - **macOS signing and notarization.** Needs the Apple Developer Team ID and a "Developer ID
   Application" certificate. Then set `bundle.macOS.signingIdentity` (or `APPLE_SIGNING_IDENTITY`)

@@ -174,12 +174,20 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
 ## Build and release
 
 - `pnpm check` (prettier, tsc, vitest, vite build, rustfmt, clippy `-D warnings`, cargo test) is
-  the pre-commit gate and CI. Enable the hooks with `git config core.hooksPath .githooks`.
-- CI also installs and starts the built app on both systems, and runs the placement smoke test
-  (`pnpm tauri build --no-bundle --features smoke-test`, then `lexpad-desktop --smoke-test`; it
-  prints every rectangle and exits 1 if one leaves its work area). Run it locally the same way;
-  it does not touch the credential store, the shortcut or the login items, and runs beside an
+  the pre-commit gate. Enable the hooks with `git config core.hooksPath .githooks`. The hook on
+  this Mac is the only thing that compiles the macOS-only modules on every commit.
+- CI is billed by the minute (private repository; macOS ×10, Windows ×2), so it is kept small:
+  every push and pull request runs one Linux job (`pnpm check` on Linux, then clippy for the
+  Windows target); docs-only pushes run nothing. Only a `v*` tag or a manual run
+  (`gh workflow run build`) builds on Windows: installers, a silent install and start, and the
+  placement smoke test. Do not add a macOS job or a per-push Windows job back.
+- The placement smoke test is `pnpm tauri build --no-bundle --features smoke-test`, then
+  `lexpad-desktop --smoke-test`; it prints every rectangle and exits 1 if one leaves its work area.
+  It does not touch the credential store, the shortcut or the login items, and runs beside an
   installed copy.
+- **macOS release**: `scripts/release-mac.sh` on this Mac (universal `.dmg`, production, checked,
+  smoke-tested, SHA-256 printed). The whole release flow (tag, Windows artifact from CI, the Mac
+  `.dmg`, the landing's downloads) is in README, "Release steps".
 - `pnpm app:dev` runs it against production; for a local stack build with
   `LEXPAD_API_ORIGIN=http://localhost:8091 LEXPAD_APP_ORIGIN=http://localhost:4173 pnpm tauri build --bundles app`
   (the API's CORS must allow the web app's origin).
@@ -192,11 +200,11 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
   message. The script refuses a dirty front.
 - Rust comes from the official rustup installer into the user's home (`~/.cargo`), no sudo.
 - Releases: see README. Unsigned until the Apple Team ID and a Windows certificate exist; the
-  TODOs are marked in `.github/workflows/build.yml`.
+  TODOs are marked in `.github/workflows/build.yml` (Windows) and `scripts/release-mac.sh` (macOS).
 - Bump `version` in `package.json` only; `tauri.conf.json` reads it. Keep `Cargo.toml` in step.
 
 ## Git
 
 Conventional Commits, small commits, no AI attribution in messages (the `.githooks/commit-msg`
 hook rejects it). Remote over HTTPS only; commits and tags unsigned (`commit.gpgsign=false`,
-`tag.gpgsign=false` locally). Pushing `main` deploys nothing; CI only builds artifacts.
+`tag.gpgsign=false` locally). Pushing `main` deploys nothing; CI builds artifacts only for a tag.
