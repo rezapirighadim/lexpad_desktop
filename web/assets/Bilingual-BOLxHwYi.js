@@ -1,2 +1,0 @@
-import{t as e}from"./react--nwWWpNE.js";import{tt as t}from"./format-CKbYjcMU.js";import{t as n}from"./script-BaeMaslN.js";import{pt as r}from"./index-dY_A_r8w.js";var i={text:`BOJGE1`},a=e();function o({lang:e,children:o,className:s,block:c=!1}){let l=r(e),u=t(i.text,n(e),s);return(0,a.jsx)(c?`div`:`span`,{dir:l,lang:e,className:u,children:o})}export{o as t};
-//# sourceMappingURL=Bilingual-BOLxHwYi.js.map

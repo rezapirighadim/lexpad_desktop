@@ -1,0 +1,2 @@
+import{H as e,_t as t}from"./index-oVknegld.js";import{r as n}from"./quota-BTTUyyic.js";async function r(r,i,a={}){let o=a.pollMs??1200,s;try{s=e(await t.createCards(r,[i],a.hint))}catch(e){throw await n(e),e}for(;s.status===`queued`||s.status===`running`;)await new Promise(e=>window.setTimeout(e,o)),s=e(await t.job(s.id));let c=s.cards[0];if(s.status!==`done`||c===void 0)throw Error(s.error??`failed`);return c}export{r as t};
+//# sourceMappingURL=generate-CzstLGgl.js.map
