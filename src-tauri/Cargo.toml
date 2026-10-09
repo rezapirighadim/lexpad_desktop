@@ -3,6 +3,7 @@ name = "lexpad-desktop"
 version = "0.3.0"
 description = "Lexpad for macOS and Windows: add a word from any app"
 authors = ["Lexpad"]
+license-file = "../LICENSE"
 edition = "2021"
 rust-version = "1.85"
 publish = false

@@ -2,6 +2,7 @@
   "name": "lexpad-desktop",
   "version": "0.3.0",
   "private": true,
+  "license": "SEE LICENSE IN LICENSE",
   "description": "Lexpad for macOS and Windows: select a word in any app, press the shortcut, and it goes into your notebook with its meaning.",
   "type": "module",
   "packageManager": "pnpm@9.15.9",

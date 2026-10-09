@@ -1,0 +1,42 @@
+Lexpad desktop app: source-available licence
+
+Copyright (c) 2026 Lexpad. All rights reserved.
+
+This is not an open-source licence. The code is public so that anyone can see
+exactly what the Lexpad desktop app does, in particular with the macOS
+Accessibility permission and with the text you select.
+
+What you may do
+
+1. Read the code.
+2. Build and run it, to check what the app does, and for your own personal,
+   non-commercial use.
+
+What you may not do
+
+3. You may not copy, redistribute, sell, rent, sublicense or publish this code
+   or a build of it, whether changed or unchanged, except as GitHub's own
+   terms allow for viewing and forking on GitHub.
+4. You may not publish or distribute modified versions of it.
+5. You may not use it, or any part of it, in a commercial product or service.
+
+Names and marks
+
+6. The name "Lexpad", the Lexpad logo and the app's icons are trademarks of
+   Lexpad. This licence gives you no right to use them.
+
+Other people's code
+
+7. Third-party components keep their own licences. They are listed in
+   package.json and pnpm-lock.yaml (JavaScript) and in src-tauri/Cargo.toml
+   and src-tauri/Cargo.lock (Rust). Nothing here changes those licences.
+
+No warranty
+
+8. The code and the app are provided "as is", without warranty of any kind,
+   express or implied, including fitness for a particular purpose. Lexpad is
+   not liable for any claim, damage or other liability arising from them or
+   from their use.
+
+Any right not given above is kept by Lexpad. To ask for other permission, open
+an issue on the repository.

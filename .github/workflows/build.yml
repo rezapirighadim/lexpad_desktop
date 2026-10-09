@@ -2,7 +2,8 @@
 # build on a version tag. macOS is built on the owner's Mac
 # (scripts/release-mac.sh), not here.
 #
-# Why it is shaped this way: this repository is private, and Actions bills a
+# Why it is shaped this way: this repository was private until 9 October
+# 2026 (public repositories run standard runners free), and Actions billed a
 # macOS minute as ten and a Windows minute as two. Building both on every
 # push to main was 1,300 billed minutes in two days, and the same allowance
 # runs the API's deploys. So:
@@ -39,6 +40,11 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+# The jobs only read the code and upload artifacts; the token never needs to
+# write. (The repository's default is read-only too.)
+permissions:
+  contents: read
 
 jobs:
   check:

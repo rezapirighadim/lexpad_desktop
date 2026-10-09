@@ -41,6 +41,21 @@ Settings → Privacy & Security → Accessibility). Lexpad explains this and ope
 without it you can still type a word. Where an app does not share its selection, Lexpad copies
 it (⌘C / Ctrl+C) and then puts your clipboard back exactly as it was.
 
+## Licence and trust
+
+The code is public so you can see exactly what this app does with the **Accessibility**
+permission and with the text you select: read it in `src-tauri/src/capture/` (macOS and
+Windows), and what it sends in `src-tauri/src/api.rs`. In short, it reads the selection only when
+you press the shortcut, and of what you select it sends only what is listed under "What leaves
+your computer" above, to the Lexpad API (`api.lexpad.app`) over HTTPS. The window is the same
+Lexpad app as on the web, talking to the same API through the app's core (`src-tauri/src/proxy.rs`
+says what it may send).
+
+It is **source-available, not open source**: all rights reserved. You may read it and build it
+to check what it does, and for your own personal, non-commercial use; you may not redistribute,
+sell or publish changed versions. The Lexpad name, logo and icons are not licensed. See
+[LICENSE](LICENSE). To report a security problem privately, see [SECURITY.md](SECURITY.md).
+
 ## Changelog
 
 **0.3.0** (9 October 2026)
@@ -145,8 +160,8 @@ Conventions and rules are in `CLAUDE.md`.
 GitHub Actions (`.github/workflows/build.yml`) runs the gate on Linux on every push and pull request
 (what `pnpm check` runs, plus clippy for the Windows target). It builds the Windows installers only for a
 release: on a `v*` tag, or by hand (`gh workflow run build`). macOS is built on the Mac, not in CI:
-this repository is private, and a macOS runner minute is billed as ten (Windows as two), so one CI
-macOS build cost about as much as a week of the API's deploys.
+while this repository was private, a macOS runner minute was billed as ten (Windows as two), so one
+CI macOS build cost about as much as a week of the API's deploys.
 
 ### Release steps
 
