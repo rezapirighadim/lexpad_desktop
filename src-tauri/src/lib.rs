@@ -10,6 +10,7 @@
 //! - `services_macos`: "Add to Lexpad" in the macOS Services menu.
 //! - `main_window`: Lexpad's own window, the whole web app, whose calls go
 //!   through the core (`proxy`) so the page never holds a session.
+//! - `msix` (Windows): what differs in the Microsoft Store's package.
 
 mod api;
 mod auth;
@@ -21,6 +22,8 @@ mod e2e;
 #[cfg(test)]
 mod e2e_main;
 mod main_window;
+#[cfg(windows)]
+mod msix;
 mod notify;
 mod panel;
 mod placement;
@@ -100,9 +103,22 @@ pub fn refresh_dock(app: &AppHandle, opening: bool) {
 }
 
 /// Registers or removes the app from the login items. A development build
-/// (debug, or pointed at a local API) never registers itself.
+/// (debug, or pointed at a local API) never registers itself. The Store's
+/// package uses its StartupTask instead (`msix`).
 pub fn apply_start_on_login(app: &AppHandle, on: bool) {
     if config::is_development_build() {
+        return;
+    }
+    #[cfg(windows)]
+    if msix::is_packaged() {
+        match msix::set_startup(on) {
+            Ok(now) if now != on => log::warn!(
+                "Windows kept start on login {}",
+                if now { "on" } else { "off" }
+            ),
+            Ok(_) => {}
+            Err(e) => log::warn!("could not change start on login: {e}"),
+        }
         return;
     }
     let launcher = app.autolaunch();
@@ -114,6 +130,15 @@ pub fn apply_start_on_login(app: &AppHandle, on: bool) {
     if let Err(e) = result {
         log::warn!("could not change start on login: {e}");
     }
+}
+
+/// Whether the app starts when the learner logs in, as the system has it.
+pub fn start_on_login_enabled(app: &AppHandle) -> bool {
+    #[cfg(windows)]
+    if msix::is_packaged() {
+        return msix::startup_enabled().unwrap_or(false);
+    }
+    app.autolaunch().is_enabled().unwrap_or(false)
 }
 
 /// Opens Lexpad: its own window, or the web app in the browser when the

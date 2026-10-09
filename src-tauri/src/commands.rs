@@ -8,7 +8,6 @@ use serde::Serialize;
 use serde_json::Value;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, State};
-use tauri_plugin_autostart::ManagerExt as _;
 use tauri_plugin_global_shortcut::GlobalShortcutExt as _;
 use tauri_plugin_opener::OpenerExt as _;
 
@@ -713,7 +712,7 @@ pub fn app_info(app: AppHandle) -> AppInfo {
         version: config::VERSION,
         api_origin: config::API_ORIGIN,
         app_origin: config::APP_ORIGIN,
-        autostart_enabled: app.autolaunch().is_enabled().unwrap_or(false),
+        autostart_enabled: crate::start_on_login_enabled(&app),
     }
 }
 

@@ -1,6 +1,7 @@
 //! Windows: toasts through the WinRT notification API, filed under the
 //! app's AppUserModelID (`app.lexpad.desktop`, the identifier the installer
-//! gives the Start menu shortcut). Reminders are scheduled toasts, so the
+//! gives the Start menu shortcut; in the Store's MSIX package, the package's
+//! own, which Windows supplies). Reminders are scheduled toasts, so the
 //! system delivers them even while Lexpad's window is shut. A click starts
 //! Lexpad through its shortcut; the running copy then opens its window
 //! (single instance), on Today.
@@ -26,6 +27,9 @@ const REMINDER_PREFIX: &str = "lexpad-r";
 fn notifier() -> Option<ToastNotifier> {
     // The calling thread may not have joined COM yet; joining twice is harmless.
     let _ = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+    if crate::msix::is_packaged() {
+        return ToastNotificationManager::CreateToastNotifier().ok();
+    }
     ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(AUMID)).ok()
 }
 
