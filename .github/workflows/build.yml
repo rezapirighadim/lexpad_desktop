@@ -22,6 +22,11 @@
 #   `smoke-test` feature (never shipped; src-tauri/src/smoke.rs) opens the
 #   popup at points all over every monitor and the panel from an icon, and
 #   fails unless every window ends inside its monitor's work area.
+#   Before that, the Microsoft Store's MSIX (scripts/msix.ps1, unsigned: the
+#   Store signs it) as its own artifact, a test-signed copy installed and
+#   started from its package with start on login and the sign-in's loopback
+#   checked inside it (scripts/msix-smoke.ps1), and the Windows App
+#   Certification Kit's report when the runner has it.
 # - a push that changes only docs/ or Markdown runs nothing; a newer push to
 #   the same branch cancels the older run. Tag pushes always run.
 # - Rust (Swatinem/rust-cache) and pnpm downloads are cached in every job.
@@ -124,6 +129,19 @@ jobs:
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/msi/*.msi
 
+      # The Microsoft Store's package, unsigned (the Store signs it), from the
+      # same exe, before the placement smoke test below rebuilds that exe.
+      - name: MSIX for the Microsoft Store
+        shell: pwsh
+        run: ./scripts/msix.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lexpad-desktop-msix
+          if-no-files-found: error
+          retention-days: 14
+          path: src-tauri/target/release/bundle/msix/*.msix
+
       - name: Install and start
         timeout-minutes: 5
         shell: pwsh
@@ -139,6 +157,44 @@ jobs:
           if ($p.HasExited) { throw "Lexpad exited early with code $($p.ExitCode)" }
           Write-Host "Lexpad is running (pid $($p.Id))"
           Stop-Process -Id $p.Id -Force
+
+      # A copy signed with a throwaway test certificate, installed and
+      # started from its package; start on login (the StartupTask) and the
+      # sign-in's loopback redirect checked inside the package.
+      - name: MSIX install and start
+        timeout-minutes: 10
+        shell: powershell
+        run: |
+          $msix = Get-ChildItem 'src-tauri/target/release/bundle/msix/*.msix' | Select-Object -First 1
+          ./scripts/msix-smoke.ps1 -Msix $msix.FullName
+
+      # The Windows App Certification Kit, when the runner's SDK has it. The
+      # Store runs its own checks on upload; this report is for reading.
+      - name: Windows App Certification Kit
+        continue-on-error: true
+        timeout-minutes: 30
+        shell: powershell
+        run: |
+          $appcert = 'C:\Program Files (x86)\Windows Kits\10\App Certification Kit\appcert.exe'
+          if (-not (Test-Path $appcert)) { Write-Host '::warning::WACK is not on this runner; the Store checks the package on upload'; exit 0 }
+          Get-AppxPackage -Name RezaPirighadim.Lexpad | Remove-AppxPackage
+          & $appcert reset
+          $report = Join-Path $env:RUNNER_TEMP 'wack.xml'
+          & $appcert test -appxpackagepath (Join-Path $env:RUNNER_TEMP 'Lexpad-test.msix') -reportoutputpath $report
+          if (-not (Test-Path $report)) { throw 'WACK wrote no report' }
+          Copy-Item $report wack-report.xml
+          [xml]$x = Get-Content $report
+          Write-Host "WACK overall: $($x.REPORT.OVERALL_RESULT)"
+          $x.SelectNodes('//TEST') | ForEach-Object { '{0,-8} {1}' -f $_.SelectSingleNode('RESULT').InnerText, $_.GetAttribute('NAME') } | Write-Host
+          if ($x.REPORT.OVERALL_RESULT -ne 'PASS') { exit 1 }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wack-report
+          if-no-files-found: ignore
+          retention-days: 14
+          path: wack-report.xml
 
       - name: Placement smoke test
         timeout-minutes: 30

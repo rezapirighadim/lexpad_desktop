@@ -15,6 +15,10 @@ size is sharp.
                                       and 48 px (100% to 300% scaling); the app picks the
                                       frame for the system's small-icon size.
 
+  msix/Assets/                        the Microsoft Store package's logos (Start, tiles, the
+                                      taskbar and the Store), at every scale Windows asks for;
+                                      scripts/msix.ps1 indexes them with makepri.
+
 Run: pnpm icons   (python3 scripts/icons.py && tauri icon icons-src/app-1024.png)
      python3 scripts/icons.py --preview   also writes docs/screenshots/tray-icons.png:
      the template on a light and a dark menu bar at 1x and 2x, and every tray.ico frame.
@@ -191,6 +195,47 @@ def tray_icons(mark: dict) -> None:
     frames[-1].save(out / 'tray.ico', format='ICO', sizes=[(s, s) for s in ICO_SIZES], append_images=frames[:-1])
 
 
+# The MSIX logos: name -> (width, height) at scale-100, and the mark's share
+# of the shorter side. Start's list and the Store show the mark edge to edge;
+# tiles keep air around it, as Windows' own tiles do.
+MSIX_LOGOS = {
+    'Square44x44Logo': ((44, 44), 1.0),
+    'Square150x150Logo': ((150, 150), 0.6),
+    'Wide310x150Logo': ((310, 150), 0.6),
+    'SmallTile': ((71, 71), 0.6),
+    'LargeTile': ((310, 310), 0.6),
+    'StoreLogo': ((50, 50), 1.0),
+}
+MSIX_SCALES = (100, 125, 150, 200, 400)
+# Square44x44Logo's target sizes: Start's list, the taskbar, Explorer and
+# Alt+Tab pick from these, unplated (no tile colour behind them).
+MSIX_TARGET_SIZES = (16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 256)
+
+
+def msix_logo(mark: dict, w: int, h: int, share: float) -> Image.Image:
+    side = max(1, round(min(w, h) * share))
+    glyph = coloured_mark(mark, side, 0.22, tray=side <= ICO_SIZES[-1])
+    img = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+    img.paste(glyph, ((w - side) // 2, (h - side) // 2), glyph)
+    return img
+
+
+def msix_assets(mark: dict) -> None:
+    out = ROOT / 'msix' / 'Assets'
+    out.mkdir(parents=True, exist_ok=True)
+    for old in out.glob('*.png'):
+        old.unlink()
+    for name, ((w, h), share) in MSIX_LOGOS.items():
+        for scale in MSIX_SCALES:
+            sw, sh = round(w * scale / 100), round(h * scale / 100)
+            msix_logo(mark, sw, sh, share).save(out / f'{name}.scale-{scale}.png')
+    for size in MSIX_TARGET_SIZES:
+        img = msix_logo(mark, size, size, 1.0)
+        img.save(out / f'Square44x44Logo.targetsize-{size}.png')
+        img.save(out / f'Square44x44Logo.targetsize-{size}_altform-unplated.png')
+        img.save(out / f'Square44x44Logo.targetsize-{size}_altform-lightunplated.png')
+
+
 def preview() -> None:
     """The menu-bar icon as macOS would tint it, and the Windows frames, enlarged 4x without smoothing."""
     icons = ROOT / 'src-tauri' / 'icons'
@@ -231,5 +276,6 @@ if __name__ == '__main__':
     geometry = load_mark(MARK)
     app_icon(geometry)
     tray_icons(geometry)
+    msix_assets(geometry)
     if '--preview' in sys.argv:
         preview()

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Microsoft Store package of Lexpad for Windows. scripts/msix.ps1 puts
+  the release build's lexpad-desktop.exe beside it as Lexpad.exe, with
+  Assets/ (drawn by scripts/icons.py), fills in __VERSION__ from
+  package.json (four parts, the last always 0, as the Store requires),
+  indexes the logos with makepri and packs it unsigned with makeappx. The
+  Store signs what it publishes.
+
+  The identity is the Partner Center product's (Lexpad → Product identity):
+  Store ID 9NSFK2ZK6PFS, PFN RezaPirighadim.Lexpad_ez2812thaqc5y.
+
+  - runFullTrust: a desktop app, outside an AppContainer. That is what lets
+    it read the selection in other apps (UI Automation, the clipboard) when
+    the shortcut is pressed, register the global shortcut, keep its tray
+    icon, store the session in Credential Manager and take the browser's
+    sign-in redirect on its 127.0.0.1 loopback listener (RFC 8252).
+  - internetClient: it talks to api.lexpad.app.
+  - windows.startupTask: "Start Lexpad when I log in" (src-tauri/src/msix.rs).
+    Off until the app turns it on; the learner can turn it off in Windows.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap5 rescap">
+
+  <Identity
+    Name="RezaPirighadim.Lexpad"
+    Publisher="CN=5DA99EF1-597A-43A9-B9F9-E839A313C41E"
+    Version="__VERSION__"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>Lexpad</DisplayName>
+    <PublisherDisplayName>Reza Pirighadim</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <Description>Add the words you meet in any app to your Lexpad notebook, and learn them.</Description>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <Application Id="Lexpad" Executable="Lexpad.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Lexpad"
+        Description="Add the words you meet in any app to your Lexpad notebook, and learn them."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile
+          Wide310x150Logo="Assets\Wide310x150Logo.png"
+          Square71x71Logo="Assets\SmallTile.png"
+          Square310x310Logo="Assets\LargeTile.png"
+          ShortName="Lexpad" />
+      </uap:VisualElements>
+      <Extensions>
+        <uap5:Extension Category="windows.startupTask" Executable="Lexpad.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap5:StartupTask TaskId="LexpadStartup" Enabled="false" DisplayName="Lexpad" />
+        </uap5:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <Capability Name="internetClient" />
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>
