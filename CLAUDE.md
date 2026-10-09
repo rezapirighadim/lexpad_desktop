@@ -202,6 +202,15 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
 - Releases: see README. Unsigned until the Apple Team ID and a Windows certificate exist; the
   TODOs are marked in `.github/workflows/build.yml` (Windows) and `scripts/release-mac.sh` (macOS).
 - Bump `version` in `package.json` only; `tauri.conf.json` reads it. Keep `Cargo.toml` in step.
+- **GitHub Release** (every release, owner 2026-10-09): after the Windows CI run and the Mac
+  `.dmg`, `gh release create v<version> --verify-tag --latest` titled "Lexpad for Mac and Windows
+  <version> (beta)", with `Lexpad_<version>_universal.dmg`, `Lexpad_<version>_x64-setup.exe`,
+  `Lexpad_<version>_x64_en-US.msi` (the CI artifact's names) and a `SHA256SUMS.txt` of those three
+  files. Its values must equal the landing's `site/downloads/lexpad-desktop.sha256`; download the
+  release back and run `shasum -a 256 -c SHA256SUMS.txt`. Notes: what's new in plain English
+  (from the landing changelog), the install notes for the unsigned beta as the download pages
+  word them, links to lexpad.app/download/mac and /windows, the CI run id, then a "Technical"
+  list with commit ids. This repository is public: no secrets, keys or private notes in a release.
 
 ## Git
 
