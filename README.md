@@ -43,6 +43,14 @@ it (⌘C / Ctrl+C) and then puts your clipboard back exactly as it was.
 
 ## Changelog
 
+**0.3.0** (9 October 2026)
+
+- The window carries the web app of 8 and 9 October: How words come back for each notebook, the
+  Smart schedule (Beta), games and drills, the next 30 days on Progress, streak freeze and the
+  first-days screens (they show when the server turns them on for desktop, from 0.3.0); the Pro
+  trial on Today and Settings; saving a word even when the AI is out for the day; and Add to my
+  notebook from a shared notebook.
+
 **0.2.2** (8 October 2026)
 
 - In the window, going back from a word puts the notebook where you left it: the same words on
