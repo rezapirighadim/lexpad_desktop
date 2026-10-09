@@ -1,2 +1,0 @@
-import{r as e}from"./rolldown-runtime-hePW80VL.js";import{x as t}from"./react--nwWWpNE.js";import{V as n}from"./schema-DtI0FnAU.js";var r=e(t(),1);function i(e){let[t,i]=(0,r.useState)(void 0);return(0,r.useEffect)(()=>{if(!e)return;let t=!0;return n.speech.available().then(e=>{t&&i(e)}).catch(()=>{t&&i(!1)}),()=>{t=!1}},[e]),t}export{i as t};
-//# sourceMappingURL=useCanListen-DHtCKcc3.js.map

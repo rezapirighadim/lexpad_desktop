@@ -1,0 +1,2 @@
+import"./dist-BGIv840p.js";import{i as e}from"./script-BjyhLPBW.js";var t={han:`q3Obj6`,kana:`v4dG5S`,hangul:`c-CJfz`,arabic:`Y5cjNW`,hebrew:`U2s6M5`,armenian:`sbBNJt`,georgian:`sj1F3l`,devanagari:`PerVN-`,bengali:`gPkCxD`,gurmukhi:`CMLWmw`,gujarati:`LhP7on`,tamil:`_9wew2I`,telugu:`_3eGHAg`,kannada:`_9Z6AXk`,malayalam:`-IH3-H`,sinhala:`KHjPle`,thai:`gD9RX-`,lao:`oF5Oy9`,khmer:`t-maZB`,myanmar:`LVCkn9`,ethiopic:`F6en2Z`};function n(n){return t[e(n)]}export{n as t};
+//# sourceMappingURL=script-BbueyRam.js.map

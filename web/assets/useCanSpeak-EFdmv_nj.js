@@ -1,2 +1,0 @@
-import{r as e}from"./rolldown-runtime-hePW80VL.js";import{x as t}from"./react--nwWWpNE.js";import"./format-DRmQzbWM.js";import{V as n}from"./schema-DtI0FnAU.js";import{l as r}from"./types-CRfaWAn8.js";var i=e(t(),1);function a(e){return(0,i.useSyncExternalStore)(e=>n.tts.onVoicesChange(e),()=>n.tts.canSpeak(r(e)),()=>!0)}export{a as t};
-//# sourceMappingURL=useCanSpeak-EFdmv_nj.js.map
