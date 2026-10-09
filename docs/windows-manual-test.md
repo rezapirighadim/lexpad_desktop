@@ -72,4 +72,14 @@ Use the installer from the latest `build` run on GitHub (Actions → build → a
 21. **Uninstall.** Settings → Apps → Lexpad → Uninstall. The tray icon is gone, and the login
     item with it.
 
+22. **The Microsoft Store copy (0.3.2).** Install Lexpad from the Store (or, before it is live,
+    the artifact `lexpad-desktop-msix`, which installs only after signing; CI's
+    `scripts/msix-smoke.ps1` shows how). Go through 3, 5, 6, 13, 17 and 19 again with it. Start
+    on login is the package's startup task here: turning the switch off and on shows Lexpad as
+    Disabled / Enabled under Settings → Apps → Startup and in Task Manager → Startup apps; once
+    turned off there, the switch in Lexpad cannot turn it back on (Windows' rule), and the app's
+    Settings shows it off. A reminder's toast carries the name Lexpad and opens the window.
+    Uninstalling from Start removes the package, its startup task and its data; the session in
+    Credential Manager stays until Sign out (as with the installer).
+
 Report anything that differs, with a screenshot, in the to-do list.

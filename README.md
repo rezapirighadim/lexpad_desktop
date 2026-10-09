@@ -58,6 +58,12 @@ sell or publish changed versions. The Lexpad name, logo and icons are not licens
 
 ## Changelog
 
+**0.3.2** (9 October 2026)
+
+- Ready for the Microsoft Store: the Store's copy starts when you log in through Windows' own
+  startup list (Settings → Apps → Startup), and its notifications carry the name Lexpad. The
+  installer from lexpad.app works as before.
+
 **0.3.1** (9 October 2026)
 
 - The window carries the web app of 9 October: a new introduction (your own word becomes a card
@@ -163,6 +169,7 @@ Conventions and rules are in `CLAUDE.md`.
 | -------- | -------------------------------------------------------------------------------------- |
 | macOS    | `Lexpad.app` and `Lexpad_<version>_universal.dmg` (`--target universal-apple-darwin`)  |
 | Windows  | `Lexpad_<version>_x64-setup.exe` (NSIS, per-user) and `Lexpad_<version>_x64_en-US.msi` |
+| Store    | `Lexpad_<version>_x64.msix` (CI only, `scripts/msix.ps1`; see "Microsoft Store")       |
 
 GitHub Actions (`.github/workflows/build.yml`) runs the gate on Linux on every push and pull request
 (what `pnpm check` runs, plus clippy for the Windows target). It builds the Windows installers only for a
@@ -170,13 +177,48 @@ release: on a `v*` tag, or by hand (`gh workflow run build`). macOS is built on 
 while this repository was private, a macOS runner minute was billed as ten (Windows as two), so one
 CI macOS build cost about as much as a week of the API's deploys.
 
+### Microsoft Store
+
+Lexpad goes to the Microsoft Store as an MSIX package (first submitted 9 October 2026; Store ID `9NSFK2ZK6PFS`,
+<https://apps.microsoft.com/detail/9NSFK2ZK6PFS>; Partner Center → Lexpad). The Store signs the
+package it publishes, so no certificate is needed for it, and Store users get no SmartScreen
+warning.
+
+- `msix/AppxManifest.xml` is the package: the Partner Center identity (`RezaPirighadim.Lexpad`,
+  publisher `CN=5DA99EF1-597A-43A9-B9F9-E839A313C41E`, "Reza Pirighadim"), a full-trust desktop
+  app (`runFullTrust`, which UI Automation, the clipboard, the global shortcut, the tray and
+  Credential Manager need) with `internetClient`, and the `windows.startupTask` for start on
+  login. `msix/Assets/` holds the logos at every scale and target size, drawn by `pnpm icons`.
+- `scripts/msix.ps1` (CI, after `pnpm tauri build`) puts the exe in as `Lexpad.exe`, sets the
+  version from `package.json` (`0.3.2` → `0.3.2.0`), indexes the logos with `makepri` and packs
+  `Lexpad_<version>_x64.msix` with `makeappx`, unsigned: the artifact `lexpad-desktop-msix`.
+- `scripts/msix-smoke.ps1` (CI) signs a copy with a throwaway certificate on the runner,
+  installs it, starts it from its package, and checks inside the package that start on login is
+  on and that a loopback listener gets a request from outside (what the sign-in redirect needs).
+  Then the Windows App Certification Kit runs when the runner has it (report: artifact
+  `wack-report`; it does not fail the build, the Store's own checks do).
+- **Inside the package** (`src-tauri/src/msix.rs`): start on login is the StartupTask (a
+  packaged app's `Run` key in the registry stays inside the package, so Windows never saw it),
+  and toasts go out under the package's own AppUserModelID. Sign-in is unchanged: the package is
+  full trust, not an AppContainer, so the browser's redirect to `127.0.0.1:<port>/callback`
+  reaches the app as before. Settings and WebView2 data live in the package's own AppData; the
+  session stays in Credential Manager.
+- **A new version for the Store**: after a release's CI run, download `lexpad-desktop-msix`,
+  then Partner Center → Lexpad → Update (a new submission) → Packages: upload the `.msix`, remove
+  the old one, Submit. Its version must be higher than the one in the Store. The NSIS `.exe` and
+  `.msi` stay the direct downloads.
+- Needs Windows 10 version 1809 (build 17763) or later, x64, and the WebView2 Runtime (part of
+  Windows 11 and of current Windows 10; the Store package cannot install it).
+
 ### Release steps
 
 1. Bump `version` in `package.json` and `src-tauri/Cargo.toml`, commit, and tag it:
    `git tag v<version> && git push origin main v<version>`.
 2. **Windows**: the tag runs CI's `release-windows` job (clippy and tests on Windows, the NSIS
-   `.exe` and `.msi`, a silent install and start, the placement smoke test). Download the
-   `lexpad-desktop-Windows` artifact from the run (`gh run download <run id>`); it is kept 14 days.
+   `.exe` and `.msi`, the Store's `.msix`, a silent install and start, the MSIX install and
+   checks, WACK, the placement smoke test). Download the `lexpad-desktop-Windows` and
+   `lexpad-desktop-msix` artifacts from the run (`gh run download <run id>`); they are kept 14
+   days. The `.msix` goes to the Store (above), not to the downloads page.
 3. **macOS**: on the Mac, from the tagged commit, `scripts/release-mac.sh`. It builds the universal
    `.app` and `.dmg` against production (it refuses `LEXPAD_API_ORIGIN`/`LEXPAD_APP_ORIGIN` and a
    dirty tree), checks the `.dmg` holds `Lexpad.app` with both architectures and the right version,
@@ -195,10 +237,6 @@ Still to do before a public release (marked `TODO(signing)` in the workflow for 
   Accessibility after every rebuild because the unsigned app's identity changes.
 - **Windows signing.** An Authenticode certificate or Azure Trusted Signing
   (`bundle.windows.signCommand`), or SmartScreen warns on install.
-- **Microsoft Store (later).** The Store takes an MSIX package or, since 2023, a signed
-  `.exe`/`.msi` installer submitted as a Win32 app. The simplest route is to submit the signed
-  NSIS installer; an MSIX needs a packaging step (MSIX Packaging Tool or `makeappx`) with the
-  Store's publisher identity. Needs a Partner Center account.
 - **Updater.** Off in 0.1 (no `tauri-plugin-updater`). Turn it on with a signing key pair and an
   update endpoint before 1.0.
 - **Mac App Store** is not planned: it forbids reading other apps' selections through the

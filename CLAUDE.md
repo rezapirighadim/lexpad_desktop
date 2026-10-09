@@ -56,6 +56,9 @@ src-tauri/src/placement.rs       where windows go: the work area of the monitor 
 src-tauri/src/smoke.rs           CI's placement smoke test, only with `--features smoke-test` (never shipped)
 src-tauri/src/main_window.rs     Lexpad's window: the web app from web/, its config, navigation lock, place (tested)
 src-tauri/src/proxy.rs           what the window may send to the API through the core (tested)
+src-tauri/src/msix.rs            Windows, the Store's package only: start on login as its StartupTask, is_packaged
+msix/                            the Microsoft Store's MSIX: AppxManifest.xml (Partner Center identity) and Assets/ (icons.py)
+scripts/msix.ps1, msix-smoke.ps1 CI: pack the unsigned .msix; install a test-signed copy and check it (README, "Microsoft Store")
 src-tauri/src/notify/            notifications: the reminder plan, the inbox poll and its rules (tested), macos.rs, windows.rs
 web/                             the web app built for the window by scripts/build-web.sh (committed; never edit; PROVENANCE.txt)
 src-tauri/Info.plist             LSUIElement (no Dock icon) and the NSServices entry
@@ -199,6 +202,11 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
   `scripts/build-web.sh <front checkout>` here and commit `web/` with the front commit in the
   message. The script refuses a dirty front.
 - Rust comes from the official rustup installer into the user's home (`~/.cargo`), no sudo.
+- **Microsoft Store**: the tag's CI run also makes `Lexpad_<version>_x64.msix` (artifact
+  `lexpad-desktop-msix`, unsigned; the Store signs it). Each release is a new Partner Center
+  submission with that file (README, "Microsoft Store"). Anything that writes outside the app's
+  own folders or the credential store must be checked inside the package: a packaged app's
+  registry writes stay in the package (that is why start on login is `msix.rs` there).
 - Releases: see README. Unsigned until the Apple Team ID and a Windows certificate exist; the
   TODOs are marked in `.github/workflows/build.yml` (Windows) and `scripts/release-mac.sh` (macOS).
 - Bump `version` in `package.json` only; `tauri.conf.json` reads it. Keep `Cargo.toml` in step.
