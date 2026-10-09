@@ -58,6 +58,13 @@ sell or publish changed versions. The Lexpad name, logo and icons are not licens
 
 ## Changelog
 
+**0.3.1** (9 October 2026)
+
+- The window carries the web app of 9 October: a new introduction (your own word becomes a card
+  before you sign up), celebrations for real milestones, Games and drills on their own page,
+  "Reminders by e-mail" in Settings, and the daily reminder offered once on the first day's
+  summary.
+
 **0.3.0** (9 October 2026)
 
 - The window carries the web app of 8 and 9 October: How words come back for each notebook, the
