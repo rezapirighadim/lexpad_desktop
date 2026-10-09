@@ -196,7 +196,9 @@ warning.
   installs it, starts it from its package, and checks inside the package that start on login is
   on and that a loopback listener gets a request from outside (what the sign-in redirect needs).
   Then the Windows App Certification Kit runs when the runner has it (report: artifact
-  `wack-report`; it does not fail the build, the Store's own checks do).
+  `wack-report`; it does not fail the build, the Store's own checks do). WACK's optional
+  "Blocked executables" test reports the exe's process-launch APIs and strings such as `cmd`;
+  that is expected for a full-trust app (it opens the browser) and is not required.
 - **Inside the package** (`src-tauri/src/msix.rs`): start on login is the StartupTask (a
   packaged app's `Run` key in the registry stays inside the package, so Windows never saw it),
   and toasts go out under the package's own AppUserModelID. Sign-in is unchanged: the package is

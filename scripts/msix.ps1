@@ -39,8 +39,15 @@ try {
   $pricfg = Join-Path ([IO.Path]::GetTempPath()) "lexpad-priconfig-$([guid]::NewGuid()).xml"
   & (Join-Path $tools 'makepri.exe') createconfig /cf $pricfg /dq en-US /pv 10.0.0 /o
   if ($LASTEXITCODE) { throw "makepri createconfig failed ($LASTEXITCODE)" }
+  # One package, one resources.pri: without this, makepri splits each scale
+  # into resources.scale-NNN.pri for resource packages a bundle would carry,
+  # and a single .msix would lose every logo but scale-100.
+  [xml]$cfg = Get-Content $pricfg
+  $cfg.SelectNodes('//packaging') | ForEach-Object { [void]$_.ParentNode.RemoveChild($_) }
+  $cfg.Save($pricfg)
   & (Join-Path $tools 'makepri.exe') new /pr $layout /cf $pricfg /mn (Join-Path $layout 'AppxManifest.xml') /of (Join-Path $layout 'resources.pri') /o
   if ($LASTEXITCODE) { throw "makepri new failed ($LASTEXITCODE)" }
+  if (Get-ChildItem $layout -Filter 'resources.*.pri') { throw 'makepri split the resources; expected one resources.pri' }
   Remove-Item $pricfg
 
   New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
