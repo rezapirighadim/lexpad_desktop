@@ -1,0 +1,2 @@
+import{r as e}from"./rolldown-runtime-hePW80VL.js";import{x as t}from"./react--nwWWpNE.js";import{n}from"./db-C2puJ4lo.js";var r=e(t(),1);function i(e,t,i){let[a,o]=(0,r.useState)(t);return(0,r.useEffect)(()=>{let t=!0,r=n(e).subscribe({next:e=>{t&&o(e)},error:e=>{t&&console.error(`live query failed`,e)}});return()=>{t=!1,r.unsubscribe()}},i),a}export{i as t};
+//# sourceMappingURL=useLiveQuery-DQZIUiw_.js.map

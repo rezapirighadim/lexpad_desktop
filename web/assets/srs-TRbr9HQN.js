@@ -1,0 +1,2 @@
+import{n as e}from"./rolldown-runtime-hePW80VL.js";import{B as t,i as n,m as r,n as i,r as a}from"./schema-DtI0FnAU.js";var o=e({SRS_REFRESH_MS:()=>s,refreshSrs:()=>c}),s=6e5;async function c(e={},o=i){let s=e.now??new Date,c=await a(`srs`,o);if(e.force!==!0&&c!==null&&s.getTime()-Date.parse(c.at)<6e5)return c;let l;try{l={at:s.toISOString(),state:await r.srs()}}catch(e){if(!t(e,`notFound`))return c;l={at:s.toISOString(),state:null}}return await n(`srs`,l,o),l}export{o as n,c as t};
+//# sourceMappingURL=srs-TRbr9HQN.js.map

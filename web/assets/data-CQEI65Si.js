@@ -1,0 +1,2 @@
+import{gt as e,w as t}from"./format-DRmQzbWM.js";import{a as n,i as r}from"./data-zy4M9UsF.js";var i={on:!1,offered:!1,freezes:0,frozenDays:new Set,current:0};async function a(a){let[o,s]=await Promise.all([r(),t()]);return n(o,`streakFreeze`)?s.freezeOn===!0?{on:!0,offered:!1,freezes:s.freezes??0,frozenDays:new Set(s.frozenDays??[]),current:e(s,a)}:{...i,offered:!0,current:e(s,a)}:i}export{a as n,i as t};
+//# sourceMappingURL=data-CQEI65Si.js.map

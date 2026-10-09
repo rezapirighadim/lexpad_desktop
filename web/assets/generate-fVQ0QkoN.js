@@ -1,0 +1,2 @@
+import{a as e}from"./schema-DtI0FnAU.js";import{l as t}from"./externalLinks-Bzj_exXz.js";import{o as n,r}from"./poll-t2_CTfcN.js";async function i(i,a,o={}){let s;try{s=t(await e.createCards(i,[a],o.hint))}catch(e){throw await n(e),e}s=await r(s,o.signal===void 0?{}:{signal:o.signal});let c=s.cards[0];if(s.status!==`done`||c===void 0)throw Error(s.error??`failed`);return c}export{i as t};
+//# sourceMappingURL=generate-fVQ0QkoN.js.map
