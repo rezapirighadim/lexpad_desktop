@@ -158,6 +158,24 @@ jobs:
           Write-Host "Lexpad is running (pid $($p.Id))"
           Stop-Process -Id $p.Id -Force
 
+      # The exe's icon layers, the shortcuts the installer made, and what
+      # Explorer draws for them at each size (scripts/icon-check.ps1).
+      - name: Icon check
+        timeout-minutes: 5
+        shell: powershell
+        run: |
+          $exe = Get-ChildItem "$env:LOCALAPPDATA\Lexpad" -Filter *.exe -Recurse |
+            Where-Object { $_.Name -notlike 'uninstall*' } | Select-Object -First 1
+          ./scripts/icon-check.ps1 -Exe $exe.FullName
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: icon-check
+          if-no-files-found: ignore
+          retention-days: 14
+          path: icon-check/
+
       # A copy signed with a throwaway test certificate, installed and
       # started from its package; start on login (the StartupTask) and the
       # sign-in's loopback redirect checked inside the package.

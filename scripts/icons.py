@@ -15,17 +15,26 @@ size is sharp.
                                       and 48 px (100% to 300% scaling); the app picks the
                                       frame for the system's small-icon size.
 
+ src-tauri/icons/icon.ico            the exe's icon, written here after `tauri icon` (which
+                                      writes every layer as PNG with zero planes): 32-bit
+                                      BMP layers at 16 to 96 px and a PNG at 256 px, planes
+                                      1, so Explorer, the desktop and Start draw it at every
+                                      size and scale (`--app-ico` alone rewrites only this).
+
   msix/Assets/                        the Microsoft Store package's logos (Start, tiles, the
                                       taskbar and the Store), at every scale Windows asks for;
                                       scripts/msix.ps1 indexes them with makepri.
 
-Run: pnpm icons   (python3 scripts/icons.py && tauri icon icons-src/app-1024.png)
+Run: pnpm icons   (python3 scripts/icons.py && tauri icon icons-src/app-1024.png
+                   && python3 scripts/icons.py --app-ico)
      python3 scripts/icons.py --preview   also writes docs/screenshots/tray-icons.png:
      the template on a light and a dark menu bar at 1x and 2x, and every tray.ico frame.
 """
-import sys
+import io
 import os
 import re
+import struct
+import sys
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -195,6 +204,62 @@ def tray_icons(mark: dict) -> None:
     frames[-1].save(out / 'tray.ico', format='ICO', sizes=[(s, s) for s in ICO_SIZES], append_images=frames[:-1])
 
 
+# The exe's icon (src-tauri/icons/icon.ico): the shell's sizes at 100% to
+# 200% scaling (small icons, Start's list, the taskbar, the desktop's
+# medium icons, Explorer's large ones) as uncompressed 32-bit BMP layers,
+# which every Windows icon path reads, and 256 px as PNG, as Windows expects.
+APP_ICO_BMP = (16, 20, 24, 32, 40, 48, 64, 72, 96)
+APP_ICO_PNG = (256,)
+
+
+def ico_bmp(img: Image.Image) -> bytes:
+    """One icon layer as a DIB: BITMAPINFOHEADER (height doubled), BGRA rows bottom up, then the AND mask."""
+    w, h = img.size
+    rgba = img.convert('RGBA')
+    header = struct.pack('<IiiHHIIiiII', 40, w, h * 2, 1, 32, 0, 0, 0, 0, 0, 0)
+    px = rgba.load()
+    xor = bytearray()
+    for y in range(h - 1, -1, -1):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            xor += bytes((b, g, r, a))
+    stride = ((w + 31) // 32) * 4
+    mask = bytearray()
+    for y in range(h - 1, -1, -1):
+        row = bytearray(stride)
+        for x in range(w):
+            if px[x, y][3] == 0:
+                row[x // 8] |= 0x80 >> (x % 8)
+        mask += row
+    return header + bytes(xor) + bytes(mask)
+
+
+def write_ico(path: Path, layers: list[tuple[int, bytes]]) -> None:
+    """An ICO from (size, layer bytes): planes 1 and 32 bits in every directory entry."""
+    out = struct.pack('<HHH', 0, 1, len(layers))
+    offset = 6 + 16 * len(layers)
+    body = b''
+    for size, data in layers:
+        side = 0 if size >= 256 else size
+        out += struct.pack('<BBBBHHII', side, side, 0, 0, 1, 32, len(data), offset)
+        offset += len(data)
+        body += data
+    path.write_bytes(out + body)
+
+
+def app_ico() -> None:
+    """src-tauri/icons/icon.ico from icons-src/app-1024.png, the picture `tauri icon` used."""
+    src = Image.open(ROOT / 'icons-src' / 'app-1024.png').convert('RGBA')
+    layers = []
+    for size in APP_ICO_BMP:
+        layers.append((size, ico_bmp(src.resize((size, size), Image.LANCZOS))))
+    for size in APP_ICO_PNG:
+        buf = io.BytesIO()
+        src.resize((size, size), Image.LANCZOS).save(buf, format='PNG', optimize=True)
+        layers.append((size, buf.getvalue()))
+    write_ico(ROOT / 'src-tauri' / 'icons' / 'icon.ico', layers)
+
+
 # The MSIX logos: name -> (width, height) at scale-100, and the mark's share
 # of the shorter side. Start's list and the Store show the mark edge to edge;
 # tiles keep air around it, as Windows' own tiles do.
@@ -273,6 +338,9 @@ def preview() -> None:
 
 
 if __name__ == '__main__':
+    if '--app-ico' in sys.argv:
+        app_ico()
+        sys.exit(0)
     geometry = load_mark(MARK)
     app_icon(geometry)
     tray_icons(geometry)

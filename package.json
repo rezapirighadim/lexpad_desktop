@@ -15,7 +15,7 @@
     "tauri": "tauri",
     "app:dev": "tauri dev",
     "app:build": "tauri build",
-    "icons": "python3 scripts/icons.py && tauri icon icons-src/app-1024.png",
+    "icons": "python3 scripts/icons.py && tauri icon icons-src/app-1024.png && python3 scripts/icons.py --app-ico",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "format": "prettier --write .",
