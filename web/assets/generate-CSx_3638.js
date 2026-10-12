@@ -1,0 +1,2 @@
+import{t as e}from"./endpoints-CbabS1iI.js";import{u as t}from"./externalLinks-C8sBt6d6.js";import{o as n,r}from"./poll-CCZwzAvM.js";async function i(i,a,o={}){let s;try{s=t(await e.createCards(i,[a],o.hint))}catch(e){throw await n(e),e}s=await r(s,o.signal===void 0?{}:{signal:o.signal});let c=s.cards[0];if(s.status!==`done`||c===void 0)throw Error(s.error??`failed`);return c}export{i as t};
+//# sourceMappingURL=generate-CSx_3638.js.map
