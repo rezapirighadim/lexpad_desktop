@@ -8,6 +8,7 @@
  * Everything is drawn with the DOM and `textContent`; no HTML from the API or
  * the selection is ever parsed. Enter adds (or looks up), Escape closes.
  */
+import { PERMISSION_MISSING, PERMISSION_POLL_MS, PERMISSION_STALE } from '../lib/accessibility.js';
 import type { Backend } from '../lib/backend.js';
 import { failureOf } from '../lib/backend.js';
 import { compose, pick, plan, wordsOf } from '../lib/compose.js';
@@ -57,6 +58,8 @@ export class Popup {
   private closeTimer: number | undefined;
   /** Bumped on every render, so an answer for an older card is dropped. */
   private generation = 0;
+  /** Stops asking about Accessibility again (the explanation is gone). */
+  private stopWatching: (() => void) | undefined;
 
   constructor(
     private readonly root: HTMLElement,
@@ -100,6 +103,7 @@ export class Popup {
 
   async close(): Promise<void> {
     window.clearTimeout(this.closeTimer);
+    this.unwatch();
     this.generation += 1;
     this.enter = undefined;
     await this.backend.hide();
@@ -107,6 +111,7 @@ export class Popup {
 
   /** Clears the card and draws its header: the mark, a title, a line under it, the close button. */
   private frame(title: string, meta: string): { word: HTMLElement; meta: HTMLElement } {
+    this.unwatch();
     this.generation += 1;
     this.enter = undefined;
     this.root.replaceChildren();
@@ -205,17 +210,50 @@ export class Popup {
   /** macOS without Accessibility: why, and the button to the right Settings pane. */
   private permissionBox(): HTMLElement {
     const box = el('div', 'permission');
-    box.append(
-      el(
-        'p',
-        '',
-        this.state?.permissionStale === true
-          ? 'Lexpad was updated, and macOS no longer applies the permission it had. In System Settings, Privacy & Security, Accessibility, turn Lexpad off and on again (or remove it with − and add it back).'
-          : 'To add the word you select in any app, allow Lexpad under Privacy & Security, Accessibility. Lexpad reads only the selected text, and only when you press the shortcut.',
-      ),
-    );
+    box.append(el('p', '', this.state?.permissionStale === true ? PERMISSION_STALE : PERMISSION_MISSING));
     box.append(button('btn', 'Open System Settings', () => void this.backend.openAccessibilitySettings()));
+    this.watchPermission(box);
     return box;
+  }
+
+  /**
+   * While the box is shown: ask again every few seconds and when the card
+   * gets the focus back (from System Settings), and take the box away as
+   * soon as the permission is there.
+   */
+  private watchPermission(box: HTMLElement): void {
+    this.unwatch();
+    let busy = false;
+    const check = async (): Promise<void> => {
+      if (busy) return;
+      busy = true;
+      try {
+        const now = await this.backend.accessibility(false);
+        if (now !== 'missing' && this.stopWatching === stop) {
+          stop();
+          if (this.state !== undefined)
+            this.state = { ...this.state, permission: now, permissionStale: false };
+          box.remove();
+        }
+      } catch {
+        // Asked again on the next tick.
+      } finally {
+        busy = false;
+      }
+    };
+    const onFocus = (): void => void check();
+    const timer = window.setInterval(onFocus, PERMISSION_POLL_MS);
+    window.addEventListener('focus', onFocus);
+    const stop = (): void => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+      if (this.stopWatching === stop) this.stopWatching = undefined;
+    };
+    this.stopWatching = stop;
+  }
+
+  private unwatch(): void {
+    this.stopWatching?.();
   }
 
   /* ------------------------------------------- pick from a sentence */

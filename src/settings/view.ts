@@ -4,6 +4,7 @@
  * the version. Copy is short and says nothing about counts or limits.
  */
 import type { SettingsBackend } from '../lib/backend.js';
+import { PERMISSION_POLL_MS, PERMISSION_STALE } from '../lib/accessibility.js';
 import { failureOf } from '../lib/backend.js';
 import { acceleratorOf, isMac, prettyShortcut } from '../lib/shortcut.js';
 import type { AppInfo, Settings, State } from '../lib/types.js';
@@ -34,6 +35,8 @@ function section(title: string): HTMLElement {
 
 export class SettingsView {
   private recording: ((event: KeyboardEvent) => void) | undefined;
+  /** Asks again whether Accessibility is allowed while it is not (see `reading`). */
+  private permissionTimer: number | undefined;
 
   constructor(
     private readonly root: HTMLElement,
@@ -42,6 +45,8 @@ export class SettingsView {
   ) {}
 
   async render(): Promise<void> {
+    window.clearInterval(this.permissionTimer);
+    this.permissionTimer = undefined;
     let state: State;
     let settings: Settings;
     let info: AppInfo;
@@ -221,19 +226,32 @@ export class SettingsView {
       }),
     );
     s.append(row);
-    if (!allowed && state.permissionStale === true)
+    if (!allowed) {
+      // Draw again as soon as it is allowed, without a restart (the window's
+      // focus also draws again, coming back from System Settings).
+      this.permissionTimer = window.setInterval(() => {
+        this.backend.accessibility(false).then(
+          (now) => {
+            if (now !== 'missing') void this.render();
+          },
+          () => undefined,
+        );
+      }, PERMISSION_POLL_MS);
       s.append(
         el(
           'p',
-          'note bad',
-          'Lexpad was updated, and macOS no longer applies the permission it had. In System Settings, Privacy & Security, Accessibility, turn Lexpad off and on again (or remove it with − and add it back).',
+          state.permissionStale === true ? 'note bad' : 'note',
+          state.permissionStale === true
+            ? PERMISSION_STALE
+            : 'If Lexpad is already on, remove it with − and add it again, then reopen Lexpad.',
         ),
       );
+    }
     s.append(
       el(
         'p',
         'dim small',
-        'After an update, macOS may ask again: then turn Lexpad off and on in Accessibility. macOS asks before an app may read what you select in other apps. Lexpad reads only the selected text (and the sentence around it, to keep as an example), and only when you press the shortcut. If an app does not share its selection, Lexpad copies it and then puts your clipboard back exactly as it was. Without the permission you can still type a word.',
+        'macOS asks before an app may read what you select in other apps. Lexpad reads only the selected text (and the sentence around it, to keep as an example), and only when you press the shortcut. If an app does not share its selection, Lexpad copies it and then puts your clipboard back exactly as it was. Without the permission you can still type a word.',
       ),
     );
     return s;

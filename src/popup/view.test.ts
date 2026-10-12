@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Backend } from '../lib/backend.js';
 import type { Capture, Card, Notebook, State } from '../lib/types.js';
+import { PERMISSION_POLL_MS } from '../lib/accessibility.js';
 import { Popup } from './view.js';
 
 const en: Notebook = { id: 'n-en', title: 'English', targetLang: 'en', meaningLang: 'fa', isDefault: true };
@@ -157,7 +158,44 @@ describe('Popup', () => {
       permissionStale: true,
     });
     await new Popup(root, backend).open();
-    expect(root.querySelector('.permission')?.textContent).toContain('turn Lexpad off and on again');
+    expect(root.querySelector('.permission')?.textContent).toContain(
+      'remove it with − and add it again, then reopen Lexpad',
+    );
+  });
+
+  it('takes the permission box away once Accessibility is allowed, on focus or by itself', async () => {
+    let now: 'missing' | 'granted' = 'missing';
+    const backend = fakeBackend(
+      { capture: capture({ permission: 'missing' }), permission: 'missing' },
+      { accessibility: vi.fn(async () => now) },
+    );
+    await new Popup(root, backend).open();
+    expect(root.querySelector('.permission')?.textContent).toContain(
+      'If Lexpad is already on, remove it with − and add it again, then reopen Lexpad',
+    );
+    window.dispatchEvent(new Event('focus'));
+    await flush();
+    expect(root.querySelector('.permission')).not.toBeNull();
+    expect(backend.accessibility).toHaveBeenCalledWith(false);
+
+    now = 'granted';
+    window.dispatchEvent(new Event('focus'));
+    await flush();
+    expect(root.querySelector('.permission')).toBeNull();
+    expect(root.querySelector('input.typed')).not.toBeNull();
+
+    // Without the focus: the next tick finds it.
+    now = 'missing';
+    vi.useFakeTimers();
+    try {
+      await new Popup(root, backend).open();
+      expect(root.querySelector('.permission')).not.toBeNull();
+      now = 'granted';
+      await vi.advanceTimersByTimeAsync(PERMISSION_POLL_MS);
+      expect(root.querySelector('.permission')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('offers the type-a-word box, and explains the permission it lacks', async () => {

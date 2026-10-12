@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SettingsBackend } from '../lib/backend.js';
 import type { State } from '../lib/types.js';
+import { PERMISSION_POLL_MS } from '../lib/accessibility.js';
 import { SettingsView } from './view.js';
 
 function backend(state: Partial<State>, over: Partial<SettingsBackend> = {}): SettingsBackend {
@@ -77,6 +78,29 @@ describe('Settings', () => {
   it('tells an update that lost Accessibility from a refusal', async () => {
     await new SettingsView(root, backend({ permissionStale: true }), true).render();
     expect(root.textContent).toContain('macOS no longer applies the permission it had');
+    expect(root.textContent).toContain('remove it with − and add it again, then reopen Lexpad');
+  });
+
+  it('draws again by itself once Accessibility is allowed', async () => {
+    let now: 'missing' | 'granted' = 'missing';
+    const b = backend({});
+    b.state = vi.fn(async () => ({ ...(await backend({}).state()), permission: now }));
+    b.accessibility = vi.fn(async () => now);
+    vi.useFakeTimers();
+    try {
+      await new SettingsView(root, b, true).render();
+      expect(root.textContent).toContain('Accessibility is not allowed yet.');
+      expect(root.textContent).toContain('If Lexpad is already on, remove it with − and add it again');
+      now = 'granted';
+      await vi.advanceTimersByTimeAsync(PERMISSION_POLL_MS);
+      expect(root.textContent).toContain('Accessibility is allowed.');
+      const asked = vi.mocked(b.accessibility).mock.calls.length;
+      await vi.advanceTimersByTimeAsync(PERMISSION_POLL_MS * 3);
+      // Allowed: nothing asks any more.
+      expect(vi.mocked(b.accessibility).mock.calls.length).toBe(asked);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('asks before signing out', async () => {
