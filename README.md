@@ -1,5 +1,22 @@
 # Lexpad for macOS and Windows
 
+[Lexpad](https://lexpad.app) is a personal vocabulary notebook with spaced repetition. You write
+down the words and phrases you meet, in any pair of 81 languages; AI can complete each one into a
+full card (meanings, examples, pronunciation, level), and short daily sessions on a five-box
+Leitner schedule keep them learned. Lexpad never chooses words for you: it has no courses or
+ready-made word lists. It runs on the web ([app.lexpad.app](https://app.lexpad.app)), on Android,
+in Chrome and Firefox, in ChatGPT and Claude, and on your computer with this app.
+
+**Download (beta):** [Lexpad for Mac](https://lexpad.app/download/mac) (macOS 11 or later, Apple
+silicon and Intel) · [Lexpad for Windows](https://lexpad.app/download/windows) (Windows 10 or 11,
+64-bit) · [every platform](https://lexpad.app/download). The download pages give the version, the
+SHA-256 checksums and honest install steps. More: [what the desktop app does](https://lexpad.app/features/desktop),
+[all features](https://lexpad.app/features).
+
+| The card, over any app                                          | The whole app in its own window                                  |
+| --------------------------------------------------------------- | ---------------------------------------------------------------- |
+| ![The add-a-word card for "nimble"](docs/e2e/04-popup-card.png) | ![Today in Lexpad's window](docs/e2e/main-02-today-1200x800.png) |
+
 Add the words you meet in **any** app to your [Lexpad](https://lexpad.app) notebook.
 
 Select a word in a document, an e-mail, a PDF or a chat, press **⌘⇧L** on a Mac or
