@@ -82,7 +82,7 @@ sell or publish changed versions. The Lexpad name, logo and icons are not licens
 **0.3.5** (13 October 2026)
 
 - The window carries the web app of 13 October: invite friends from Settings → Invite friends
-  (you both get Pro days when they start learning), a steadier sign-in when the app wakes up
+  (you both get Pro days when they start learning), a steadier sign-in when the app starts
   (requests wait for the session being restored), and imports from Anki and Quizlet whose
   fields contain commas now come in as one card each.
 - macOS: signed with the same certificate as 0.3.3 and 0.3.4, so the Accessibility permission
