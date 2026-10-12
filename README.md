@@ -62,6 +62,14 @@ sell or publish changed versions. The Lexpad name, logo and icons are not licens
 
 ## Changelog
 
+**0.3.4** (12 October 2026)
+
+- The window carries the web app of 12 October: in practice, after a wrong answer the card now
+  waits with a Next button instead of moving on by itself (from tester feedback). Choose the
+  behaviour in Settings → Practice → After an answer.
+- macOS: the first update signed with the same certificate as 0.3.3, so the Accessibility
+  permission given to 0.3.3 carries over; nothing to do after installing.
+
 **0.3.3** (12 October 2026)
 
 - macOS: Lexpad is now signed with the same certificate in every release, so the Accessibility
