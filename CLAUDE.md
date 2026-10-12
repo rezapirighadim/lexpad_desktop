@@ -66,7 +66,9 @@ src-tauri/src/e2e.rs             the local end-to-end test (ignored by default),
 src-tauri/src/e2e_main.rs        the window's end-to-end test (ignored), with scripts/e2e-main.{sh,mjs}
 docs/e2e/                        the last end-to-end run: what ran, screenshots, evidence
 docs/screenshots/                the panel in light and dark, and the tray icons (scripts/panel-screenshots.mjs, icons.py --preview)
-scripts/icons.py                 every icon, drawn from landing/site/assets/favicon-v2.svg (`pnpm icons`)
+scripts/icons.py                 every icon, drawn from landing/site/assets/favicon-v2.svg (`pnpm icons`);
+                                 it rewrites icon.ico after `tauri icon` (BMP layers 16-96 px, PNG 256, planes 1)
+scripts/icon-check.ps1           CI: the exe's icon layers, the shortcuts, and what Explorer draws at each size
 docs/windows-manual-test.md      the Windows checklist, since Windows cannot run here
 ```
 
@@ -110,10 +112,16 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
   the inbox (`GET /notifications`) at start and every 30 minutes and pops up only what `pick`
   lets through (see its doc: unread, fresh, not come-back, product news only when allowed, not
   already popped elsewhere when the API says so). A click opens the window.
-- **Accessibility after an update**: an unsigned build gets a new code signature each release,
-  and macOS stops applying the old grant while the switch still looks on. The core remembers
-  the version that last had the permission (`accessibility_granted_in`) and says so plainly
-  (`permissionStale`) instead of "not allowed yet".
+- **Accessibility after an update**: up to 0.3.2 the Mac build was ad-hoc signed, a new code
+  identity each release, and macOS stopped applying the old grant while the switch still looked
+  on. From 0.3.3 `scripts/release-mac.sh` signs with one self-signed certificate, "Lexpad Local
+  Signing" (README, "macOS signing"), so the designated requirement is stable and the grant
+  survives updates; users updating from ≤0.3.2 remove Lexpad with − and add it again once. Never
+  make a new certificate (every user would have to re-add Lexpad) and never commit or export its
+  key. The core still remembers the version that last had the permission
+  (`accessibility_granted_in`) and says so plainly (`permissionStale`), and the card and the
+  Settings window ask again every few seconds and on focus while they explain the permission
+  (`src/lib/accessibility.ts`), so the hint goes away once it is allowed.
 
 ## Hard rules
 
@@ -188,8 +196,9 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
   `lexpad-desktop --smoke-test`; it prints every rectangle and exits 1 if one leaves its work area.
   It does not touch the credential store, the shortcut or the login items, and runs beside an
   installed copy.
-- **macOS release**: `scripts/release-mac.sh` on this Mac (universal `.dmg`, production, checked,
-  smoke-tested, SHA-256 printed). The whole release flow (tag, Windows artifact from CI, the Mac
+- **macOS release**: `scripts/release-mac.sh` on this Mac (universal `.dmg`, production, signed
+  with "Lexpad Local Signing" and checked with `codesign`, smoke-tested, SHA-256 printed; the Mac
+  must be awake and unlocked). The whole release flow (tag, Windows artifact from CI, the Mac
   `.dmg`, the landing's downloads) is in README, "Release steps".
 - `pnpm app:dev` runs it against production; for a local stack build with
   `LEXPAD_API_ORIGIN=http://localhost:8091 LEXPAD_APP_ORIGIN=http://localhost:4173 pnpm tauri build --bundles app`
@@ -207,8 +216,8 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
   submission with that file (README, "Microsoft Store"). Anything that writes outside the app's
   own folders or the credential store must be checked inside the package: a packaged app's
   registry writes stay in the package (that is why start on login is `msix.rs` there).
-- Releases: see README. Unsigned until the Apple Team ID and a Windows certificate exist; the
-  TODOs are marked in `.github/workflows/build.yml` (Windows) and `scripts/release-mac.sh` (macOS).
+- Releases: see README. macOS is signed with the local certificate and not notarized until the
+  Apple Team ID exists; Windows is unsigned until a certificate exists; the TODOs are marked in `.github/workflows/build.yml` (Windows) and `scripts/release-mac.sh` (macOS).
 - Bump `version` in `package.json` only; `tauri.conf.json` reads it. Keep `Cargo.toml` in step.
 - **GitHub Release** (every release, owner 2026-10-09): after the Windows CI run and the Mac
   `.dmg`, `gh release create v<version> --verify-tag --latest` titled "Lexpad for Mac and Windows

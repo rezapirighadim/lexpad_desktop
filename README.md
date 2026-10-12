@@ -38,7 +38,11 @@ On macOS there is also **Services → Add to Lexpad** when you right-click a sel
 
 On macOS, reading another app's selection needs the **Accessibility** permission (System
 Settings → Privacy & Security → Accessibility). Lexpad explains this and opens the right pane;
-without it you can still type a word. Where an app does not share its selection, Lexpad copies
+without it you can still type a word. The card and Settings notice within a few seconds when
+you allow it (no restart needed). From 0.3.3 every Mac release is signed with the same
+certificate, so macOS keeps the permission across updates; if you update from 0.3.2 or older,
+remove Lexpad from the Accessibility list with − and add it again once, then reopen Lexpad.
+Where an app does not share its selection, Lexpad copies
 it (⌘C / Ctrl+C) and then puts your clipboard back exactly as it was.
 
 ## Licence and trust
@@ -57,6 +61,18 @@ sell or publish changed versions. The Lexpad name, logo and icons are not licens
 [LICENSE](LICENSE). To report a security problem privately, see [SECURITY.md](SECURITY.md).
 
 ## Changelog
+
+**0.3.3** (12 October 2026)
+
+- macOS: Lexpad is now signed with the same certificate in every release, so the Accessibility
+  permission survives updates. Updating from 0.3.2 or older: in System Settings, Privacy &
+  Security, Accessibility, remove Lexpad with − and add it again, then reopen Lexpad (once).
+  The card and Settings now see the permission within a few seconds, without a restart.
+- Windows: the desktop shortcut shows the Lexpad icon (the exe's icon now has every size
+  Windows draws, in the formats it reads everywhere).
+- The window carries the web app of 12 October: Send feedback in Settings, "Did you mean…" when
+  you add a misspelled word, Persian notebooks on the same plans as every other language,
+  smoother notebook and Today screens, the Games page, celebrations and the introduction.
 
 **0.3.2** (9 October 2026)
 
@@ -163,7 +179,8 @@ Conventions and rules are in `CLAUDE.md`.
 
 ## Release
 
-`pnpm tauri build` makes, unsigned for now:
+`pnpm tauri build` makes (on the Mac `scripts/release-mac.sh` signs with the local certificate,
+see "macOS signing"; Windows is unsigned for now):
 
 | Platform | Output                                                                                 |
 | -------- | -------------------------------------------------------------------------------------- |
@@ -212,31 +229,71 @@ warning.
 - Needs Windows 10 version 1809 (build 17763) or later, x64, and the WebView2 Runtime (part of
   Windows 11 and of current Windows 10; the Store package cannot install it).
 
+### macOS signing
+
+There is no Apple Developer account yet, so no Developer ID and no notarization. An ad-hoc
+signature (what an unsigned build gets) is a hash of the build itself: every release had a new
+code identity, and macOS kept the Accessibility grant for the old one while the switch still
+looked on. Since 0.3.3 `scripts/release-mac.sh` signs `Lexpad.app` (deep, hardened runtime,
+identifier `app.lexpad.desktop`) with one self-signed certificate, **Lexpad Local Signing**, made
+once on the release Mac. The designated requirement is then the same in every release
+(`identifier "app.lexpad.desktop" and certificate leaf = H"<the certificate's hash>"`), so the
+grant survives updates. Gatekeeper still warns on first open (not notarized), as before. Users
+updating from 0.3.2 or older remove Lexpad from the Accessibility list and add it again once.
+
+The certificate's private key never leaves the Mac and is never committed or exported: it is
+non-extractable, in its own keychain (`~/Library/Keychains/lexpad-signing.keychain-db`, in the
+user's keychain search list), whose random password is kept in the login keychain as the
+generic password "Lexpad Local Signing keychain"; the script unlocks it with that, so `codesign`
+never asks. **Keep this Mac's keychain** (or a backup of it): a new certificate means a new
+identity, and every user would have to re-add Lexpad under Accessibility once more. Made once
+(12 October 2026) like this (CN `Lexpad Local Signing`, key usage digitalSignature, extended key
+usage codeSigning, ten years):
+
+```sh
+kc=~/Library/Keychains/lexpad-signing.keychain-db; kpw=$(openssl rand -hex 24)
+security add-generic-password -a "$USER" -s "Lexpad Local Signing keychain" -w "$kpw" ~/Library/Keychains/login.keychain-db
+security create-keychain -p "$kpw" "$kc" && security set-keychain-settings "$kc"
+openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem -days 3650 -config cert.cnf
+pw=$(openssl rand -hex 16)   # only for the moment of the import
+openssl pkcs12 -export -legacy -inkey key.pem -in cert.pem -name "Lexpad Local Signing" -out id.p12 -passout pass:"$pw"
+security import id.p12 -k "$kc" -P "$pw" -T /usr/bin/codesign -x && rm -P key.pem id.p12
+security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$kpw" "$kc"
+security list-keychains -d user -s ~/Library/Keychains/login.keychain-db "$kc"   # plus any others already listed
+```
+
+The script then checks the `.dmg`'s app: `codesign --verify --deep --strict`, the identifier,
+the authority, hardened runtime and the designated requirement. When a Developer ID exists,
+set `APPLE_SIGNING_IDENTITY` to it (the script uses it instead) and add notarization; users then
+re-add Lexpad under Accessibility one last time.
+
 ### Release steps
 
 1. Bump `version` in `package.json` and `src-tauri/Cargo.toml`, commit, and tag it:
    `git tag v<version> && git push origin main v<version>`.
 2. **Windows**: the tag runs CI's `release-windows` job (clippy and tests on Windows, the NSIS
    `.exe` and `.msi`, the Store's `.msix`, a silent install and start, the MSIX install and
-   checks, WACK, the placement smoke test). Download the `lexpad-desktop-Windows` and
+   checks, WACK, the icon check, the placement smoke test). Download the `lexpad-desktop-Windows` and
    `lexpad-desktop-msix` artifacts from the run (`gh run download <run id>`); they are kept 14
    days. The `.msix` goes to the Store (above), not to the downloads page.
 3. **macOS**: on the Mac, from the tagged commit, `scripts/release-mac.sh`. It builds the universal
    `.app` and `.dmg` against production (it refuses `LEXPAD_API_ORIGIN`/`LEXPAD_APP_ORIGIN` and a
    dirty tree), checks the `.dmg` holds `Lexpad.app` with both architectures and the right version,
-   runs the placement smoke test, and prints the `.dmg`'s SHA-256.
+   that the app is signed with the stable identity ("macOS signing"), runs the placement smoke
+   test, and prints the `.dmg`'s SHA-256. The Mac must be awake and unlocked (the smoke test
+   opens windows).
 4. Put both on the landing's downloads page (`lexpad_landing`) with their SHA-256s, and the
    release in the changelog.
 
 Still to do before a public release (marked `TODO(signing)` in the workflow for Windows and in
 `scripts/release-mac.sh` for macOS):
 
-- **macOS signing and notarization.** Needs the Apple Developer Team ID and a "Developer ID
-  Application" certificate. Then set `bundle.macOS.signingIdentity` (or `APPLE_SIGNING_IDENTITY`)
-  and the notarization secrets (`APPLE_API_KEY`/`APPLE_API_ISSUER`, or `APPLE_ID`/`APPLE_PASSWORD`/
-  `APPLE_TEAM_ID`); `tauri build` signs and notarizes when they are present. Until then a
-  downloaded build must be opened with right-click → Open, and macOS asks again for
-  Accessibility after every rebuild because the unsigned app's identity changes.
+- **macOS Developer ID and notarization.** Needs the Apple Developer Team ID and a "Developer ID
+  Application" certificate. Then set `APPLE_SIGNING_IDENTITY` and the notarization secrets
+  (`APPLE_API_KEY`/`APPLE_API_ISSUER`, or `APPLE_ID`/`APPLE_PASSWORD`/`APPLE_TEAM_ID`);
+  `tauri build` signs and notarizes when they are present. Until then the release is signed with
+  the local certificate ("macOS signing"), and a downloaded build must be opened with right-click →
+  Open (or Open Anyway in Privacy & Security).
 - **Windows signing.** An Authenticode certificate or Azure Trusted Signing
   (`bundle.windows.signCommand`), or SmartScreen warns on install.
 - **Updater.** Off in 0.1 (no `tauri-plugin-updater`). Turn it on with a signing key pair and an
