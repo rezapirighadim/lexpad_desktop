@@ -45,6 +45,7 @@ function fakeBackend(state: Partial<State>, over: Partial<Backend> = {}): Backen
     accessibility: vi.fn(async () => 'granted' as const),
     openAccessibilitySettings: vi.fn(async () => undefined),
     openSettings: vi.fn(async () => undefined),
+    openReport: vi.fn(async () => undefined),
     ...over,
   };
 }
@@ -104,6 +105,42 @@ describe('Popup', () => {
 
     await vi.advanceTimersByTimeAsync(1700);
     expect(backend.calls).toContain('hide');
+  });
+
+  it('offers Report on the AI-written meaning, handing its text to the core', async () => {
+    const backend = fakeBackend({ capture: capture({ text: 'candid' }) });
+    await new Popup(root, backend).open();
+    await flush();
+    const report = root.querySelector<HTMLButtonElement>('button.report');
+    expect(report?.getAttribute('aria-label')).toBe('Report this AI-written meaning');
+    expect(report?.textContent).toBe('Report');
+    report?.click();
+    const fragment = vi.mocked(backend.openReport).mock.calls[0]![0];
+    expect(/^[A-Za-z0-9_-]+$/.test(fragment)).toBe(true);
+    const base64 = fragment.replace(/-/g, '+').replace(/_/g, '/');
+    const bytes = Uint8Array.from(atob(base64 + '='.repeat((4 - (base64.length % 4)) % 4)), (c) =>
+      c.charCodeAt(0),
+    );
+    const payload = JSON.parse(new TextDecoder().decode(bytes)) as {
+      surface: string;
+      snapshot: string;
+      headword: string;
+    };
+    expect(payload.surface).toBe('card');
+    expect(payload.headword).toBe('candid');
+    expect(payload.snapshot).toContain('truthful and straightforward');
+    // Enter on Report reports; it never adds the word by mistake.
+    expect(backend.addWord).not.toHaveBeenCalled();
+  });
+
+  it('offers no Report when nothing AI-written came back', async () => {
+    const backend = fakeBackend(
+      { capture: capture({ text: 'candid' }) },
+      { lookup: vi.fn(async () => Promise.reject('ai_unavailable')) },
+    );
+    await new Popup(root, backend).open();
+    await flush();
+    expect(root.querySelector('button.report')).toBeNull();
   });
 
   it('says a word is already in the notebook', async () => {

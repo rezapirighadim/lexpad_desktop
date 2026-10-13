@@ -207,6 +207,27 @@ html {
   display: block;
   margin-bottom: 2px;
 }
+/* Report on the AI-written meaning: quiet, at the end of the senses. */
+.report {
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  gap: 4px;
+  margin: 2px 0 0;
+  margin-inline-start: auto;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--dim);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.report:hover {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
 .note {
   margin-top: 8px;
   font-size: 12.5px;

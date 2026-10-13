@@ -157,6 +157,29 @@ pub fn open_web(app: &AppHandle, word_id: Option<&str>) {
     open_in_browser(app, word_id);
 }
 
+/// Opens the web app's report page (`/report-ai`) with what the popup card
+/// showed in the fragment, where the learner reports AI-written content (app
+/// store rules for generative AI). Lexpad's own window or the browser, as
+/// `open_web` decides. The fragment is checked by the command; the address
+/// is built here.
+pub fn open_report(app: &AppHandle, fragment: &str) {
+    let path = format!("/report-ai#r={fragment}");
+    let in_browser = app
+        .try_state::<AppState>()
+        .and_then(|s| s.settings.lock().ok().map(|s| s.open_in_browser))
+        .unwrap_or(false);
+    if !in_browser {
+        main_window::open(app, Some(path));
+        return;
+    }
+    if let Err(e) = app
+        .opener()
+        .open_url(format!("{}{path}", config::APP_ORIGIN), None::<&str>)
+    {
+        log::warn!("could not open the report page: {e}");
+    }
+}
+
 /// The web app in the system browser: its home, or a word's page.
 pub fn open_in_browser(app: &AppHandle, word_id: Option<&str>) {
     let url = match word_id {
@@ -315,6 +338,7 @@ pub fn run() {
             commands::hide_panel,
             commands::fit_panel,
             commands::open_web,
+            commands::open_report,
             commands::quit,
             commands::api_fetch,
             commands::main_signed_in,

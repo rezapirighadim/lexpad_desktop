@@ -445,6 +445,37 @@ pub fn open_web(app: AppHandle, word_id: Option<String>) -> Result<(), String> {
     Ok(())
 }
 
+/// The longest report payload the popup may hand over: the card's text,
+/// capped there, as base64url. Anything longer is not from the card.
+const MAX_REPORT_FRAGMENT: usize = 8192;
+
+/// Whether a report payload is what the popup builds: base64url and nothing
+/// else, so it cannot carry a path, a query or another fragment.
+fn is_report_fragment(fragment: &str) -> bool {
+    !fragment.is_empty()
+        && fragment.len() <= MAX_REPORT_FRAGMENT
+        && fragment
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+/// Report on the card's AI-written meaning: puts the card away and opens the
+/// web app's report page with what it showed.
+#[tauri::command]
+pub fn open_report(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    fragment: String,
+) -> Result<(), String> {
+    if !is_report_fragment(&fragment) {
+        return Err(err(Failure::Error));
+    }
+    *state.capture.lock().map_err(|_| "lock")? = None;
+    popup::hide(&app);
+    crate::open_report(&app, &fragment);
+    Ok(())
+}
+
 #[tauri::command]
 pub fn quit(app: AppHandle) {
     app.exit(0);
@@ -738,6 +769,21 @@ mod tests {
         ] {
             assert!(super::app_path(bad).is_none(), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn only_base64url_reaches_the_report_page() {
+        assert!(super::is_report_fragment("eyJzdXJmYWNlIjoiY2FyZCJ9"));
+        assert!(super::is_report_fragment("abc-_09XYZ"));
+        for bad in ["", "a/b", "a#b", "a?b", "a b", "a=b", "a\nb", "../x", "%2F"] {
+            assert!(!super::is_report_fragment(bad), "{bad:?}");
+        }
+        assert!(!super::is_report_fragment(
+            &"a".repeat(super::MAX_REPORT_FRAGMENT + 1)
+        ));
+        assert!(super::is_report_fragment(
+            &"a".repeat(super::MAX_REPORT_FRAGMENT)
+        ));
     }
 
     #[test]

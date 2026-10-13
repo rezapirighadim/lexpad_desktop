@@ -25,6 +25,7 @@ fn main() {
             "hide_panel",
             "fit_panel",
             "open_web",
+            "open_report",
             "quit",
             "api_fetch",
             "main_signed_in",

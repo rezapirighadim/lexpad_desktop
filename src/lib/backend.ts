@@ -36,6 +36,8 @@ export interface Backend {
   accessibility(request: boolean): Promise<Permission>;
   openAccessibilitySettings(): Promise<void>;
   openSettings(): Promise<void>;
+  /** Puts the card away and opens the web app's report page with this payload (base64url). */
+  openReport(fragment: string): Promise<void>;
 }
 
 export interface SettingsBackend {
@@ -86,6 +88,7 @@ export const tauriBackend: Backend & SettingsBackend & PanelBackend = {
   accessibility: (request) => invoke<Permission>('accessibility', { request }),
   openAccessibilitySettings: () => invoke<void>('open_accessibility_settings'),
   openSettings: () => invoke<void>('open_settings'),
+  openReport: (fragment) => invoke<void>('open_report', { fragment }),
   getSettings: () => invoke<Settings>('get_settings'),
   setShortcut: (shortcut) => invoke<string>('set_shortcut', { shortcut }),
   setStartOnLogin: (on) => invoke<boolean>('set_start_on_login', { on }),

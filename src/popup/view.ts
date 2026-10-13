@@ -12,6 +12,7 @@ import { PERMISSION_MISSING, PERMISSION_POLL_MS, PERMISSION_STALE } from '../lib
 import type { Backend } from '../lib/backend.js';
 import { failureOf } from '../lib/backend.js';
 import { compose, pick, plan, wordsOf } from '../lib/compose.js';
+import { reportFragment } from '../lib/report.js';
 import { notebookFor } from '../lib/script.js';
 import { asHeadword, contextHint, sentenceAround } from '../lib/text.js';
 import type { Card, Notebook, Source, State } from '../lib/types.js';
@@ -24,6 +25,8 @@ const MOVED_MS = 2400;
 
 const MARK =
   '<svg width="14" height="14" viewBox="0 0 32 32" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"><rect x="10" y="8" width="12" height="16" rx="2"/><path d="M14 8v16M17 12h2M17 15h2"/></svg>';
+const FLAG =
+  '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 21V4"/><path d="M5.5 4.5h12.2l-2.6 4.25 2.6 4.25H5.5"/></svg>';
 const TICK =
   '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>';
 
@@ -394,6 +397,15 @@ export class Popup {
           if (example.translation) wrap.append(bidi(el('div', 'example-tr'), example.translation));
         }
         body.append(wrap);
+      }
+      // The meaning is AI-written, so it can be reported (store rules for
+      // generative AI). The form lives in the web app; the core opens it.
+      if (senses.length > 0) {
+        const report = button('report', '', () => void this.backend.openReport(reportFragment(headword, c)));
+        report.setAttribute('aria-label', 'Report this AI-written meaning');
+        report.innerHTML = FLAG;
+        report.append(document.createTextNode('Report'));
+        body.append(report);
       }
     };
 

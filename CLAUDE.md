@@ -152,6 +152,11 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
   characters and keeps it short. The sentence is kept as the first example only when the
   accessibility interface gave the text around it; the clipboard path gives no sentence, and
   nothing is ever made up to fill one.
+- **The card's AI-written meaning can be reported** (store rules for generative AI, Microsoft
+  Store 11.16, 2026-10-13). Once meanings arrive the card shows a quiet Report; it calls
+  `open_report` with base64url of the card's text (`src/lib/report.ts`, the extension's same
+  payload), and the core checks it is base64url only and opens the web app's
+  `/report-ai#r=…` in Lexpad's window or the browser (as `open_web` decides), where the form is.
 - **The card is the extension's card.** Same copy, same states (looking up, meanings, "already in
   your notebook", offline, "not available right now" with no reason or number), same routing by
   script (`script.ts`), same `compose`. A change to the card's behaviour lands in both repos.
