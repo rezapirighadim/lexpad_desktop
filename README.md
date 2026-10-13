@@ -79,6 +79,15 @@ sell or publish changed versions. The Lexpad name, logo and icons are not licens
 
 ## Changelog
 
+**0.3.6** (13 October 2026)
+
+- Report AI content: a "Report" action (flag) beside everything a model wrote in the window
+  (Fill with AI, AI cards, Improve with AI, the sentence verdict, Lex answers), and a "Report"
+  link on the shortcut card's AI-written meaning that opens the same form in Lexpad's window.
+- The window carries the web app of 13 October, with the new Pro prices shown from the server.
+- macOS: signed with the same certificate as 0.3.3 to 0.3.5, so the Accessibility permission
+  carries over.
+
 **0.3.5** (13 October 2026)
 
 - The window carries the web app of 13 October: invite friends from Settings → Invite friends
