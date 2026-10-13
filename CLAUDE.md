@@ -238,8 +238,8 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
   `Lexpad_<version>_x64_en-US.msi` (the CI artifact's names) and a `SHA256SUMS.txt` of those three
   files. Its values must equal the landing's `site/downloads/lexpad-desktop.sha256`; download the
   release back and run `shasum -a 256 -c SHA256SUMS.txt`. Notes: what's new in plain English
-  (from the landing changelog), the install notes for the unsigned beta as the download pages
-  word them, links to lexpad.app/download/mac and /windows, the CI run id, then a "Technical"
+  (from the landing changelog), the install notes as the download pages word them (Mac signed
+  and notarized since 0.3.7, the Windows installers unsigned), links to lexpad.app/download/mac and /windows, the CI run id, then a "Technical"
   list with commit ids. This repository is public: no secrets, keys or private notes in a release.
 
 ## Git

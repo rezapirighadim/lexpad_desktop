@@ -302,7 +302,8 @@ must be in the system keychain (Xcode installs it), or the identity does not sho
 **Accessibility, once more.** The designated requirement of a Developer ID build names the team
 (`anchor apple generic … certificate leaf[subject.OU] = "6Z95MR26LZ"`), not a certificate, so it
 survives updates and certificate renewals. It differs from the self-signed builds', though, so
-on the first Developer ID release macOS stops applying the grant everyone gave before. The app
+on the first Developer ID release (0.3.7, 13 October 2026, the first notarized one) macOS stops
+applying the grant everyone gave before. The app
 already says so ("Lexpad was updated, and macOS no longer applies the permission it had": it
 remembers the version that last had the grant, `accessibility_granted_in`), and users remove
 Lexpad with − under Privacy & Security → Accessibility and add it again, one last time. Say it in
@@ -310,7 +311,7 @@ that release's notes and changelog.
 
 **Fallback: the local certificate.** While the Developer ID certificate is not in the keychain,
 the script prints a warning and signs with the self-signed **Lexpad Local Signing** certificate
-in the same keychain, as 0.3.3 to 0.3.5 were: a stable identity (so the grant survived those
+in the same keychain, as 0.3.3 to 0.3.6 were: a stable identity (so the grant survived those
 updates), but not notarized, so Gatekeeper warns on first open (right-click → Open). It was made
 once (12 October 2026) like this (CN `Lexpad Local Signing`, key usage digitalSignature,
 extended key usage codeSigning, ten years):
@@ -355,9 +356,6 @@ CI builds no macOS (see above), so the workflow has no Apple secrets and needs n
 
 Still to do before a public release (marked `TODO(signing)` in the workflow for Windows):
 
-- **macOS Developer ID certificate.** The flow is ready ("macOS signing"); the certificate is
-  made once with `scripts/make-developer-id-csr.sh`. Until it is imported, releases fall back to
-  the local certificate, not notarized.
 - **Windows signing.** An Authenticode certificate or Azure Trusted Signing
   (`bundle.windows.signCommand`), or SmartScreen warns on install.
 - **Updater.** Off in 0.1 (no `tauri-plugin-updater`). Turn it on with a signing key pair and an
