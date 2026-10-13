@@ -116,7 +116,8 @@ jobs:
 
       # TODO(signing, Windows): sign the .exe and .msi with an Authenticode
       # certificate or Azure Trusted Signing (bundle.windows.signCommand).
-      # TODO(signing, macOS) is in scripts/release-mac.sh, which builds macOS.
+      # macOS is signed with the Developer ID and notarized by scripts/release-mac.sh
+      # on the Mac (README, "macOS signing"); CI builds no macOS and holds no Apple secrets.
 
       - run: pnpm tauri build
 

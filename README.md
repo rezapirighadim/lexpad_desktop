@@ -213,8 +213,8 @@ Conventions and rules are in `CLAUDE.md`.
 
 ## Release
 
-`pnpm tauri build` makes (on the Mac `scripts/release-mac.sh` signs with the local certificate,
-see "macOS signing"; Windows is unsigned for now):
+`pnpm tauri build` makes (on the Mac `scripts/release-mac.sh` signs with the Developer ID and
+notarizes, see "macOS signing"; Windows is unsigned for now):
 
 | Platform | Output                                                                                 |
 | -------- | -------------------------------------------------------------------------------------- |
@@ -265,24 +265,46 @@ warning.
 
 ### macOS signing
 
-There is no Apple Developer account yet, so no Developer ID and no notarization. An ad-hoc
-signature (what an unsigned build gets) is a hash of the build itself: every release had a new
-code identity, and macOS kept the Accessibility grant for the old one while the switch still
-looked on. Since 0.3.3 `scripts/release-mac.sh` signs `Lexpad.app` (deep, hardened runtime,
-identifier `app.lexpad.desktop`) with one self-signed certificate, **Lexpad Local Signing**, made
-once on the release Mac. The designated requirement is then the same in every release
-(`identifier "app.lexpad.desktop" and certificate leaf = H"<the certificate's hash>"`), so the
-grant survives updates. Gatekeeper still warns on first open (not notarized), as before. Users
-updating from 0.3.2 or older remove Lexpad from the Accessibility list and add it again once.
+Lexpad has its own Apple Developer Program membership (Individual, Reza Pirighadim, team
+`6Z95MR26LZ`). `scripts/release-mac.sh` signs `Lexpad.app` (deep, hardened runtime, secure
+timestamp, identifier `app.lexpad.desktop`, no entitlements: the app is not sandboxed, and
+Accessibility, the global shortcut, the clipboard and the network need none) with
+**Developer ID Application: Reza Pirighadim (6Z95MR26LZ)**, then notarizes the `.dmg` with
+`xcrun notarytool submit --key … --key-id … --issuer … --wait` and staples the ticket to it, so
+Gatekeeper opens it without a warning. The App Store Connect API key comes from the environment
+(`ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_PATH`) or `~/.appstoreconnect/lexpad.env`; it is never
+in this repository.
 
-The certificate's private key never leaves the Mac and is never committed or exported: it is
-non-extractable, in its own keychain (`~/Library/Keychains/lexpad-signing.keychain-db`, in the
-user's keychain search list), whose random password is kept in the login keychain as the
-generic password "Lexpad Local Signing keychain"; the script unlocks it with that, so `codesign`
-never asks. **Keep this Mac's keychain** (or a backup of it): a new certificate means a new
-identity, and every user would have to re-add Lexpad under Accessibility once more. Made once
-(12 October 2026) like this (CN `Lexpad Local Signing`, key usage digitalSignature, extended key
-usage codeSigning, ten years):
+The certificate's private key lives only in the dedicated keychain
+`~/Library/Keychains/lexpad-signing.keychain-db` (on the user's keychain search list), as a
+non-extractable key that only `codesign` may use. Its random password is the login keychain's
+generic password "Lexpad Local Signing keychain"; the scripts unlock it with that, so `codesign`
+never asks. To get the certificate (once, and again when it expires):
+
+```sh
+scripts/make-developer-id-csr.sh            # key into the keychain, CSR into ~/.appstoreconnect/
+# developer.apple.com → Certificates → + → Developer ID Application (G2 Sub-CA) → upload the CSR
+scripts/make-developer-id-csr.sh --import ~/Downloads/developerID_application.cer
+```
+
+Only the Account Holder can make a Developer ID certificate. The Developer ID G2 intermediate
+must be in the system keychain (Xcode installs it), or the identity does not show as valid.
+
+**Accessibility, once more.** The designated requirement of a Developer ID build names the team
+(`anchor apple generic … certificate leaf[subject.OU] = "6Z95MR26LZ"`), not a certificate, so it
+survives updates and certificate renewals. It differs from the self-signed builds', though, so
+on the first Developer ID release macOS stops applying the grant everyone gave before. The app
+already says so ("Lexpad was updated, and macOS no longer applies the permission it had": it
+remembers the version that last had the grant, `accessibility_granted_in`), and users remove
+Lexpad with − under Privacy & Security → Accessibility and add it again, one last time. Say it in
+that release's notes and changelog.
+
+**Fallback: the local certificate.** While the Developer ID certificate is not in the keychain,
+the script prints a warning and signs with the self-signed **Lexpad Local Signing** certificate
+in the same keychain, as 0.3.3 to 0.3.5 were: a stable identity (so the grant survived those
+updates), but not notarized, so Gatekeeper warns on first open (right-click → Open). It was made
+once (12 October 2026) like this (CN `Lexpad Local Signing`, key usage digitalSignature,
+extended key usage codeSigning, ten years):
 
 ```sh
 kc=~/Library/Keychains/lexpad-signing.keychain-db; kpw=$(openssl rand -hex 24)
@@ -296,10 +318,13 @@ security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$kpw" "$k
 security list-keychains -d user -s ~/Library/Keychains/login.keychain-db "$kc"   # plus any others already listed
 ```
 
-The script then checks the `.dmg`'s app: `codesign --verify --deep --strict`, the identifier,
-the authority, hardened runtime and the designated requirement. When a Developer ID exists,
-set `APPLE_SIGNING_IDENTITY` to it (the script uses it instead) and add notarization; users then
-re-add Lexpad under Accessibility one last time.
+The script checks the `.dmg`'s app: `codesign --verify --deep --strict`, the identifier, the
+authority, hardened runtime, the designated requirement, and for a Developer ID build the
+secure timestamp, the notarization verdict, the stapled ticket and Gatekeeper's
+`source=Notarized Developer ID`. `LEXPAD_SKIP_NOTARIZE=1` skips notarization for a local check
+only; such a build is never published.
+
+CI builds no macOS (see above), so the workflow has no Apple secrets and needs none.
 
 ### Release steps
 
@@ -319,15 +344,11 @@ re-add Lexpad under Accessibility one last time.
 4. Put both on the landing's downloads page (`lexpad_landing`) with their SHA-256s, and the
    release in the changelog.
 
-Still to do before a public release (marked `TODO(signing)` in the workflow for Windows and in
-`scripts/release-mac.sh` for macOS):
+Still to do before a public release (marked `TODO(signing)` in the workflow for Windows):
 
-- **macOS Developer ID and notarization.** Needs the Apple Developer Team ID and a "Developer ID
-  Application" certificate. Then set `APPLE_SIGNING_IDENTITY` and the notarization secrets
-  (`APPLE_API_KEY`/`APPLE_API_ISSUER`, or `APPLE_ID`/`APPLE_PASSWORD`/`APPLE_TEAM_ID`);
-  `tauri build` signs and notarizes when they are present. Until then the release is signed with
-  the local certificate ("macOS signing"), and a downloaded build must be opened with right-click →
-  Open (or Open Anyway in Privacy & Security).
+- **macOS Developer ID certificate.** The flow is ready ("macOS signing"); the certificate is
+  made once with `scripts/make-developer-id-csr.sh`. Until it is imported, releases fall back to
+  the local certificate, not notarized.
 - **Windows signing.** An Authenticode certificate or Azure Trusted Signing
   (`bundle.windows.signCommand`), or SmartScreen warns on install.
 - **Updater.** Off in 0.1 (no `tauri-plugin-updater`). Turn it on with a signing key pair and an

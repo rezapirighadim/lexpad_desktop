@@ -116,9 +116,12 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
   identity each release, and macOS stopped applying the old grant while the switch still looked
   on. From 0.3.3 `scripts/release-mac.sh` signs with one self-signed certificate, "Lexpad Local
   Signing" (README, "macOS signing"), so the designated requirement is stable and the grant
-  survives updates; users updating from ≤0.3.2 remove Lexpad with − and add it again once. Never
-  make a new certificate (every user would have to re-add Lexpad) and never commit or export its
-  key. The core still remembers the version that last had the permission
+  survives updates; users updating from ≤0.3.2 remove Lexpad with − and add it again once. The
+  first release signed with the Developer ID ("Developer ID Application: Reza Pirighadim
+  (6Z95MR26LZ)", 2026-10) changes the designated requirement once more, so every user re-adds
+  Lexpad under Accessibility one last time; after that the requirement names the team, not a
+  certificate, so a renewed Developer ID certificate keeps the grant. Never make a new local
+  certificate while the fallback is in use, and never commit or export a signing key. The core still remembers the version that last had the permission
   (`accessibility_granted_in`) and says so plainly (`permissionStale`), and the card and the
   Settings window ask again every few seconds and on focus while they explain the permission
   (`src/lib/accessibility.ts`), so the hint goes away once it is allowed.
@@ -202,8 +205,11 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
   It does not touch the credential store, the shortcut or the login items, and runs beside an
   installed copy.
 - **macOS release**: `scripts/release-mac.sh` on this Mac (universal `.dmg`, production, signed
-  with "Lexpad Local Signing" and checked with `codesign`, smoke-tested, SHA-256 printed; the Mac
-  must be awake and unlocked). The whole release flow (tag, Windows artifact from CI, the Mac
+  with the Developer ID and checked with `codesign`, notarized with `notarytool` and the App
+  Store Connect API key from `~/.appstoreconnect/lexpad.env`, stapled, smoke-tested, SHA-256
+  printed; the Mac must be awake and unlocked). Without the Developer ID certificate it says so
+  and falls back to "Lexpad Local Signing", not notarized. The certificate's key is made by
+  `scripts/make-developer-id-csr.sh` (README, "macOS signing"). The whole release flow (tag, Windows artifact from CI, the Mac
   `.dmg`, the landing's downloads) is in README, "Release steps".
 - `pnpm app:dev` runs it against production; for a local stack build with
   `LEXPAD_API_ORIGIN=http://localhost:8091 LEXPAD_APP_ORIGIN=http://localhost:4173 pnpm tauri build --bundles app`
@@ -221,8 +227,10 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
   submission with that file (README, "Microsoft Store"). Anything that writes outside the app's
   own folders or the credential store must be checked inside the package: a packaged app's
   registry writes stay in the package (that is why start on login is `msix.rs` there).
-- Releases: see README. macOS is signed with the local certificate and not notarized until the
-  Apple Team ID exists; Windows is unsigned until a certificate exists; the TODOs are marked in `.github/workflows/build.yml` (Windows) and `scripts/release-mac.sh` (macOS).
+- Releases: see README. macOS is signed with the Developer ID and notarized (Apple team
+  6Z95MR26LZ), locally only: CI builds no macOS. Windows is unsigned until a certificate exists
+  (TODO in `.github/workflows/build.yml`). No key, key id or issuer id is ever committed here:
+  this repository is public.
 - Bump `version` in `package.json` only; `tauri.conf.json` reads it. Keep `Cargo.toml` in step.
 - **GitHub Release** (every release, owner 2026-10-09): after the Windows CI run and the Mac
   `.dmg`, `gh release create v<version> --verify-tag --latest` titled "Lexpad for Mac and Windows
