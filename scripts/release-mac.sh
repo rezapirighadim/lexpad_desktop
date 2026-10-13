@@ -47,46 +47,83 @@ fi
 rustup target add aarch64-apple-darwin x86_64-apple-darwin >/dev/null
 pnpm install --frozen-lockfile
 
-# Signing: until an Apple Developer ID exists, every release is signed with
-# the same self-signed certificate, "Lexpad Local Signing", made once on this
-# Mac (README, "macOS signing"). The app's designated requirement is then
-# `identifier "app.lexpad.desktop" and certificate leaf = H"<that cert>"`,
-# the same in every release, so macOS keeps the Accessibility grant across
-# updates (an ad-hoc signature changed with every build, and the grant with
-# it). The certificate's key lives only in its own keychain, unlocked here
-# with the password kept in the login keychain; it never leaves this Mac.
-# Gatekeeper still warns on first open: this is not notarized.
+# Signing. The release identity is Lexpad's Developer ID,
+# "Developer ID Application: Reza Pirighadim (6Z95MR26LZ)" (Apple team
+# 6Z95MR26LZ), and the build is then notarized and stapled, so Gatekeeper
+# opens it without a warning. Its key lives only in the dedicated keychain
+# ~/Library/Keychains/lexpad-signing.keychain-db (made by
+# scripts/make-developer-id-csr.sh), unlocked here with the password kept in
+# the login keychain; it never leaves this Mac.
 #
-# TODO(signing, macOS): once the Apple Developer Team ID exists, import the
-# "Developer ID Application" certificate into the login keychain and set
-# APPLE_SIGNING_IDENTITY to it, and for notarization APPLE_API_KEY,
-# APPLE_API_ISSUER, APPLE_API_KEY_PATH (or APPLE_ID, APPLE_PASSWORD,
-# APPLE_TEAM_ID) in the environment; tauri build signs and notarizes when
-# they are present. Users then remove and re-add Lexpad under Accessibility
-# once more. See README, "Release".
-identity="Lexpad Local Signing"
+# Fallback: while that certificate is not in the keychain, the release is
+# signed with the self-signed "Lexpad Local Signing" in the same keychain, as
+# 0.3.3 to 0.3.5 were, and is not notarized (README, "macOS signing").
+#
+# Changing identity changes the app's designated requirement, so macOS drops
+# the Accessibility grant on the first Developer ID build, once, for everyone;
+# the app's "Lexpad was updated, and macOS no longer applies the permission"
+# hint covers it (src/lib/accessibility.ts).
+#
+# APPLE_SIGNING_IDENTITY, when set, wins over both (it must be in a keychain
+# on the search list). LEXPAD_SKIP_NOTARIZE=1 builds a Developer ID release
+# without notarizing it, for a local check only; never publish one.
+developer_id="Developer ID Application: Reza Pirighadim (6Z95MR26LZ)"
+local_identity="Lexpad Local Signing"
 signing_keychain="$HOME/Library/Keychains/lexpad-signing.keychain-db"
+[ -f "$signing_keychain" ] || {
+  echo "release-mac: $signing_keychain is missing; make it once (README, \"macOS signing\")" >&2
+  exit 1
+}
+keychain_password=$(security find-generic-password -a "$USER" -s "$local_identity keychain" -w) || {
+  echo "release-mac: the signing keychain's password is not in the login keychain (README, \"macOS signing\")" >&2
+  exit 1
+}
+security unlock-keychain -p "$keychain_password" "$signing_keychain"
+unset keychain_password
+case "$(security list-keychains -d user)" in
+  *lexpad-signing.keychain-db*) ;;
+  *) echo "release-mac: add $signing_keychain to the keychain search list (README, \"macOS signing\")" >&2; exit 1 ;;
+esac
 if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
-  [ -f "$signing_keychain" ] || {
-    echo "release-mac: $signing_keychain is missing; make it once (README, \"macOS signing\")" >&2
-    exit 1
-  }
-  keychain_password=$(security find-generic-password -a "$USER" -s "$identity keychain" -w) || {
-    echo "release-mac: the signing keychain's password is not in the login keychain (README, \"macOS signing\")" >&2
-    exit 1
-  }
-  security unlock-keychain -p "$keychain_password" "$signing_keychain"
-  unset keychain_password
-  case "$(security list-keychains -d user)" in
-    *lexpad-signing.keychain-db*) ;;
-    *) echo "release-mac: add $signing_keychain to the keychain search list (README, \"macOS signing\")" >&2; exit 1 ;;
-  esac
-  security find-identity -p codesigning "$signing_keychain" | grep -q "\"$identity\"" || {
-    echo "release-mac: no \"$identity\" in $signing_keychain" >&2
-    exit 1
-  }
-  export APPLE_SIGNING_IDENTITY="$identity"
+  if security find-identity -v -p codesigning "$signing_keychain" | grep -q "\"$developer_id\""; then
+    export APPLE_SIGNING_IDENTITY="$developer_id"
+  else
+    echo "release-mac: WARNING: \"$developer_id\" is not in $signing_keychain." >&2
+    echo "release-mac: falling back to the self-signed \"$local_identity\": NOT notarized, Gatekeeper will warn." >&2
+    echo "release-mac: to fix, run scripts/make-developer-id-csr.sh and import the certificate (README, \"macOS signing\")." >&2
+    security find-identity -p codesigning "$signing_keychain" | grep -q "\"$local_identity\"" || {
+      echo "release-mac: no \"$local_identity\" in $signing_keychain either" >&2
+      exit 1
+    }
+    export APPLE_SIGNING_IDENTITY="$local_identity"
+  fi
 fi
+case "$APPLE_SIGNING_IDENTITY" in
+  "Developer ID Application:"*) notarize=1 ;;
+  *) notarize=0 ;;
+esac
+[ "${LEXPAD_SKIP_NOTARIZE:-}" = 1 ] && notarize=0
+
+# Notarization uses the App Store Connect API key (never committed; this
+# repository is public): ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_PATH, read from
+# ~/.appstoreconnect/lexpad.env when not already set. It is checked before the
+# long build so a missing key fails in seconds.
+if [ "$notarize" = 1 ]; then
+  if [ -z "${ASC_KEY_ID:-}" ] && [ -f "$HOME/.appstoreconnect/lexpad.env" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    . "$HOME/.appstoreconnect/lexpad.env"
+    set +a
+  fi
+  : "${ASC_KEY_ID:?release-mac: set ASC_KEY_ID (or ~/.appstoreconnect/lexpad.env) to notarize}"
+  : "${ASC_ISSUER_ID:?release-mac: set ASC_ISSUER_ID to notarize}"
+  ASC_KEY_PATH=${ASC_KEY_PATH:-$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8}
+  [ -f "$ASC_KEY_PATH" ] || { echo "release-mac: no API key file at $ASC_KEY_PATH" >&2; exit 1; }
+fi
+# tauri build notarizes by itself when it sees Apple credentials; this
+# script notarizes the .dmg instead (it carries the app, and its ticket is
+# stapled to the file people download), so tauri must not see them.
+unset APPLE_API_KEY APPLE_API_ISSUER APPLE_API_KEY_PATH APPLE_ID APPLE_PASSWORD
 identifier=$(node -p "require('./src-tauri/tauri.conf.json').identifier")
 
 echo "release-mac: building Lexpad $version ($commit), universal, production"
@@ -112,6 +149,10 @@ sig=$(codesign -dv --verbose=4 "$mnt/Lexpad.app" 2>&1)
 echo "$sig" | grep -q "^Identifier=$identifier\$" || { echo "release-mac: not signed as $identifier" >&2; exit 1; }
 echo "$sig" | grep -q "^Authority=$APPLE_SIGNING_IDENTITY\$" || { echo "release-mac: not signed by $APPLE_SIGNING_IDENTITY" >&2; exit 1; }
 echo "$sig" | grep -q "flags=0x10000(runtime)" || { echo "release-mac: no hardened runtime" >&2; exit 1; }
+if [ "$notarize" = 1 ]; then
+  # Notarization refuses a signature without Apple's secure timestamp.
+  echo "$sig" | grep -q "^Timestamp=" || { echo "release-mac: no secure timestamp on the signature" >&2; exit 1; }
+fi
 requirement=$(codesign -d -r- "$mnt/Lexpad.app" 2>&1 | sed -n 's/^designated => //p')
 case "$requirement" in
   "identifier \"$identifier\" and "*certificate*) echo "release-mac: designated requirement: $requirement" ;;
@@ -121,6 +162,34 @@ plist_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "
 [ "$plist_version" = "$version" ] || { echo "release-mac: app says $plist_version, package.json says $version" >&2; exit 1; }
 hdiutil detach "$mnt" >/dev/null
 trap - EXIT
+
+# Notarize the .dmg (Apple checks the app inside it too) and staple the
+# ticket to it, so the first open works offline and without a warning.
+if [ "$notarize" = 1 ]; then
+  # Gatekeeper assesses a downloaded .dmg by its own signature; sign it with
+  # the same identity when the bundler has not.
+  codesign -v "$dmg" 2>/dev/null || codesign --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$dmg"
+  echo "release-mac: notarizing $dmg (this waits for Apple, usually a few minutes)"
+  xcrun notarytool submit "$dmg" --key "$ASC_KEY_PATH" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" --wait \
+    --output-format json >"$bundle/notarytool.json" || {
+    echo "release-mac: notarytool failed; see $bundle/notarytool.json" >&2
+    exit 1
+  }
+  status=$(node -p "require('./$bundle/notarytool.json').status")
+  if [ "$status" != Accepted ]; then
+    id=$(node -p "require('./$bundle/notarytool.json').id")
+    echo "release-mac: notarization $status; the log says why:" >&2
+    xcrun notarytool log "$id" --key "$ASC_KEY_PATH" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" >&2 || true
+    exit 1
+  fi
+  xcrun stapler staple "$dmg"
+  xcrun stapler validate "$dmg"
+  spctl -a -t open --context context:primary-signature -v "$dmg" 2>&1 | grep -q "source=Notarized Developer ID" || {
+    echo "release-mac: Gatekeeper does not accept the .dmg as notarized" >&2
+    exit 1
+  }
+  echo "release-mac: notarized and stapled"
+fi
 
 # After the .dmg is made: this build writes the arm64 binary of the same
 # target folder, which the universal app was assembled from.
@@ -150,3 +219,8 @@ echo "  version $version ($commit)"
 echo "  bytes   $size"
 echo "  sha256  $sha"
 echo "  signed  $APPLE_SIGNING_IDENTITY ($requirement)"
+if [ "$notarize" = 1 ]; then
+  echo "  notarized and stapled"
+else
+  echo "  NOT notarized (Gatekeeper warns on first open)"
+fi
