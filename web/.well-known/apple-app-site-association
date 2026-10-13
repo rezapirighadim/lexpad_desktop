@@ -1,0 +1,37 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["6Z95MR26LZ.app.lexpad.ios"],
+        "components": [
+          { "/": "/promo", "exclude": true, "comment": "promotion codes stay in the browser: Apple allows no code of ours to unlock Pro" },
+          { "/": "/promo/*", "exclude": true },
+          { "/": "/" },
+          { "/": "/s/?*" },
+          { "/": "/verify" },
+          { "/": "/verify/*" },
+          { "/": "/reset-password" },
+          { "/": "/reset-password/*" },
+          { "/": "/forgot" },
+          { "/": "/forgot/*" },
+          { "/": "/words/?*" },
+          { "/": "/notebook" },
+          { "/": "/notebook/*" },
+          { "/": "/progress" },
+          { "/": "/progress/*" },
+          { "/": "/settings" },
+          { "/": "/settings/*" },
+          { "/": "/decks" },
+          { "/": "/decks/*" },
+          { "/": "/games" },
+          { "/": "/games/*" },
+          { "/": "/read" },
+          { "/": "/read/*" }
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": ["6Z95MR26LZ.app.lexpad.ios"]
+  }
+}
