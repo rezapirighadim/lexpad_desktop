@@ -1,7 +1,7 @@
 The Lexpad web app, built for the desktop app's main window by scripts/build-web.sh.
 Do not edit; build again.
 
-lexpad_front commit: 742f3222dfc8a099365f26848a4364a19b54eb16
+lexpad_front commit: ee0e05979d8928f5ada42e9179103dfe081e791e
 branch: HEAD
-built: 2026-10-18T03:20:25Z
+built: 2026-10-18T04:23:20Z
 target: LEXPAD_TARGET=native, no error reporting

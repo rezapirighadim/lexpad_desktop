@@ -1,0 +1,2 @@
+import{t as e}from"./endpoints-to57r7-D.js";import{s as t}from"./reminder-CwSHzrNI.js";import{o as n,r}from"./poll-DsI-k_4n.js";async function i(i,a,o={}){let s;try{s=t(await e.createCards(i,[a],o.hint))}catch(e){throw await n(e),e}s=await r(s,o.signal===void 0?{}:{signal:o.signal});let c=s.cards[0];if(s.status!==`done`||c===void 0)throw Error(s.error??`failed`);return{card:c,jobId:s.id}}export{i as t};
+//# sourceMappingURL=generate-C_ZSfIWZ.js.map
