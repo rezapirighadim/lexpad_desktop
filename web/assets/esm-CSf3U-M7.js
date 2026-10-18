@@ -1,0 +1,3 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./web-Bl_awS2g.js","./dist-D4dGxAkj.js","./rolldown-runtime-hePW80VL.js"])))=>i.map(i=>d[i]);
+import{v as e}from"./react--nwWWpNE.js";import{o as t}from"./dist-D4dGxAkj.js";var n=t(`InAppReview`,{web:()=>e(()=>import(`./web-Bl_awS2g.js`).then(e=>new e.InAppReviewWeb),__vite__mapDeps([0,1,2]),import.meta.url)});export{n as InAppReview};
+//# sourceMappingURL=esm-CSf3U-M7.js.map

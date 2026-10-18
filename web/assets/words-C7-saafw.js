@@ -1,0 +1,2 @@
+function e(e){let t=new Set,n=[];for(let r of e.split(/[\n,]/)){let e=r.trim(),i=e.toLowerCase();e===``||t.has(i)||(t.add(i),n.push(e))}return n.slice(0,50)}export{e as t};
+//# sourceMappingURL=words-C7-saafw.js.map
