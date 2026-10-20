@@ -1,2 +1,0 @@
-import{i as e,r as t}from"./schema-Ca0TsrNC.js";function n(e){let{serverNow:t,...n}=e;return n}async function r(r,i){if(r===void 0||r===``)return;let a=n(i),o=await t(`planSnapshot`);(o?.account!==r||JSON.stringify(o.state)!==JSON.stringify(a))&&await e(`planSnapshot`,{account:r,at:new Date().toISOString(),state:a})}function i(e,t){if(e!=null&&t!==void 0)return e.account===t?e.state:void 0}export{r as notePlanSnapshot,i as snapshotFor};
-//# sourceMappingURL=planSnapshot-BpgeB0qN.js.map
