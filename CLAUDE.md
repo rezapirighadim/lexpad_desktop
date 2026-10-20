@@ -143,6 +143,11 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
   development build never touches the production session): the refresh token and who it
   belongs to. The access token is memory only. Refresh is single-flight (the session mutex in
   `api.rs`); a refused refresh forgets the session.
+- **Every call says which copy it is, in its User-Agent and nothing else** (`config::user_agent`,
+  since 0.3.11): `Lexpad-Desktop/<version> (macOS)`, `(Windows; store)` for the Microsoft
+  Store's MSIX (`msix::is_packaged`) or `(Windows; direct)` for the installer from lexpad.app.
+  The API keeps it with the session the sign-in opens, so the operator console can show
+  "Desktop app · Windows · Store". No machine name, account or other detail goes in it.
 - **The selection is read only when the shortcut is pressed, and only the selection.**
   Accessibility first (macOS `AXSelectedText`, Windows UIA TextPattern), then the clipboard:
   save every item and type, send ⌘C / Ctrl+C after the shortcut's own modifiers are released,

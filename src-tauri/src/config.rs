@@ -37,3 +37,59 @@ pub fn device_name() -> &'static str {
         "Linux"
     }
 }
+
+/// Where this copy was installed from, on Windows: the Microsoft Store's MSIX
+/// package (it has a package identity) or the installer from lexpad.app. The
+/// Mac has one way in, so it says nothing.
+pub fn install_source() -> Option<&'static str> {
+    #[cfg(windows)]
+    {
+        Some(if crate::msix::is_packaged() {
+            "store"
+        } else {
+            "direct"
+        })
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
+}
+
+/// The User-Agent of every call to the API: the app, its build, the system and,
+/// on Windows, where it was installed from, e.g. `Lexpad-Desktop/0.3.11
+/// (Windows; store)`. The server keeps it with the session it opens, so the
+/// operator can tell a Mac from a Windows copy and the Store's from the
+/// direct download. Nothing about the person or the machine beyond that.
+pub fn user_agent() -> String {
+    client_string(VERSION, device_name(), install_source())
+}
+
+fn client_string(version: &str, os: &str, install: Option<&str>) -> String {
+    match install {
+        Some(source) => format!("Lexpad-Desktop/{version} ({os}; {source})"),
+        None => format!("Lexpad-Desktop/{version} ({os})"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_user_agent_names_the_system_and_the_install() {
+        assert_eq!(
+            client_string("0.3.11", "Windows", Some("store")),
+            "Lexpad-Desktop/0.3.11 (Windows; store)"
+        );
+        assert_eq!(
+            client_string("0.3.11", "Windows", Some("direct")),
+            "Lexpad-Desktop/0.3.11 (Windows; direct)"
+        );
+        assert_eq!(
+            client_string("0.3.11", "macOS", None),
+            "Lexpad-Desktop/0.3.11 (macOS)"
+        );
+        assert!(user_agent().starts_with(&format!("Lexpad-Desktop/{VERSION} (")));
+    }
+}

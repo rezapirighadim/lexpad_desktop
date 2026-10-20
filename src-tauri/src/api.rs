@@ -110,13 +110,13 @@ impl Api {
     pub fn new(api_origin: &str, store: Arc<dyn SessionStore>) -> Self {
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
-            .user_agent(format!("Lexpad-Desktop/{}", crate::config::VERSION))
+            .user_agent(crate::config::user_agent())
             .build()
             .expect("HTTP client");
         let stream_http = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(15))
             .read_timeout(FORWARD_SILENCE)
-            .user_agent(format!("Lexpad-Desktop/{}", crate::config::VERSION))
+            .user_agent(crate::config::user_agent())
             .build()
             .expect("HTTP client");
         Self {
