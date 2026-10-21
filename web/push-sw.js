@@ -7,10 +7,15 @@
  * talks to no origin of its own: the browser's push service wakes it, and it
  * only ever opens this app's own pages.
  *
- * The server sends `{title, body, link, kind}` (the back's Web Push adapter).
- * A link that is not a plain in-app path opens Today, the same rule as
- * `pushPath` in src/lib/platform/pushLink.ts, which the app applies again
- * when the tap reaches it.
+ * The server sends `{title, body, tap, link, kind}` (the back's Web Push
+ * adapter, plus `action` for a form or an external link, which a pop-up does
+ * not need). `tap` is the in-app path a tap opens (a form, a message's own
+ * page, or a screen); `link` is the same screen for older builds, and empty
+ * for a form or a link. `tap` wins when it is there. A path that is not a
+ * plain in-app path opens Today, the same rule as `pushPath` in
+ * src/lib/platform/pushLink.ts, which the app applies again when the tap
+ * reaches it (pushSw.test.ts keeps the two in step). An external address is
+ * never opened from here: it never travels in a push.
  */
 
 /* The message an open tab receives on a tap; PUSH_TAP_MESSAGE in src/lib/platform/web.ts. */
@@ -28,6 +33,12 @@ function safePath(link) {
   return link;
 }
 
+/* The path a tap opens: `tap` when the server sent one, else the older `link`. */
+function tapPath(data) {
+  if (typeof data !== 'object' || data === null) return '/';
+  return safePath(typeof data.tap === 'string' && data.tap !== '' ? data.tap : data.link);
+}
+
 function readPayload(event) {
   if (!event.data) return {};
   try {
@@ -42,7 +53,7 @@ self.addEventListener('push', (event) => {
   const payload = readPayload(event);
   const title = typeof payload.title === 'string' && payload.title !== '' ? payload.title : FALLBACK_TITLE;
   const body = typeof payload.body === 'string' ? payload.body : '';
-  const link = safePath(payload.link);
+  const link = tapPath(payload);
   const kind = typeof payload.kind === 'string' ? payload.kind : '';
   event.waitUntil(
     Promise.all([
@@ -63,7 +74,7 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const link = safePath(event.notification.data && event.notification.data.link);
+  const link = tapPath(event.notification.data);
   event.waitUntil(
     (async () => {
       const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });

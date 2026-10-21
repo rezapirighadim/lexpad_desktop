@@ -1,0 +1,2 @@
+import{t as e}from"./react--nwWWpNE.js";import{i as t}from"./Icon-ww-Ia4Ya.js";import{W as n}from"./dist-BkR8Kcix.js";import{t as r}from"./script-BpgNnLIo.js";var i={text:`BOJGE1`},a=e();function o({lang:e,children:o,className:s,block:c=!1}){let l=n(e),u=t(i.text,r(e),s);return(0,a.jsx)(c?`div`:`span`,{dir:l,lang:e,className:u,children:o})}export{o as t};
+//# sourceMappingURL=Bilingual-CgimXgI2.js.map

@@ -1,0 +1,2 @@
+import{n as e}from"./rolldown-runtime-hePW80VL.js";import{i as t,r as n}from"./schema-CaAksrlh.js";var r=e({notePlanSnapshot:()=>a,snapshotFor:()=>o});function i(e){let{serverNow:t,...n}=e;return n}async function a(e,r){if(e===void 0||e===``)return;let a=i(r),o=await n(`planSnapshot`);(o?.account!==e||JSON.stringify(o.state)!==JSON.stringify(a))&&await t(`planSnapshot`,{account:e,at:new Date().toISOString(),state:a})}function o(e,t){if(e!=null&&t!==void 0)return e.account===t?e.state:void 0}export{o as n,r as t};
+//# sourceMappingURL=planSnapshot-CSylgiCL.js.map

@@ -1,0 +1,2 @@
+var e={small:14,burst:18,takeover:24};function t(){return typeof window.matchMedia==`function`&&window.matchMedia(`(prefers-reduced-motion: reduce)`).matches}function n(e,t){let n=Math.max(0,e)+Math.max(0,t);return n<=0?0:Math.min(1,Math.max(0,e)/n)}export{t as n,n as r,e as t};
+//# sourceMappingURL=motionPrefs-CpUPp1sL.js.map
