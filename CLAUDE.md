@@ -110,8 +110,11 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
   system (UNUserNotificationCenter / scheduled toasts) so it arrives with the window shut. The
   server's messages (gifts, announcements) cannot come through Firebase here, so the core reads
   the inbox (`GET /notifications`) at start and every 30 minutes and pops up only what `pick`
-  lets through (see its doc: unread, fresh, not come-back, product news only when allowed, not
-  already popped elsewhere when the API says so). A click opens the window.
+  lets through (see its doc: unread, fresh, not come-back, product news only when allowed, a
+  note about the plan only when its row says `popUp`, not already popped elsewhere when the API
+  says so). A click opens the window on the row's `tapPath` (else its old `link`, else Today),
+  only when it is a plain in-app path (`click_path`); a message's own button that opens an
+  address goes through `window.open`, so `on_new_window` hands it to the system browser.
 - **Accessibility after an update**: up to 0.3.2 the Mac build was ad-hoc signed, a new code
   identity each release, and macOS stopped applying the old grant while the switch still looked
   on. From 0.3.3 `scripts/release-mac.sh` signs with one self-signed certificate, "Lexpad Local

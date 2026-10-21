@@ -17,8 +17,8 @@
 //!   `INBOX_EVERY` while it runs, and shows what `pick` lets through: unread,
 //!   newer than this computer's first look and than `INBOX_FRESH`, not shown
 //!   here before, never a come-back note (the local plan carries those),
-//!   product news only when the account takes it, and nothing the server
-//!   says was not meant to pop up or has already popped up on a phone or in
+//!   product news only when the account takes it, a note about the plan
+//!   only when the server says it pops up, and nothing the server says was not meant to pop up or has already popped up on a phone or in
 //!   a browser (`popUp`, `poppedAt`, when the API sends them). Nothing is
 //!   marked read: that is the bell's job, as with a phone's pop-up.
 //!
@@ -57,6 +57,18 @@ pub const SHOWN_MAX: usize = 200;
 pub const REMINDER_IDS: std::ops::RangeInclusive<u32> = 1..=20;
 /// Bounds on a reminder's text, as the API bounds an inbox message.
 const TITLE_MAX: usize = 200;
+/// The API's notes about the account's plan (`PushKindKey` in the API
+/// contract). Like gifts they are about the account, not product news, so
+/// the product-news switch does not hold them back; the row's `popUp` says
+/// which of them pop up.
+const PLAN_KINDS: [&str; 6] = [
+    "pro_started",
+    "payment_failed",
+    "pro_ending",
+    "refund_issued",
+    "grant_ending",
+    "trial_ending",
+];
 const BODY_MAX: usize = 1000;
 
 /// Whether this app may show notifications.
@@ -146,6 +158,11 @@ pub struct InboxItem {
     pub body: String,
     #[serde(default)]
     pub link: Option<String>,
+    /// Where a tap opens, as the API works it out (the link, a form's
+    /// `/forms/<id>`, or `/notifications/<id>` for a message with an
+    /// address); absent before the API sends it.
+    #[serde(default)]
+    pub tap_path: Option<String>,
     pub created_at: String,
     #[serde(default)]
     pub read_at: Option<String>,
@@ -202,6 +219,9 @@ pub fn pick(
             // A gift is about the account itself and always pops up, as on
             // the phones; news only for an account that takes it.
             "gift_ai_cards" | "gift_pro" | "connection" => true,
+            // A note about the plan pops up exactly when the server says
+            // so (`popUp`): some live only in the bell beside the e-mail.
+            k if PLAN_KINDS.contains(&k) => n.pop_up == Some(true),
             _ => push_news,
         })
         .filter(|n| !memory.shown.contains(&n.id))
@@ -235,23 +255,23 @@ pub fn pick(
     )
 }
 
-/// Where a click on a notification goes: its own in-app path when it is a
-/// plain one, Today otherwise.
-// A click comes back with its identifier on macOS; Windows starts the app instead.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-pub fn click_path(link: Option<&str>) -> String {
-    match link {
-        Some(p)
-            if p.starts_with('/')
-                && !p.starts_with("//")
-                && !p.contains('\\')
-                && p.len() <= 512
-                && !p.chars().any(|c| c.is_whitespace() || c.is_control()) =>
-        {
-            p.to_owned()
-        }
-        _ => "/".into(),
-    }
+/// Where a click on a notification goes: the row's `tapPath` when it is a
+/// plain in-app path, else its old `link` when that is one, else Today.
+pub fn click_path(tap_path: Option<&str>, link: Option<&str>) -> String {
+    [tap_path, link]
+        .into_iter()
+        .flatten()
+        .find(|p| is_in_app_path(p))
+        .unwrap_or("/")
+        .to_owned()
+}
+
+fn is_in_app_path(p: &str) -> bool {
+    p.starts_with('/')
+        && !p.starts_with("//")
+        && !p.contains('\\')
+        && p.len() <= 512
+        && !p.chars().any(|c| c.is_whitespace() || c.is_control())
 }
 
 /* ------------------------------------------------------- the system */
@@ -267,7 +287,7 @@ pub fn path_for(key: &str) -> String {
         .lock()
         .ok()
         .and_then(|m| m.as_ref().and_then(|m| m.get(key).cloned()));
-    click_path(link.as_deref())
+    click_path(None, link.as_deref())
 }
 
 /// Wires the system's click handler. Call once, on the main thread.
@@ -376,9 +396,10 @@ pub async fn read_inbox(app: &AppHandle) {
     for n in show {
         let key = inbox_key(&n.id);
         if let Ok(mut links) = LINKS.lock() {
-            links
-                .get_or_insert_with(HashMap::new)
-                .insert(key.clone(), n.link.clone().unwrap_or_default());
+            links.get_or_insert_with(HashMap::new).insert(
+                key.clone(),
+                click_path(n.tap_path.as_deref(), n.link.as_deref()),
+            );
         }
         show_now(&key, &n.title, &n.body);
     }
@@ -489,6 +510,7 @@ mod tests {
             title: "t".into(),
             body: "b".into(),
             link: None,
+            tap_path: None,
             created_at: created.into(),
             read_at: None,
             pop_up: None,
@@ -591,11 +613,81 @@ mod tests {
 
     #[test]
     fn a_click_opens_a_plain_in_app_path_or_today() {
-        assert_eq!(click_path(Some("/settings/plan")), "/settings/plan");
-        assert_eq!(click_path(None), "/");
-        assert_eq!(click_path(Some("")), "/");
-        assert_eq!(click_path(Some("https://evil.example/")), "/");
-        assert_eq!(click_path(Some("//evil.example/")), "/");
-        assert_eq!(click_path(Some("/a b")), "/");
+        // An old row, with no tapPath, behaves as before.
+        assert_eq!(click_path(None, Some("/settings/plan")), "/settings/plan");
+        assert_eq!(click_path(None, None), "/");
+        assert_eq!(click_path(None, Some("")), "/");
+        assert_eq!(click_path(None, Some("https://evil.example/")), "/");
+        assert_eq!(click_path(None, Some("//evil.example/")), "/");
+        assert_eq!(click_path(None, Some("/a b")), "/");
+        assert_eq!(click_path(None, Some("/a\\b")), "/");
+    }
+
+    #[test]
+    fn a_click_prefers_the_rows_tap_path_with_the_same_check() {
+        assert_eq!(click_path(Some("/forms/7"), Some("")), "/forms/7");
+        assert_eq!(
+            click_path(Some("/notifications/n1"), Some("/settings/plan")),
+            "/notifications/n1"
+        );
+        assert_eq!(click_path(Some("/"), Some("/settings/plan")), "/");
+        // A tapPath that is not a plain in-app path is never opened.
+        assert_eq!(click_path(Some("https://evil.example/"), None), "/");
+        assert_eq!(
+            click_path(Some("//evil.example/"), Some("/words")),
+            "/words"
+        );
+        assert_eq!(click_path(Some("/a b"), None), "/");
+    }
+
+    #[test]
+    fn the_inbox_row_reads_its_tap_path() {
+        let row: InboxItem = serde_json::from_value(serde_json::json!({
+            "id": "n1", "kind": "campaign", "title": "t", "body": "b",
+            "link": "", "tapPath": "/forms/3", "createdAt": "2026-10-07T11:00:00Z",
+            "popUp": true
+        }))
+        .unwrap();
+        assert_eq!(row.tap_path.as_deref(), Some("/forms/3"));
+        let old: InboxItem = serde_json::from_value(serde_json::json!({
+            "id": "n2", "kind": "campaign", "title": "t", "body": "b",
+            "link": "/settings/plan", "createdAt": "2026-10-07T11:00:00Z"
+        }))
+        .unwrap();
+        assert_eq!(old.tap_path, None);
+        assert_eq!(
+            click_path(old.tap_path.as_deref(), old.link.as_deref()),
+            "/settings/plan"
+        );
+    }
+
+    #[test]
+    fn plan_notes_pop_up_exactly_when_the_server_says_whatever_the_news_switch() {
+        let mem = InboxMemory {
+            since: Some("2026-10-01T00:00:00Z".into()),
+            shown: vec![],
+        };
+        let now = at("2026-10-07T12:00:00Z");
+        for kind in PLAN_KINDS {
+            let created = "2026-10-07T11:00:00Z";
+            let mut pops = item("pops", kind, created);
+            pops.pop_up = Some(true);
+            let mut quiet = item("quiet", kind, created);
+            quiet.pop_up = Some(false);
+            let mut popped = item("popped", kind, created);
+            popped.pop_up = Some(true);
+            popped.popped_at = Some("2026-10-07T11:00:01Z".into());
+            // An API that does not say: left to the bell.
+            let unknown = item("unknown", kind, created);
+            let items = [pops, quiet, popped, unknown];
+            for news in [false, true] {
+                let (show, _) = pick(&items, &mem, news, now);
+                assert_eq!(
+                    show.iter().map(|n| n.id.as_str()).collect::<Vec<_>>(),
+                    ["pops"],
+                    "{kind}, news {news}"
+                );
+            }
+        }
     }
 }
