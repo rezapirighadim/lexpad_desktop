@@ -7,11 +7,13 @@ Leitner schedule keep them learned. Lexpad never chooses words for you: it has n
 ready-made word lists. It runs on the web ([app.lexpad.app](https://app.lexpad.app)), on Android,
 in Chrome and Firefox, in ChatGPT and Claude, and on your computer with this app.
 
-**Download (beta):** [Lexpad for Mac](https://lexpad.app/download/mac) (macOS 11 or later, Apple
+**Download:** [Lexpad for Mac](https://lexpad.app/download/mac) (macOS 11 or later, Apple
 silicon and Intel) · [Lexpad for Windows](https://lexpad.app/download/windows) (Windows 10 or 11,
 64-bit) · [every platform](https://lexpad.app/download). The download pages give the version, the
 SHA-256 checksums and honest install steps. More: [what the desktop app does](https://lexpad.app/features/desktop),
 [all features](https://lexpad.app/features).
+Lexpad for Mac and Windows is out of beta since 21 October 2026: the Mac app is signed and
+notarized by Apple, and the Windows app is in the [Microsoft Store](https://apps.microsoft.com/detail/9NSFK2ZK6PFS).
 
 | The card, over any app                                          | The whole app in its own window                                  |
 | --------------------------------------------------------------- | ---------------------------------------------------------------- |
