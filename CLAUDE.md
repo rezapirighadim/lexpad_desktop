@@ -239,7 +239,7 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
 - Bump `version` in `package.json` only; `tauri.conf.json` reads it. Keep `Cargo.toml` in step.
 - **GitHub Release** (every release, owner 2026-10-09): after the Windows CI run and the Mac
   `.dmg`, `gh release create v<version> --verify-tag --latest` titled "Lexpad for Mac and Windows
-  <version> (beta)", with `Lexpad_<version>_universal.dmg`, `Lexpad_<version>_x64-setup.exe`,
+  <version>" (no "(beta)": out of beta since 2026-10-21, owner), with `Lexpad_<version>_universal.dmg`, `Lexpad_<version>_x64-setup.exe`,
   `Lexpad_<version>_x64_en-US.msi` (the CI artifact's names) and a `SHA256SUMS.txt` of those three
   files. Its values must equal the landing's `site/downloads/lexpad-desktop.sha256`; download the
   release back and run `shasum -a 256 -c SHA256SUMS.txt`. Notes: what's new in plain English
