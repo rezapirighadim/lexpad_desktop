@@ -1,2 +1,0 @@
-import{r as e}from"./rolldown-runtime-hePW80VL.js";import{x as t}from"./react--nwWWpNE.js";import{t as n}from"./platform-akw1Y636.js";var r=e(t(),1);function i(){let[e,t]=(0,r.useState)(n.network.online);return(0,r.useEffect)(()=>n.network.onChange(t),[]),e}export{i as t};
-//# sourceMappingURL=useOnline-84ASeMBZ.js.map

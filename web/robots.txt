@@ -1,6 +1,9 @@
 # The app lives behind sign-in; the public site is lexpad.app.
+# Crawling is allowed on purpose: every response carries
+# "X-Robots-Tag: noindex", and a crawler must be able to fetch a page to see
+# that. Blocking it here instead let Google index bare app URLs it could not
+# read (Search Console, Oct 2026).
 User-agent: *
-Disallow: /
-Allow: /$
+Allow: /
 
 Sitemap: https://lexpad.app/sitemap.xml

@@ -1,0 +1,2 @@
+var e={notebookPlace:!0};function t(e){return typeof e==`object`&&!!e&&`notebookPlace`in e&&e.notebookPlace===!0}function n(e,t){return t?`*`:e}var r=new Map;function i(e,t){r.delete(e),r.set(e,{...t,key:e})}function a(e,t,n){let i=[...r.values()];if(t){let t=i.find(t=>t.entry===e);if(t!==void 0)return t}if(n)return i.at(-1)}export{t as a,i,n,a as r,e as t};
+//# sourceMappingURL=placeMemory-CV9FoY7R.js.map

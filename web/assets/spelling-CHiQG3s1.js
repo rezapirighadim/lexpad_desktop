@@ -1,0 +1,2 @@
+import{D as e}from"./dist-DGeUOeHk.js";function t(t,n){let r=n?.trim()??``;if(!(r===``||[...r].length>200)&&!/[\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]/u.test(r)&&e(r)!==e(t))return r}export{t};
+//# sourceMappingURL=spelling-CHiQG3s1.js.map
