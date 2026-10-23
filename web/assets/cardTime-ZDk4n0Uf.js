@@ -1,2 +1,0 @@
-import{z as e}from"./index-CfjGjghS.js";function t(){return e.getState().plan.secondsPerCard??24}function n(){return e.getState().plan.recall??.9}function r(e,n=0){return Math.max(n,Math.round(e*t()/60))}export{n,t as r,r as t};
-//# sourceMappingURL=cardTime-ZDk4n0Uf.js.map

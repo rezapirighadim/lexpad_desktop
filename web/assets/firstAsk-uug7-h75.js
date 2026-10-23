@@ -1,0 +1,2 @@
+var e=1400;function t(e){let t=e.indexOf(`. `);return t<0?{title:e,line:``}:{title:e.slice(0,t),line:e.slice(t+2)}}export{t as n,e as t};
+//# sourceMappingURL=firstAsk-uug7-h75.js.map

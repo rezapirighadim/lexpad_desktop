@@ -1,2 +1,0 @@
-import{t as e}from"./platform-Bw2ejuLn.js";import{p as t}from"./endpoints-jpXW0Zdn.js";var n=`wb.introSteps`;function r(r){try{let i=(e.prefs.get(n)??``).split(`,`).filter(e=>e!==``);if(i.includes(r))return;e.prefs.set(n,[...i,r].join(`,`)),t.countIntroStep({step:r,platform:e.env.platform}).catch(()=>void 0)}catch{}}export{r as t};
-//# sourceMappingURL=introSteps-CvJ5d0W6.js.map
