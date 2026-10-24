@@ -747,6 +747,13 @@ pub fn app_info(app: AppHandle) -> AppInfo {
     }
 }
 
+/// The newest desktop versions on lexpad.app, for Lexpad's window to say when
+/// one is ready (`release.rs`). Fails quietly offline; the window asks again.
+#[tauri::command]
+pub async fn latest_release() -> Result<crate::release::Release, String> {
+    crate::release::latest().await
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

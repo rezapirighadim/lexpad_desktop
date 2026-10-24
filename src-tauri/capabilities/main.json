@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "Lexpad's window, the whole web app: every API call through the core (which holds the session and checks each call), whether there is a session, connecting in the browser and signing out, a page of the web app in the browser, the desktop section of Settings (shortcut, reading the selection, quick-add notebook, start-up, notifications) and the reminder plan. Nothing else: no file system, no shell, no window control.",
+  "description": "Lexpad's window, the whole web app: every API call through the core (which holds the session and checks each call), whether there is a session, connecting in the browser and signing out, a page of the web app in the browser, the desktop section of Settings (shortcut, reading the selection, quick-add notebook, start-up, notifications), the reminder plan and the newest desktop versions on lexpad.app (read by the core). Nothing else: no file system, no shell, no window control.",
   "windows": ["main"],
   "permissions": [
     "core:event:allow-listen",
@@ -24,6 +24,7 @@
     "allow-set-notifications",
     "allow-schedule-reminders",
     "allow-open-notification-settings",
-    "allow-app-info"
+    "allow-app-info",
+    "allow-latest-release"
   ]
 }

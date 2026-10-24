@@ -29,6 +29,7 @@ mod panel;
 mod placement;
 mod popup;
 mod proxy;
+mod release;
 #[cfg(target_os = "macos")]
 mod services_macos;
 mod settings;
@@ -350,6 +351,7 @@ pub fn run() {
             commands::set_notifications,
             commands::schedule_reminders,
             commands::open_notification_settings,
+            commands::latest_release,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Lexpad")

@@ -37,6 +37,7 @@ fn main() {
             "set_notifications",
             "schedule_reminders",
             "open_notification_settings",
+            "latest_release",
         ]),
     ))
     .expect("failed to run tauri-build");
