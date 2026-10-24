@@ -51,6 +51,9 @@ On macOS there is also **Services → Add to Lexpad** when you right-click a sel
 - When you look a word up: the word, and the sentence it was in as a hint for the meaning.
 - When you add it: the word, its meaning, that sentence as an example, and the private note
   "Seen in <app name>".
+- About once a day, while Lexpad's window is open: a request for `lexpad.app/version.json`
+  (which versions are out), with nothing but the app's version, the system and, on Windows,
+  whether it came from the Microsoft Store in its User-Agent. No account, no session.
 - Never a window title (they carry document names, e-mail subjects and the names of people you
   chat with), never the rest of the text, never anything you did not select. The selection is
   read only at the moment you press the shortcut.
@@ -354,7 +357,14 @@ CI builds no macOS (see above), so the workflow has no Apple secrets and needs n
    test, and prints the `.dmg`'s SHA-256. The Mac must be awake and unlocked (the smoke test
    opens windows).
 4. Put both on the landing's downloads page (`lexpad_landing`) with their SHA-256s, and the
-   release in the changelog.
+   release in the changelog. Set `DESKTOP_VERSIONS` there (the platform whose file moved) and run
+   `scripts/features.py`: it also writes the desktop section of `site/version.json`, which every
+   copy of the app reads about once a day to say on Today that a newer version is ready. So push
+   the landing only once the new files are on it: the notice sends people to those pages.
+5. **When the Microsoft Store has published the new submission** (Partner Center says it is in
+   the Store, not just certified), set `MS_STORE_VERSION` in the landing's `scripts/features.py`,
+   run it and push. Copies from the Store are told only about the version the Store serves, so
+   until then they see nothing; copies from the installer see the Store button only from then on.
 
 Still to do before a public release (marked `TODO(signing)` in the workflow for Windows):
 

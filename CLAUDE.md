@@ -57,6 +57,7 @@ src-tauri/src/smoke.rs           CI's placement smoke test, only with `--feature
 src-tauri/src/main_window.rs     Lexpad's window: the web app from web/, its config, navigation lock, place (tested)
 src-tauri/src/proxy.rs           what the window may send to the API through the core (tested)
 src-tauri/src/msix.rs            Windows, the Store's package only: start on login as its StartupTask, is_packaged
+src-tauri/src/release.rs         the newest desktop versions from lexpad.app/version.json, for the window's update line (tested)
 msix/                            the Microsoft Store's MSIX: AppxManifest.xml (Partner Center identity) and Assets/ (icons.py)
 scripts/msix.ps1, msix-smoke.ps1 CI: pack the unsigned .msix; install a test-signed copy and check it (README, "Microsoft Store")
 src-tauri/src/notify/            notifications: the reminder plan, the inbox poll and its rules (tested), macos.rs, windows.rs
@@ -115,6 +116,16 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
   says so). A click opens the window on the row's `tapPath` (else its old `link`, else Today),
   only when it is a plain in-app path (`click_path`); a message's own button that opens an
   address goes through `window.open`, so `on_new_window` hands it to the system browser.
+- **A newer version is said on Today** (`release.rs`, command `latest_release`, front
+  `lib/updates.ts`): the updater is off, so the window asks the core about once a day, after a
+  sync, and the core reads the desktop section of `lexpad.app/version.json` (a fixed address,
+  no session, the usual User-Agent; `LEXPAD_SITE_ORIGIN` at build time for a test). The landing's
+  `scripts/features.py` writes that section from `DESKTOP_VERSIONS` and `MS_STORE_VERSION`, so
+  a release that moves those moves the notice (README, "Release steps" 4 and 5). The core
+  returns versions and download pages with `os` and `install` (`msix::is_packaged`: store or
+  direct); the web app decides what to offer (a Store copy only hears of a version the Store
+  serves, Store first) and checks every address. Links leave through `on_new_window`. Offline
+  or with the site down nothing is shown and nothing breaks.
 - **Accessibility after an update**: up to 0.3.2 the Mac build was ad-hoc signed, a new code
   identity each release, and macOS stopped applying the old grant while the switch still looked
   on. From 0.3.3 `scripts/release-mac.sh` signs with one self-signed certificate, "Lexpad Local
