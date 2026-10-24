@@ -94,7 +94,10 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
   runs `connect` (system browser, loopback, PKCE). No password is ever typed in the window, and
   Google and Apple accounts work, since their sign-in happens in the real browser.
 - **The window may only show the app's own pages** (`is_app_page`); any other address goes to the
-  system browser (https and mailto only, `may_open_outside`), never into the window. Files the
+  system browser (https and mailto only, `may_open_outside`), never into the window. A clicked link
+  (`target="_blank"`, `window.open`) must reach those handlers: the opener plugin is built
+  with `open_js_links_on_click(false)`, since its default script cancels such a click and calls
+  its own `open_url`, which no window is granted (links did nothing up to 0.3.14). Files the
   page saves go to Downloads.
 - **Opening it**: Open Lexpad (panel, tray menu), a click on the Dock icon, a second launch, a
   word from the panel (`/words/<id>`, also before the page listens: `main_take_pending`), a

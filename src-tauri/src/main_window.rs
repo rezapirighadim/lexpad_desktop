@@ -325,6 +325,17 @@ mod tests {
     }
 
     #[test]
+    fn links_reach_the_webview_not_the_opener_plugins_script() {
+        // The opener plugin's default init script turns a click on a
+        // target="_blank" link into its `open_url` command, which no window
+        // may call: the link did nothing (0.2 to 0.3.15). The click has to
+        // reach `on_new_window` / `on_navigation` above.
+        let wiring = include_str!("lib.rs");
+        assert!(wiring.contains(".open_js_links_on_click(false)"));
+        assert!(!wiring.contains("tauri_plugin_opener::init()"));
+    }
+
+    #[test]
     fn the_config_is_data_not_code() {
         let script = config_script("d\"; alert(1); \"");
         assert!(script.starts_with("window.__LEXPAD_CONFIG = Object.freeze({"));

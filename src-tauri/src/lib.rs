@@ -218,7 +218,16 @@ pub fn run() {
         }));
     }
     builder
-        .plugin(tauri_plugin_opener::init())
+        // Without its link script: the plugin's default script catches every
+        // click on a target="_blank" link, cancels it and asks for its own
+        // `open_url` command, which no window is granted, so the link went
+        // nowhere. The click must reach the webview, whose new-window and
+        // navigation handlers (main_window.rs) hand it to the browser, checked.
+        .plugin(
+            tauri_plugin_opener::Builder::new()
+                .open_js_links_on_click(false)
+                .build(),
+        )
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
             None,
