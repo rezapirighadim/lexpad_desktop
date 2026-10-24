@@ -1,2 +1,0 @@
-import{r as e}from"./rolldown-runtime-hePW80VL.js";import{x as t}from"./react--nwWWpNE.js";import{n}from"./db-C2puJ4lo.js";import{o as r,s as i}from"./schema-BidPbW_8.js";var a=e(t(),1);function o(e,t,o,s){let[c,l]=(0,a.useState)(()=>({value:r(e),fresh:!1}));return(0,a.useEffect)(()=>{let r=!0,a=n(async()=>t()).subscribe({next:t=>{r&&(i(e,t,s?.(t)),l({value:t,fresh:!0}))},error:e=>{r&&console.error(`live query failed`,e)}});return()=>{r=!1,a.unsubscribe()}},o),c}export{o as t};
-//# sourceMappingURL=useRememberedQuery-BXw33yPM.js.map
