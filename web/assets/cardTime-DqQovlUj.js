@@ -1,0 +1,2 @@
+import{R as e}from"./index-D5snEZRE.js";function t(){return e.getState().plan.secondsPerCard??24}function n(){return e.getState().plan.recall??.9}function r(e,n=0){return Math.max(n,Math.round(e*t()/60))}export{n,t as r,r as t};
+//# sourceMappingURL=cardTime-DqQovlUj.js.map
