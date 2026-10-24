@@ -84,6 +84,19 @@ sell or publish changed versions. The Lexpad name, logo and icons are not licens
 
 ## Changelog
 
+The full notes for every release are in its [GitHub release](https://github.com/rezapirighadim/lexpad_desktop/releases)
+and on the site changelog, [lexpad.app/changelog](https://lexpad.app/changelog). In short, since 0.3.6:
+
+- **0.3.16** (24 October 2026): the Pro trial's moments on Today follow its length.
+- **0.3.15** (24 October 2026): links in the window open the browser again; a notice on Today when a new version is ready; a daily reminder offered after the first practice; the add sheet's "not a word" answer with Save without AI.
+- **0.3.14** (22 October 2026): the web app of 22 October: the new first run, a Today that grows with the notebook, and an add sheet with one next-step button.
+- **0.3.13** (21 October 2026): notification buttons and short forms in the bell; a notification opens its own page.
+- **0.3.12** (21 October 2026): importing takes the files people have: Excel workbooks, older CSV encodings, Google Translate phrases, older Kindle clippings, big Anki decks.
+- **0.3.11** (20 October 2026): Lex proposes changes as cards; a visible wait for an AI card.
+- **0.3.10** (18 October 2026): Fill with AI for every word without a meaning; Anki decks; check before an import is added, with Undo.
+- **0.3.8** (14 October 2026): Report is written out under every Lex answer.
+- **0.3.7** (13 October 2026): the first Mac release signed and notarized by Apple (Developer ID).
+
 **0.3.6** (13 October 2026)
 
 - Report AI content: a "Report" action (flag) beside everything a model wrote in the window
