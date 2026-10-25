@@ -19,28 +19,34 @@ Spec: `uiux/specs/2026-10-25-video-player.md` (§24 for the app structure).
    (`crate::player_window::LABEL`, added by the UI agent) when the `player-dev` feature is off.
    Lexpad's window (`main`) keeps `media_pick` (the Watch page's "Open file…") but no longer plays:
    its drops and picks go to the Player (`open_from_system`), which the glue opens.
+   **Done in 6c7310b** (engine side): `PLAYER_WINDOWS` has `player` and `player-mini`; `media::player_window()` returns `media::PLAYER_LABEL` (`"player"`) without `player-dev`; drops on `main` go through `open_from_system`. Open: `lib.rs`'s `open_media` still opens Lexpad's window at `main_window::PLAYER` (`/player`) until the glue's `player_window::open` exists; swap that one call. The `player` window's capability must grant the `media_*` and `words_*` commands (see `capabilities/main.json`).
 2. **Continue watching.** `media_recent() -> RecentEntry[]` (newest first, at most 8; the UI shows
    them on the Player's empty screen and on the Watch page): `{ fileId?: string` (granted again when
    the remembered file still exists), `name, position, duration, watched, updated: number,
 missing: boolean, season?: number, episode?: number, thumb?: string` (a `lexmedia` address of
    the frame at `position`) `}`. Plus `media_recent_remove(key)` and `media_recent_clear()`.
    "Remember recent files" off in the player's Settings must stop new entries.
+   **Done in 6c7310b**: `media.recent()`, `removeRecent(key)`, `clearRecent()`, `setRememberRecent(on)`, `prefs()`. `thumb` is a `lexmedia` frame (request 3).
 3. **Seek-preview frames** (§6.1, §17): a `lexmedia` route `/t/<session>/<second>.jpg` (one JPEG
    q70 frame per 10 s, made in the background at low priority, paused while a seek runs, cached
    LRU 500 MB), or a sprite command. Until it exists the preview shows chapter, time and the line
    without a frame.
+   **Done in 6c7310b**, simpler than asked: `lexmedia /t/<fileId>/<ms>.jpg` (helper `frameUrl` in api.ts), one per 10 s, made on demand (not in the background), two FFmpegs at most, 64 MB in memory (no disk cache yet). Measured on this Mac (M4 Pro): 77 to 146 ms a frame (720p to 4K HDR, tone-mapped).
 4. **Picture subtitles** (owner approved, §24.8): `media_subtitle_load` for a PGS / VobSub stream
    returns cues with `image: { src: string, box: [x, y, w, h] }` (fractions of the frame; `src` a
    `lexmedia` PNG address) and `text: ""`. The UI already draws such cues as pictures with the
    "picture" chip and never offers word saving, font, colour or edge for them.
+   **Not done.** Needs FFmpeg to decode each PGS/VobSub event to an image with its box; FFmpeg has no muxer for that, so it means a small decoder pass (libavcodec through `ffmpeg -c:s copy` + our own PGS parser, or rendering events with `overlay` on a blank frame). Planned as its own piece of work; until then `supported: false` stays.
 5. **Give them back** (§24.5): when `media_default_player_request` sets a type on macOS, keep the
    previous handler per type in `settings.json`, and add `media_default_player_restore(types?)`
    that gives each type back to it. `DefaultPlayerStatus.types[].current` should be the app's
    display name ("VLC", "QuickTime Player"), not its bundle id, where the system has one.
+   **Done in 6c7310b**: the previous handler per type is kept in `media-settings.json` (the media engine's own file beside `media-resume.json`, not `settings.json`), `media.defaultPlayer.restore(types?)`; `current` is the app's display name.
 6. **Getting this video ready** (§16): an event `media:progress { session, readyUntil: number,
 etaSeconds?: number }` while a transcode runs, so the processing screen can say "It starts in
    about 4 seconds" and the seek bar can show the converted part. Without it the screen shows no
    numbers.
+   **Done in 6c7310b**: `media.onProgress` → `{ session, run, readyUntil, etaSeconds? }` every half second while a run converts (`etaSeconds` until 3 s are ready).
 7. **A cue's line number** in `Cue` is not needed; the UI uses the index in `Track.cues`.
 
 ## What the UI relies on today (please keep it stable or note a change here)
@@ -52,6 +58,10 @@ etaSeconds?: number }` while a transcode runs, so the processing screen can say 
   `persianLettersFixed`; `Episodes.next/previous`.
 - `StreamPlayer` in `src/lib/media/stream.ts` is copied into the front as
   `features/player/engine/stream.ts`; a change there should be copied (both files say so).
+  **Engine note:** copy it again from 6c7310b or later. Since the first commit it (a) jumps the
+  small gap at a run's start (WebKit never started playing a streamed file before the first
+  seek), (b) keeps the session on an audio switch (it closed it), (c) ignores late errors of a
+  replaced run, (d) keeps separate frame-callback tokens for load and seek.
 
 ## Decisions taken on the UI side
 

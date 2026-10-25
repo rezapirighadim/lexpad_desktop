@@ -13,6 +13,9 @@
  *
  * Seek latency is measured here: from the seek to the first frame shown
  * after it (`requestVideoFrameCallback` where the webview has it).
+ *
+ * The front copies this file as `features/player/engine/stream.ts`: a
+ * change here is copied there (NOTES-player-ui.md).
  */
 import { media, type Playback, type Run } from './api.js';
 
