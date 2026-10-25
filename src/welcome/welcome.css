@@ -427,6 +427,8 @@ h1 {
 
 .chosen {
   align-self: flex-start;
+  /* Clear of the back button above it (mock-up 31). */
+  margin-top: 12px;
   margin-bottom: 18px;
   height: 28px;
   padding: 0 4px 0 10px;
