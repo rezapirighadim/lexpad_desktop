@@ -43,6 +43,9 @@ function webApp(): Plugin {
 
 // Three pages, one per small window: the add-a-word popup, the menu-bar /
 // tray panel and Settings; and Lexpad's window, the web app from web/.
+// The video player's development page only when asked for
+// (LEXPAD_PLAYER_DEV=1, with the cargo feature player-dev): never shipped.
+const playerDev = process.env.LEXPAD_PLAYER_DEV === '1';
 // Everything is bundled; the app loads no remote code (see the CSP in
 // tauri.conf.json).
 export default defineConfig({
@@ -60,6 +63,7 @@ export default defineConfig({
         popup: resolve(import.meta.dirname, 'src/popup.html'),
         panel: resolve(import.meta.dirname, 'src/panel.html'),
         settings: resolve(import.meta.dirname, 'src/settings.html'),
+        ...(playerDev ? { 'player-dev': resolve(import.meta.dirname, 'src/player-dev.html') } : {}),
       },
     },
   },

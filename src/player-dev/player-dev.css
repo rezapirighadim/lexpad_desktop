@@ -1,0 +1,97 @@
+:root {
+  color-scheme: light dark;
+  font:
+    13px/1.4 system-ui,
+    sans-serif;
+}
+body {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #8884;
+}
+main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  min-height: 0;
+}
+.stage {
+  padding: 8px;
+  overflow: auto;
+}
+aside {
+  border-left: 1px solid #8884;
+  padding: 8px;
+  overflow: auto;
+}
+aside pre {
+  white-space: pre-wrap;
+  font-size: 11px;
+}
+#frame {
+  position: relative;
+  background: #000;
+}
+video {
+  width: 100%;
+  max-height: 70vh;
+  display: block;
+}
+#overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.line {
+  position: absolute;
+  left: 5%;
+  right: 5%;
+  text-align: center;
+  color: #fff;
+  font-size: clamp(14px, 2.4vw, 30px);
+  text-shadow:
+    0 0 3px #000,
+    0 0 3px #000,
+    0 0 6px #000;
+  white-space: pre-line;
+  pointer-events: auto;
+  user-select: text;
+}
+.line.t0 {
+  bottom: 6%;
+}
+.line.t1 {
+  top: 6%;
+}
+.line.t2 {
+  bottom: 18%;
+  color: #ffe680;
+}
+.row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin: 8px 0;
+  flex-wrap: wrap;
+}
+.slot {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 4px 0;
+  flex-wrap: wrap;
+}
+.slot select {
+  max-width: 420px;
+}
+#episodes li.current {
+  font-weight: 600;
+}

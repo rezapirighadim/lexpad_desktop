@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lexpad player (development)</title>
+    <link rel="stylesheet" href="./player-dev/player-dev.css" />
+  </head>
+  <body>
+    <!-- The media engine's development page (cargo feature player-dev): not
+         the player's design, which comes from the designer. -->
+    <header>
+      <button id="open" type="button">Open files…</button>
+      <span id="engine">engine…</span>
+      <span id="status" role="status"></span>
+    </header>
+    <main>
+      <section class="stage">
+        <div id="frame">
+          <video id="video" controls playsinline></video>
+          <div id="overlay" aria-live="off"></div>
+        </div>
+        <div class="row">
+          <label
+            >Audio
+            <select id="audio"></select
+          ></label>
+          <label>Delay (ms) <input id="delay" type="number" step="50" value="0" /></label>
+          <button id="prev" type="button">◀ Previous</button>
+          <button id="next" type="button">Next ▶</button>
+        </div>
+        <div id="slots"></div>
+      </section>
+      <aside>
+        <h2>File</h2>
+        <pre id="info"></pre>
+        <h2>Episodes</h2>
+        <ol id="episodes"></ol>
+        <h2>Measurements</h2>
+        <pre id="log"></pre>
+      </aside>
+    </main>
+    <script type="module" src="./player-dev/main.ts"></script>
+  </body>
+</html>
