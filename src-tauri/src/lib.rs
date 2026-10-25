@@ -118,10 +118,10 @@ pub fn refresh_dock(app: &AppHandle, opening: bool) {
 }
 
 /// Registers or removes the app from the login items. A development build
-/// (debug, or pointed at a local API) never registers itself. The Store's
-/// package uses its StartupTask instead (`msix`).
+/// (debug, or pointed at a local API) and the player test build never
+/// register themselves. The Store's package uses its StartupTask instead (`msix`).
 pub fn apply_start_on_login(app: &AppHandle, on: bool) {
-    if config::is_development_build() {
+    if config::is_development_build() || config::PLAYER_TEST {
         return;
     }
     #[cfg(windows)]

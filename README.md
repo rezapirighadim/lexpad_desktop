@@ -389,6 +389,18 @@ Still to do before a public release (marked `TODO(signing)` in the workflow for 
   Accessibility API, which is the point of the app. (The app also uses Tauri's
   `macos-private-api` for the panel's transparent, rounded window, which the store refuses too.)
 
+### A player test build
+
+`LEXPAD_PLAYER_TEST=1 scripts/release-mac.sh` makes "Lexpad Player Test.app" with the same
+pipeline (universal, production API, Developer ID, notarized and stapled): an app that installs
+next to Lexpad and never touches it. `src-tauri/tauri.playertest.conf.json` gives it its own
+name, identifier (`app.lexpad.desktop.playertest`, so its own settings, web data, notifications
+and single-instance lock), the TEST-band icon (`scripts/playertest-icon.py`) and an Info.plist
+without the Services entry; the `player-test` feature (`config::PLAYER_TEST`) gives it its own
+credential store entry, ⌘⌥⇧L as its shortcut, and never adds it to the login items. Like Lexpad
+it declares "Open with" for videos at rank Alternate and is never the default by itself. It is
+for the owner's own testing and is never published.
+
 ## Manual test on Windows
 
 Windows cannot be run from the Mac this was built on; CI builds it. Before a Windows release,

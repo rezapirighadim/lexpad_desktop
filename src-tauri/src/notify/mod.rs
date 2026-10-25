@@ -319,7 +319,11 @@ pub fn request() -> Access {
 /// The system's settings page for this app's notifications.
 pub fn settings_url() -> &'static str {
     if cfg!(target_os = "macos") {
-        "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=app.lexpad.desktop"
+        if crate::config::PLAYER_TEST {
+            "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=app.lexpad.desktop.playertest"
+        } else {
+            "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=app.lexpad.desktop"
+        }
     } else {
         "ms-settings:notifications"
     }

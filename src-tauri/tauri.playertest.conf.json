@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Lexpad Player Test",
+  "identifier": "app.lexpad.desktop.playertest",
+  "bundle": {
+    "icon": [
+      "icons-playertest/32x32.png",
+      "icons-playertest/128x128.png",
+      "icons-playertest/128x128@2x.png",
+      "icons-playertest/icon.icns",
+      "icons-playertest/icon.ico"
+    ],
+    "macOS": {
+      "infoPlist": "Info.playertest.plist"
+    }
+  }
+}

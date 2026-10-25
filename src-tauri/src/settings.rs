@@ -5,8 +5,14 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-/// The shortcut on first run: ⌘⇧L on a Mac, Ctrl+Shift+L on Windows.
-pub const DEFAULT_SHORTCUT: &str = "CommandOrControl+Shift+L";
+/// The shortcut on first run: ⌘⇧L on a Mac, Ctrl+Shift+L on Windows. The
+/// player test build takes ⌘⌥⇧L / Ctrl+Alt+Shift+L, so it never fights an
+/// installed Lexpad for the same keys.
+pub const DEFAULT_SHORTCUT: &str = if crate::config::PLAYER_TEST {
+    "CommandOrControl+Alt+Shift+L"
+} else {
+    "CommandOrControl+Shift+L"
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
@@ -132,7 +138,7 @@ impl Default for Settings {
         Self {
             device_id: uuid::Uuid::new_v4().to_string(),
             shortcut: DEFAULT_SHORTCUT.into(),
-            start_on_login: true,
+            start_on_login: !crate::config::PLAYER_TEST,
             notebook_id: None,
             recent: Vec::new(),
             open_on_launch: false,

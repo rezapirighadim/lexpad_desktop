@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 
 /// The service name the credential is filed under.
-const SERVICE: &str = "app.lexpad.desktop";
+const SERVICE: &str = crate::config::BUNDLE_ID;
 
 /// What the credential store holds.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

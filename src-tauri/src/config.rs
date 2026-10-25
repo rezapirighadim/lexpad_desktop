@@ -20,6 +20,22 @@ pub const CONNECT_PATH: &str = "/connect-desktop";
 /// The app's version, from package.json through tauri.conf.json.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// A side-by-side test build of the video player (`--features player-test`,
+/// with `src-tauri/tauri.playertest.conf.json`; README, "A player test build").
+/// It is its own app next to an installed Lexpad: its own bundle identifier,
+/// credential store entry, settings and shortcut, and it never adds itself to
+/// the login items. Never in a shipped build.
+pub const PLAYER_TEST: bool = cfg!(feature = "player-test");
+
+/// The bundle identifier, for what must name it outside Tauri's config (the
+/// credential store's service, the system's notification settings page).
+/// It equals `identifier` in tauri.conf.json (or the test build's overlay).
+pub const BUNDLE_ID: &str = if PLAYER_TEST {
+    "app.lexpad.desktop.playertest"
+} else {
+    "app.lexpad.desktop"
+};
+
 /// Whether this build talks to anything but production. Such a build never
 /// registers itself to start at login: a test build pointing at a laptop's
 /// API must not end up in somebody's login items.

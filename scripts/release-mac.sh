@@ -4,6 +4,10 @@
 # test, and prints the .dmg's SHA-256 for the landing's downloads page.
 #
 #   scripts/release-mac.sh
+#   LEXPAD_PLAYER_TEST=1 scripts/release-mac.sh   the player test build: "Lexpad
+#     Player Test.app" (app.lexpad.desktop.playertest, feature player-test,
+#     src-tauri/tauri.playertest.conf.json), installed beside Lexpad and never
+#     published (README, "A player test build")
 #
 # macOS is built here and not in CI because a macOS runner is billed at ten
 # times a Linux minute on this private repository: one CI release build was
@@ -124,28 +128,41 @@ fi
 # script notarizes the .dmg instead (it carries the app, and its ticket is
 # stapled to the file people download), so tauri must not see them.
 unset APPLE_API_KEY APPLE_API_ISSUER APPLE_API_KEY_PATH APPLE_ID APPLE_PASSWORD
-identifier=$(node -p "require('./src-tauri/tauri.conf.json').identifier")
+# The player test build: the same pipeline with an overlay config (its own
+# name, identifier, icon and Info.plist) and the player-test feature.
+tauri_args=""
+features=""
+conf=./src-tauri/tauri.conf.json
+if [ "${LEXPAD_PLAYER_TEST:-}" = 1 ]; then
+  conf=./src-tauri/tauri.playertest.conf.json
+  tauri_args="--config src-tauri/tauri.playertest.conf.json --features player-test"
+  features=",player-test"
+fi
+identifier=$(node -p "require('$conf').identifier")
+product=$(node -p "require('$conf').productName")
 
-echo "release-mac: building Lexpad $version ($commit), universal, production"
-pnpm tauri build --target universal-apple-darwin
+echo "release-mac: building $product $version ($commit), universal, production"
+# shellcheck disable=SC2086
+pnpm tauri build --target universal-apple-darwin $tauri_args
 
 bundle=src-tauri/target/universal-apple-darwin/release/bundle
-dmg="$bundle/dmg/Lexpad_${version}_universal.dmg"
+dmg="$bundle/dmg/${product}_${version}_universal.dmg"
 [ -f "$dmg" ] || { echo "release-mac: $dmg was not made" >&2; exit 1; }
 
 echo "release-mac: checking the .dmg"
 mnt=$(mktemp -d)
 hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mnt" >/dev/null
 trap 'hdiutil detach "$mnt" >/dev/null 2>&1 || true' EXIT
-[ -d "$mnt/Lexpad.app" ] || { echo "release-mac: Lexpad.app is not in the .dmg" >&2; exit 1; }
-archs=$(lipo -archs "$mnt/Lexpad.app/Contents/MacOS/lexpad-desktop")
+app="$mnt/$product.app"
+[ -d "$app" ] || { echo "release-mac: $product.app is not in the .dmg" >&2; exit 1; }
+archs=$(lipo -archs "$app/Contents/MacOS/lexpad-desktop")
 case "$archs" in
   *x86_64*arm64* | *arm64*x86_64*) echo "release-mac: binary architectures: $archs" ;;
   *) echo "release-mac: expected x86_64 and arm64, got: $archs" >&2; exit 1 ;;
 esac
 # Signed with the one stable identity, deep and strict, hardened runtime.
-codesign --verify --deep --strict "$mnt/Lexpad.app" || { echo "release-mac: the signature does not verify" >&2; exit 1; }
-sig=$(codesign -dv --verbose=4 "$mnt/Lexpad.app" 2>&1)
+codesign --verify --deep --strict "$app" || { echo "release-mac: the signature does not verify" >&2; exit 1; }
+sig=$(codesign -dv --verbose=4 "$app" 2>&1)
 echo "$sig" | grep -q "^Identifier=$identifier\$" || { echo "release-mac: not signed as $identifier" >&2; exit 1; }
 echo "$sig" | grep -q "^Authority=$APPLE_SIGNING_IDENTITY\$" || { echo "release-mac: not signed by $APPLE_SIGNING_IDENTITY" >&2; exit 1; }
 echo "$sig" | grep -q "flags=0x10000(runtime)" || { echo "release-mac: no hardened runtime" >&2; exit 1; }
@@ -153,12 +170,12 @@ if [ "$notarize" = 1 ]; then
   # Notarization refuses a signature without Apple's secure timestamp.
   echo "$sig" | grep -q "^Timestamp=" || { echo "release-mac: no secure timestamp on the signature" >&2; exit 1; }
 fi
-requirement=$(codesign -d -r- "$mnt/Lexpad.app" 2>&1 | sed -n 's/^designated => //p')
+requirement=$(codesign -d -r- "$app" 2>&1 | sed -n 's/^designated => //p')
 case "$requirement" in
   "identifier \"$identifier\" and "*certificate*) echo "release-mac: designated requirement: $requirement" ;;
   *) echo "release-mac: unexpected designated requirement: $requirement" >&2; exit 1 ;;
 esac
-plist_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$mnt/Lexpad.app/Contents/Info.plist")
+plist_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")
 [ "$plist_version" = "$version" ] || { echo "release-mac: app says $plist_version, package.json says $version" >&2; exit 1; }
 hdiutil detach "$mnt" >/dev/null
 trap - EXIT
@@ -196,7 +213,7 @@ fi
 echo "release-mac: placement smoke test"
 host=$(uname -m)
 [ "$host" = arm64 ] && smoke_target=aarch64-apple-darwin || smoke_target=x86_64-apple-darwin
-pnpm tauri build --no-bundle --features smoke-test --target "$smoke_target"
+pnpm tauri build --no-bundle --features "smoke-test$features" --target "$smoke_target"
 smoke_out=$(mktemp)
 set +e
 "src-tauri/target/$smoke_target/release/lexpad-desktop" --smoke-test >"$smoke_out" 2>&1

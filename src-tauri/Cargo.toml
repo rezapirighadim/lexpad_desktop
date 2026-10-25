@@ -20,6 +20,10 @@ smoke-test = []
 # opens at start to prove the media pipeline, and its benchmark. Never in a
 # shipped build.
 player-dev = []
+# A side-by-side test build of the video player (config::PLAYER_TEST), built
+# with src-tauri/tauri.playertest.conf.json by scripts/release-mac.sh when
+# LEXPAD_PLAYER_TEST=1. Never in a shipped build.
+player-test = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
