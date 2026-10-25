@@ -31,6 +31,14 @@ $layout = Join-Path ([IO.Path]::GetTempPath()) "lexpad-msix-$([guid]::NewGuid())
 New-Item -ItemType Directory -Path $layout | Out-Null
 try {
   Copy-Item $exePath (Join-Path $layout 'Lexpad.exe')
+  # The video player's FFmpeg (Tauri's externalBin, beside the exe after
+  # `tauri build`); the core looks for it beside its own exe.
+  $exeDir = Split-Path -Parent $exePath
+  foreach ($tool in 'ffmpeg.exe', 'ffprobe.exe') {
+    $from = Join-Path $exeDir $tool
+    if (-not (Test-Path $from)) { throw "$tool not found beside $exePath (scripts/ffmpeg/fetch-prebuilt.sh win64 before tauri build)" }
+    Copy-Item $from (Join-Path $layout $tool)
+  }
   Copy-Item (Join-Path $root 'msix/Assets') (Join-Path $layout 'Assets') -Recurse
   $manifest = (Get-Content (Join-Path $root 'msix/AppxManifest.xml') -Raw).Replace('__VERSION__', $msixVersion)
   Set-Content -Path (Join-Path $layout 'AppxManifest.xml') -Value $manifest -Encoding utf8NoBOM
