@@ -63,6 +63,7 @@ export default defineConfig({
         popup: resolve(import.meta.dirname, 'src/popup.html'),
         panel: resolve(import.meta.dirname, 'src/panel.html'),
         settings: resolve(import.meta.dirname, 'src/settings.html'),
+        welcome: resolve(import.meta.dirname, 'src/welcome.html'),
         ...(playerDev ? { 'player-dev': resolve(import.meta.dirname, 'src/player-dev.html') } : {}),
       },
     },
