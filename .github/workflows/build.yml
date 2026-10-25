@@ -79,6 +79,14 @@ jobs:
           sudo apt-get install -y -qq --no-install-recommends \
             libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev llvm clang
       - run: pnpm install --frozen-lockfile
+      # The video player's FFmpeg sidecars (docs/ffmpeg.md): Tauri's build
+      # needs them for the target it builds, so Linux (tests) and Windows
+      # (the cross clippy) are both fetched, pinned and checked, and cached.
+      - uses: actions/cache@v4
+        with:
+          path: src-tauri/binaries
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/ffmpeg/versions.env') }}
+      - run: scripts/ffmpeg/fetch-prebuilt.sh linux64 && scripts/ffmpeg/fetch-prebuilt.sh win64
       # `pnpm check`, step by step, with one difference: on Linux the capture
       # and notification modules are stubs, so helpers only macOS and Windows
       # call are dead here, and dead_code is allowed on this host alone. Every
@@ -110,6 +118,15 @@ jobs:
           workspaces: src-tauri
           key: windows-release
       - run: pnpm install --frozen-lockfile
+      # The video player's FFmpeg sidecars (docs/ffmpeg.md): Tauri's build
+      # needs them for the target it builds, so Linux (tests) and Windows
+      # (the cross clippy) are both fetched, pinned and checked, and cached.
+      - uses: actions/cache@v4
+        with:
+          path: src-tauri/binaries
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/ffmpeg/versions.env') }}
+      - run: scripts/ffmpeg/fetch-prebuilt.sh win64
+        shell: bash
       - run: pnpm build
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
       - run: cargo test --manifest-path src-tauri/Cargo.toml
