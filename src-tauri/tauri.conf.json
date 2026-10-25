@@ -46,7 +46,7 @@
         "default-src": "'self'",
         "script-src": "'self'",
         "style-src": "'self'",
-        "img-src": "'self' data: blob:",
+        "img-src": "'self' data: blob: lexmedia: http://lexmedia.localhost",
         "media-src": "'self' data: blob: lexmedia: http://lexmedia.localhost",
         "font-src": "'self'",
         "connect-src": "ipc: http://ipc.localhost lexmedia: http://lexmedia.localhost",

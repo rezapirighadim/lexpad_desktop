@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde::Serialize;
-use tauri::{AppHandle, Runtime, State};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use tauri_plugin_dialog::DialogExt as _;
 
 use super::default_player;
@@ -202,11 +202,27 @@ fn playback(session: &Arc<Session>, file: FileRef, at: f64, saved: Entry) -> Pla
     }
 }
 
+/// While a run converts: how far it has got (the processing screen's
+/// "It starts in about 4 seconds", the seek bar's converted part).
+pub const PROGRESS_EVENT: &str = "media:progress";
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProgressDto {
+    session: String,
+    run: u64,
+    /// The element's seconds converted so far.
+    ready_until: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    eta_seconds: Option<f64>,
+}
+
 /// Opens a video: probes it, decides how it plays (with the choices saved
 /// for it unless the page gives new ones), and starts its stream at the
 /// saved position (or `at`).
 #[tauri::command]
-pub async fn media_open(
+pub async fn media_open<R: Runtime>(
+    app: AppHandle<R>,
     media: Media<'_>,
     file_id: String,
     audio: Option<usize>,
@@ -227,8 +243,23 @@ pub async fn media_open(
         audio_delay_ms: audio_delay_ms.unwrap_or(saved.audio_delay_ms),
     };
     let id = uuid::Uuid::new_v4().simple().to_string();
-    let session =
-        Arc::new(Session::new(id, file_id, path, info, tools, caps, opts).map_err(unplayable)?);
+    let emitter = app.clone();
+    let sid = id.clone();
+    let session = Arc::new(
+        Session::new(id, file_id, path, info, tools, caps, opts)
+            .map_err(unplayable)?
+            .with_progress(Arc::new(move |run, ready, eta| {
+                let _ = emitter.emit(
+                    PROGRESS_EVENT,
+                    ProgressDto {
+                        session: sid.clone(),
+                        run,
+                        ready_until: ready + plan::TIMELINE_OFFSET,
+                        eta_seconds: eta,
+                    },
+                );
+            })),
+    );
     media.add_session(session.clone());
     let at = at.unwrap_or(saved.position);
     Ok(playback(&session, file, at, saved))
@@ -523,8 +554,93 @@ pub fn media_resume_save(
             &resume::key_for(&path, file.size),
             position.max(0.0),
             duration.max(0.0),
+            media.prefs.get().remember_recent.then_some(path.as_path()),
         )
         .ok_or_else(|| "lock".into())
+}
+
+/// The most entries "Continue watching" shows.
+const RECENT_MAX: usize = 8;
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentDto {
+    /// The resume store's key, for `media_recent_remove`.
+    key: String,
+    /// The file, granted again, when it is still where it was.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file_id: Option<String>,
+    name: String,
+    position: f64,
+    duration: f64,
+    watched: bool,
+    /// Seconds since 1970.
+    updated: i64,
+    missing: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    season: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    episode: Option<u32>,
+    /// A frame at `position` (JPEG over the lexmedia scheme), when the file is there.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thumb: Option<String>,
+}
+
+/// "Continue watching": the files watched last on this computer, newest first.
+#[tauri::command]
+pub fn media_recent(media: Media<'_>) -> Vec<RecentDto> {
+    media
+        .resume
+        .recent(RECENT_MAX)
+        .into_iter()
+        .filter_map(|(key, e)| {
+            let path = e.path.clone()?;
+            let granted = media.files.grant(&path);
+            let name = e.name.clone().unwrap_or_default();
+            let parsed = series::parse(&name);
+            let file_id = granted.map(|f| f.id);
+            Some(RecentDto {
+                thumb: file_id
+                    .as_ref()
+                    .map(|id| super::thumbs::url(id, e.position)),
+                missing: file_id.is_none(),
+                file_id,
+                season: parsed.as_ref().and_then(|p| p.ep.season),
+                episode: parsed.as_ref().map(|p| p.ep.episode),
+                name,
+                position: e.position,
+                duration: e.duration,
+                watched: e.watched,
+                updated: e.updated,
+                key,
+            })
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub fn media_recent_remove(media: Media<'_>, key: String) {
+    media.resume.forget_recent(Some(&key));
+}
+
+#[tauri::command]
+pub fn media_recent_clear(media: Media<'_>) {
+    media.resume.forget_recent(None);
+}
+
+/// "Remember recent files" (the player's Settings): off stops new entries
+/// (positions are still kept, so a file still resumes).
+#[tauri::command]
+pub fn media_set_remember_recent(media: Media<'_>, on: bool) -> bool {
+    media
+        .prefs
+        .update(|p| p.remember_recent = on)
+        .remember_recent
+}
+
+#[tauri::command]
+pub fn media_prefs(media: Media<'_>) -> super::prefs::Prefs {
+    media.prefs.get()
 }
 
 /// The development page's benchmark: one line of results to stdout (and to
@@ -601,10 +717,57 @@ pub fn media_default_player_request<R: Runtime>(
             .open_url(default_player::settings_page(packaged), None::<&str>)
             .map_err(|_| "could_not_open_settings")?;
     } else {
+        // What opened each type before, to give it back on request.
+        let media = app.state::<Arc<MediaState>>();
+        for ext in &types {
+            if let Some(prev) =
+                default_player::current_handler(ext).filter(|h| !h.eq_ignore_ascii_case(&id))
+            {
+                media.prefs.update(|p| {
+                    p.previous_handlers.insert((*ext).to_owned(), prev);
+                });
+            }
+        }
         let failed = default_player::set_default(&id, &types);
         for (ext, code) in &failed {
             log::warn!("media: could not make Lexpad the default for .{ext} ({code})");
         }
     }
     Ok(default_player::status(&id, &types))
+}
+
+/// Gives types back to the app that opened them before Lexpad (macOS; all
+/// types Lexpad took when `types` is empty). Windows: Settings > Default
+/// apps, where the learner chooses.
+#[tauri::command]
+pub fn media_default_player_restore<R: Runtime>(
+    app: AppHandle<R>,
+    media: Media<'_>,
+    types: Option<Vec<String>>,
+) -> Result<default_player::Status, String> {
+    let id = app.config().identifier.clone();
+    let asked = default_player::known(&types.unwrap_or_default());
+    if cfg!(windows) {
+        #[cfg(windows)]
+        let packaged = crate::msix::is_packaged();
+        #[cfg(not(windows))]
+        let packaged = false;
+        use tauri_plugin_opener::OpenerExt as _;
+        app.opener()
+            .open_url(default_player::settings_page(packaged), None::<&str>)
+            .map_err(|_| "could_not_open_settings")?;
+        return Ok(default_player::status(&id, &asked));
+    }
+    let previous = media.prefs.get().previous_handlers;
+    for ext in &asked {
+        let Some(prev) = previous.get(*ext) else {
+            continue;
+        };
+        if default_player::set_default(prev, &[*ext]).is_empty() {
+            media.prefs.update(|p| {
+                p.previous_handlers.remove(*ext);
+            });
+        }
+    }
+    Ok(default_player::status(&id, &asked))
 }

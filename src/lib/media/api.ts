@@ -280,6 +280,46 @@ export interface DefaultPlayerStatus {
   method: 'direct' | 'systemSettings';
 }
 
+/** "Continue watching": a file watched lately on this computer. */
+export interface RecentEntry {
+  key: string;
+  /** Granted again when the file is still where it was. */
+  fileId?: string;
+  name: string;
+  position: number;
+  duration: number;
+  watched: boolean;
+  /** Seconds since 1970. */
+  updated: number;
+  missing: boolean;
+  season?: number;
+  episode?: number;
+  /** A JPEG of the frame at `position`. */
+  thumb?: string;
+}
+
+export interface MediaPrefs {
+  rememberRecent: boolean;
+  previousHandlers: Record<string, string>;
+}
+
+/** While a run converts: the element's seconds ready so far. */
+export interface Progress {
+  session: string;
+  run: number;
+  readyUntil: number;
+  etaSeconds?: number;
+}
+
+/** Frames are made every this many seconds of the file (the core's thumbs::STEP_S). */
+export const FRAME_STEP_S = 10;
+
+/** The seek bar's preview frame of a file at `seconds` (the file's time). */
+export function frameUrl(baseUrl: string, fileId: string, seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds / FRAME_STEP_S) * FRAME_STEP_S);
+  return `${baseUrl}/t/${fileId}/${s * 1000}.jpg`;
+}
+
 export interface NewWord {
   headword: string;
   /** ISO 639-1 of the subtitle it came from. */

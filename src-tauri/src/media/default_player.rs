@@ -72,8 +72,10 @@ fn type_status(ext: &'static str, current: Option<String>, mine: bool) -> TypeSt
 
 #[cfg(target_os = "macos")]
 mod imp {
+    use core_foundation::array::{CFArray, CFArrayRef};
     use core_foundation::base::TCFType;
     use core_foundation::string::{CFString, CFStringRef};
+    use core_foundation::url::CFURL;
 
     #[link(name = "CoreServices", kind = "framework")]
     extern "C" {
@@ -92,6 +94,10 @@ mod imp {
             role: u32,
             bundle_id: CFStringRef,
         ) -> i32;
+        fn LSCopyApplicationURLsForBundleIdentifier(
+            bundle_id: CFStringRef,
+            error: *mut *const std::ffi::c_void,
+        ) -> CFArrayRef;
     }
     /// kLSRolesAll: viewer and editor alike.
     const ROLES_ALL: u32 = 0xFFFF_FFFF;
@@ -118,6 +124,23 @@ mod imp {
         (!r.is_null()).then(|| unsafe { CFString::wrap_under_create_rule(r) }.to_string())
     }
 
+    /// An app's name as Finder shows it ("VLC", "QuickTime Player"), from
+    /// where its bundle is.
+    pub fn display_name(bundle_id: &str) -> Option<String> {
+        let id = CFString::new(bundle_id);
+        // SAFETY: a copied (+1) array of CFURLs, or null.
+        let r = unsafe {
+            LSCopyApplicationURLsForBundleIdentifier(id.as_concrete_TypeRef(), std::ptr::null_mut())
+        };
+        if r.is_null() {
+            return None;
+        }
+        let urls: CFArray<CFURL> = unsafe { CFArray::wrap_under_create_rule(r) };
+        let url = urls.iter().next()?;
+        let path = url.to_path()?;
+        path.file_stem().and_then(|s| s.to_str()).map(str::to_owned)
+    }
+
     pub fn set(ext: &str, bundle_id: &str) -> Result<(), i32> {
         let t = uti(ext).ok_or(-1)?;
         let id = CFString::new(bundle_id);
@@ -140,10 +163,21 @@ mod imp {
 #[cfg(windows)]
 mod imp {
     use windows::core::{HSTRING, PCWSTR, PWSTR};
-    use windows::Win32::UI::Shell::{AssocQueryStringW, ASSOCF_NONE, ASSOCSTR_EXECUTABLE};
+    use windows::Win32::UI::Shell::{
+        AssocQueryStringW, ASSOCF_NONE, ASSOCSTR, ASSOCSTR_EXECUTABLE, ASSOCSTR_FRIENDLYAPPNAME,
+    };
 
     /// What Explorer runs for `.ext`, as a path.
     pub fn handler(ext: &str) -> Option<String> {
+        query(ext, ASSOCSTR_EXECUTABLE)
+    }
+
+    /// The app's name as Explorer shows it.
+    pub fn display_name(ext: &str) -> Option<String> {
+        query(ext, ASSOCSTR_FRIENDLYAPPNAME)
+    }
+
+    fn query(ext: &str, what: ASSOCSTR) -> Option<String> {
         let ext = HSTRING::from(format!(".{ext}"));
         let verb = HSTRING::from("open");
         let mut len: u32 = 1024;
@@ -152,7 +186,7 @@ mod imp {
         let hr = unsafe {
             AssocQueryStringW(
                 ASSOCF_NONE,
-                ASSOCSTR_EXECUTABLE,
+                what,
                 PCWSTR(ext.as_ptr()),
                 PCWSTR(verb.as_ptr()),
                 Some(PWSTR(buf.as_mut_ptr())),
@@ -193,14 +227,17 @@ pub fn status(bundle_id: &str, types: &[&'static str]) -> Status {
                 let mine = h
                     .as_deref()
                     .is_some_and(|h| h.eq_ignore_ascii_case(bundle_id));
-                type_status(ext, h, mine)
+                let name = h
+                    .as_deref()
+                    .map(|id| imp::display_name(id).unwrap_or_else(|| id.to_owned()));
+                type_status(ext, name, mine)
             }
             #[cfg(windows)]
             {
                 let _ = bundle_id;
                 let h = imp::handler(ext);
                 let mine = h.as_deref().is_some_and(imp::is_me);
-                type_status(ext, h, mine)
+                type_status(ext, imp::display_name(ext).or(h), mine)
             }
             #[cfg(not(any(target_os = "macos", windows)))]
             {
@@ -218,9 +255,23 @@ pub fn status(bundle_id: &str, types: &[&'static str]) -> Status {
     }
 }
 
-/// macOS: makes Lexpad the default for `types`; the types it could not
-/// set come back with their Launch Services error. Elsewhere: nothing
-/// (Windows goes through `settings_page`).
+/// The app that opens `ext` now (macOS: its bundle id), to give it back later.
+pub fn current_handler(ext: &str) -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        imp::handler(ext)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = ext;
+        None
+    }
+}
+
+/// macOS: makes `bundle_id` the default for `types` (Lexpad's, or the app
+/// it replaced, to give a type back); the types it could not set come back
+/// with their Launch Services error. Elsewhere: nothing (Windows goes
+/// through `settings_page`).
 pub fn set_default(bundle_id: &str, types: &[&'static str]) -> Vec<(&'static str, i32)> {
     #[cfg(target_os = "macos")]
     {

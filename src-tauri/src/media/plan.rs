@@ -354,10 +354,22 @@ fn video_filters(plan: &VideoPlan, src: &VideoStream, encoder: Encoder) -> Strin
 /// The FFmpeg arguments for a streamed run of `plan` from `start` seconds
 /// (the file's own timeline), writing fragmented MP4 to stdout.
 pub fn args(plan: &Plan, info: &MediaInfo, path: &str, start: f64, caps: &Caps) -> Vec<String> {
-    let mut a: Vec<String> = ["-hide_banner", "-nostdin", "-nostats", "-loglevel", "error"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
+    // `-progress` on stderr: how far the run has got, for `media:progress`
+    // (the error lines still come through, `stream` tells them apart).
+    let mut a: Vec<String> = [
+        "-hide_banner",
+        "-nostdin",
+        "-nostats",
+        "-loglevel",
+        "error",
+        "-progress",
+        "pipe:2",
+        "-stats_period",
+        "0.5",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
     let push = |a: &mut Vec<String>, xs: &[&str]| a.extend(xs.iter().map(|s| s.to_string()));
     if !plan.video.copy {
         if let Some(hw) = caps.hwaccel {

@@ -5,6 +5,7 @@
 //!
 //! - `GET /f/<session>` with a `Range`: the file itself, for `Direct`
 //!   sessions (`<video src>`), at most `MAX_RANGE` per answer.
+//! - `GET /t/<file>/<ms>.jpg`: a frame of a granted file (`thumbs`).
 //! - `GET /s/<session>/<run>?from=<offset>`: the next bytes of a streamed
 //!   run (see `stream`); the answer's `X-Lexmedia-Next` is the offset to ask
 //!   for next, `X-Lexmedia-End: 1` says the run is over, 204 means "nothing
@@ -27,8 +28,11 @@ use super::MediaState;
 pub const SCHEME: &str = "lexmedia";
 /// The most bytes one range answer holds; the player asks again for more.
 const MAX_RANGE: u64 = 4 * 1024 * 1024;
-/// The windows that may load media.
-pub const PLAYER_WINDOWS: &[&str] = &["main", "player-dev"];
+/// The windows that may load media: the Player and its mini player (the
+/// web app's `#/player`, `#/player/mini`, made by the desktop glue), the
+/// development page, and Lexpad's window (whose drops and picks go to the
+/// Player; it keeps the right to load frames for its Watch page).
+pub const PLAYER_WINDOWS: &[&str] = &["player", "player-mini", "player-dev", "main"];
 
 /// The scheme's origin as the page must write it.
 pub fn base_url() -> &'static str {
@@ -111,6 +115,7 @@ pub async fn handle<R: Runtime>(
     let parts: Vec<&str> = path.trim_start_matches('/').split('/').collect();
     match parts.as_slice() {
         ["f", sid] => file(&state, sid, &req).await,
+        ["t", file_id, name] => thumb(&state, file_id, name).await,
         ["s", sid, run] => {
             let from = query
                 .split('&')
@@ -169,6 +174,35 @@ async fn file(state: &MediaState, sid: &str, req: &Request<Vec<u8>>) -> Response
             ("Content-Length", n.to_string()),
         ],
     )
+}
+
+async fn thumb(state: &MediaState, file_id: &str, name: &str) -> Response<Vec<u8>> {
+    let Some(ms) = name
+        .strip_suffix(".jpg")
+        .and_then(|n| n.parse::<u64>().ok())
+    else {
+        return error(StatusCode::BAD_REQUEST, "frame");
+    };
+    let (path, info) = match state.probe(file_id).await {
+        Ok(x) => x,
+        Err(e) => return error(StatusCode::NOT_FOUND, &e),
+    };
+    let Ok(tools) = state.tools() else {
+        return error(StatusCode::SERVICE_UNAVAILABLE, "ffmpeg_missing");
+    };
+    let second = super::thumbs::snap(ms as f64 / 1000.0);
+    match state
+        .thumbs
+        .frame(&tools, file_id, &path, &info, second)
+        .await
+    {
+        Ok(jpeg) => reply(
+            StatusCode::OK,
+            jpeg,
+            &[("Content-Type", "image/jpeg".into())],
+        ),
+        Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, &e),
+    }
 }
 
 async fn pull(state: &MediaState, sid: &str, run_id: u64, from: u64) -> Response<Vec<u8>> {

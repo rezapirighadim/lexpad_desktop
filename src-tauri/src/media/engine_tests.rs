@@ -152,6 +152,14 @@ async fn streams_extracts_and_seeks_with_the_real_ffmpeg() {
         let _ = std::fs::remove_dir_all(&dir);
         return;
     }
+    // A frame for the seek bar, and progress reported while a run converts.
+    let jpeg = state
+        .thumbs
+        .frame(&tools, "f", &mkv, &info, 5)
+        .await
+        .unwrap();
+    assert_eq!(&jpeg[..2], &[0xff, 0xd8], "a JPEG");
+    let seen = Arc::new(std::sync::Mutex::new(Vec::<f64>::new()));
     let session = Session::new(
         "s".into(),
         "f".into(),
@@ -161,7 +169,11 @@ async fn streams_extracts_and_seeks_with_the_real_ffmpeg() {
         caps,
         Options::default(),
     )
-    .unwrap();
+    .unwrap()
+    .with_progress(Arc::new({
+        let seen = seen.clone();
+        move |_, ready, _| seen.lock().unwrap().push(ready)
+    }));
     assert_eq!(session.plan().mode, Mode::VideoTranscode);
     let run = session.start_run(0.0).unwrap();
     let bytes = pull_some(&run, 64 * 1024).await;
@@ -180,6 +192,18 @@ async fn streams_extracts_and_seeks_with_the_real_ffmpeg() {
     let (_, t2) = first_fragment(&bytes);
     let t2 = t2.expect("a fragment");
     assert!((t2 - 9.0).abs() < 0.3, "seek run at 8 s + offset, got {t2}");
+    // Progress comes every half second while the run converts.
+    for _ in 0..40 {
+        if seen.lock().unwrap().iter().any(|r| *r >= 8.0) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let ready = seen.lock().unwrap().clone();
+    assert!(
+        ready.iter().any(|r| *r >= 8.0),
+        "progress from the seek run: {ready:?}"
+    );
     session.stop();
     let _ = std::fs::remove_dir_all(&dir);
 }

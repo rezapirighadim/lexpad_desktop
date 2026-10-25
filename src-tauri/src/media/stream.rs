@@ -38,6 +38,36 @@ pub const MAX_PULL: usize = 4 * 1024 * 1024;
 const PULL_WAIT: Duration = Duration::from_secs(20);
 /// FFmpeg's last error lines kept for the page and the log.
 const STDERR_LINES: usize = 8;
+/// "Getting this video ready": the estimate counts down to this much
+/// converted video past the run's start.
+const FIRST_PLAY_S: f64 = 3.0;
+
+/// Told how far a run has got: (run id, ready until in the file's seconds,
+/// seconds until `FIRST_PLAY_S` is ready if not yet).
+pub type ProgressFn = Arc<dyn Fn(u64, f64, Option<f64>) + Send + Sync>;
+
+/// The keys of FFmpeg's `-progress` lines (everything else on stderr is
+/// an error message).
+fn progress_line(line: &str) -> Option<(&str, &str)> {
+    let (k, v) = line.split_once('=')?;
+    matches!(
+        k,
+        "frame"
+            | "fps"
+            | "stream_0_0_q"
+            | "stream_0_1_q"
+            | "bitrate"
+            | "total_size"
+            | "out_time_us"
+            | "out_time_ms"
+            | "out_time"
+            | "dup_frames"
+            | "drop_frames"
+            | "speed"
+            | "progress"
+    )
+    .then_some((k, v.trim()))
+}
 
 #[derive(Default)]
 struct Buf {
@@ -194,7 +224,7 @@ fn drop_lock_and_wake(guard: std::sync::MutexGuard<'_, Buf>, changed: &Notify) {
 
 /// Starts FFmpeg for `run` and feeds its output into the run's buffer until
 /// it ends or the run is cancelled.
-fn spawn(run: Arc<Run>, ffmpeg: PathBuf, args: Vec<String>) {
+fn spawn(run: Arc<Run>, ffmpeg: PathBuf, args: Vec<String>, progress: Option<ProgressFn>) {
     tauri::async_runtime::spawn(async move {
         let mut cmd = tools::command(&ffmpeg);
         cmd.args(&args)
@@ -213,9 +243,35 @@ fn spawn(run: Arc<Run>, ffmpeg: PathBuf, args: Vec<String>) {
         };
         let errors = Arc::new(Mutex::new(VecDeque::<String>::new()));
         let err_lines = errors.clone();
+        let reporting = run.clone();
         tauri::async_runtime::spawn(async move {
             let mut lines = BufReader::new(stderr).lines();
+            let mut speed: Option<f64> = None;
             while let Ok(Some(line)) = lines.next_line().await {
+                if let Some((k, v)) = progress_line(&line) {
+                    match k {
+                        "speed" => {
+                            speed = v
+                                .trim_end_matches('x')
+                                .trim()
+                                .parse()
+                                .ok()
+                                .filter(|s: &f64| *s > 0.0)
+                        }
+                        "out_time_us" => {
+                            if let (Ok(us), Some(cb)) = (v.parse::<i64>(), &progress) {
+                                let done = (us.max(0) as f64) / 1e6;
+                                let ready = reporting.start + done;
+                                let eta = (done < FIRST_PLAY_S)
+                                    .then(|| speed.map(|s| (FIRST_PLAY_S - done) / s))
+                                    .flatten();
+                                cb(reporting.id, ready, eta);
+                            }
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
                 if let Ok(mut l) = err_lines.lock() {
                     if l.len() == STDERR_LINES {
                         l.pop_front();
@@ -292,6 +348,7 @@ pub struct Session {
     pub state: Mutex<(Options, Plan)>,
     run: Mutex<Option<Arc<Run>>>,
     next_run: AtomicU64,
+    progress: Option<ProgressFn>,
 }
 
 impl Session {
@@ -317,7 +374,14 @@ impl Session {
             state: Mutex::new((opts, plan)),
             run: Mutex::new(None),
             next_run: AtomicU64::new(1),
+            progress: None,
         })
+    }
+
+    /// Reports each run's progress (`media:progress`).
+    pub fn with_progress(mut self, f: ProgressFn) -> Session {
+        self.progress = Some(f);
+        self
     }
 
     pub fn plan(&self) -> Plan {
@@ -357,7 +421,12 @@ impl Session {
                 self.id,
                 plan.mode
             );
-            spawn(run.clone(), self.tools.ffmpeg.clone(), args);
+            spawn(
+                run.clone(),
+                self.tools.ffmpeg.clone(),
+                args,
+                self.progress.clone(),
+            );
             *cur = Some(run.clone());
             return Some(run);
         }
@@ -388,6 +457,17 @@ impl Drop for Session {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn progress_lines_are_not_errors() {
+        assert_eq!(
+            progress_line("out_time_us=1050000"),
+            Some(("out_time_us", "1050000"))
+        );
+        assert_eq!(progress_line("speed=0.694x"), Some(("speed", "0.694x")));
+        assert_eq!(progress_line("[mp4 @ 0x1] Malformed AAC bitstream"), None);
+        assert_eq!(progress_line("Error: a=b"), None);
+    }
 
     #[tokio::test]
     async fn pulls_drop_what_the_page_has_and_wait_for_more() {

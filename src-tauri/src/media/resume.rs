@@ -32,6 +32,12 @@ pub struct Entry {
     pub audio: Option<usize>,
     #[serde(skip_serializing_if = "is_zero")]
     pub audio_delay_ms: i64,
+    /// The file's name and where it was, for "Continue watching" (on this
+    /// computer only); absent while the learner keeps no recent files.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<std::path::PathBuf>,
     /// Subtitle offsets by the track's key (the page's own key for it).
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub subtitle_offsets: HashMap<String, i64>,
@@ -67,6 +73,41 @@ impl Resume {
         Resume {
             file,
             entries: Mutex::new(entries),
+        }
+    }
+
+    /// The remembered files, newest first.
+    pub fn recent(&self, max: usize) -> Vec<(String, Entry)> {
+        let Ok(entries) = self.entries.lock() else {
+            return Vec::new();
+        };
+        let mut list: Vec<(String, Entry)> = entries
+            .iter()
+            .filter(|(_, e)| e.path.is_some())
+            .map(|(k, e)| (k.clone(), e.clone()))
+            .collect();
+        list.sort_by_key(|e| std::cmp::Reverse(e.1.updated));
+        list.truncate(max);
+        list
+    }
+
+    /// Forgets that a file was watched recently (its position stays).
+    pub fn forget_recent(&self, key: Option<&str>) {
+        let keys: Vec<String> = match key {
+            Some(k) => vec![k.to_owned()],
+            None => self
+                .entries
+                .lock()
+                .map(|e| e.keys().cloned().collect())
+                .unwrap_or_default(),
+        };
+        for k in keys {
+            if self.get(&k).is_some_and(|e| e.path.is_some()) {
+                self.update(&k, |e| {
+                    e.name = None;
+                    e.path = None;
+                });
+            }
         }
     }
 
@@ -107,10 +148,21 @@ impl Resume {
         Some(snapshot.0)
     }
 
-    /// The player's position, every few seconds and on pause or close.
-    pub fn save_position(&self, key: &str, position: f64, duration: f64) -> Option<Entry> {
+    /// The player's position, every few seconds and on pause or close; the
+    /// file is remembered for "Continue watching" when `recent` is given.
+    pub fn save_position(
+        &self,
+        key: &str,
+        position: f64,
+        duration: f64,
+        recent: Option<&Path>,
+    ) -> Option<Entry> {
         self.update(key, |e| {
             e.duration = duration;
+            if let Some(p) = recent {
+                e.name = p.file_name().and_then(|n| n.to_str()).map(str::to_owned);
+                e.path = Some(p.to_path_buf());
+            }
             let near_end = duration > 0.0
                 && (position >= duration - END_MARGIN || position >= duration * WATCHED_SHARE);
             if near_end {
@@ -137,9 +189,10 @@ mod tests {
         let k = key_for(Path::new("/x/Show.S01E01.mkv"), 1000);
         assert_eq!(k, key_for(Path::new("/elsewhere/Show.S01E01.mkv"), 1000));
         assert_ne!(k, key_for(Path::new("/x/Show.S01E01.mkv"), 1001));
-        r.save_position(&k, 5.0, 1200.0);
+        r.save_position(&k, 5.0, 1200.0, None);
         assert_eq!(r.get(&k).unwrap().position, 0.0);
-        r.save_position(&k, 600.0, 1200.0);
+        r.save_position(&k, 600.0, 1200.0, Some(Path::new("/x/Show.S01E01.mkv")));
+        assert_eq!(r.recent(8)[0].1.name.as_deref(), Some("Show.S01E01.mkv"));
         assert_eq!(r.get(&k).unwrap().position, 600.0);
         r.update(&k, |e| {
             e.audio = Some(2);
@@ -150,7 +203,9 @@ mod tests {
         let e = again.get(&k).unwrap();
         assert_eq!((e.position, e.audio), (600.0, Some(2)));
         assert_eq!(e.subtitle_offsets["fa"], -500);
-        again.save_position(&k, 1190.0, 1200.0);
+        again.save_position(&k, 1190.0, 1200.0, None);
+        again.forget_recent(None);
+        assert!(again.recent(8).is_empty());
         let e = again.get(&k).unwrap();
         assert!(e.watched);
         assert_eq!(e.position, 0.0);

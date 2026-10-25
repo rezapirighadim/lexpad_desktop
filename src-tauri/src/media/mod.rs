@@ -17,12 +17,14 @@ pub mod commands;
 pub mod default_player;
 pub mod files;
 pub mod plan;
+pub mod prefs;
 pub mod probe;
 pub mod protocol;
 pub mod resume;
 pub mod series;
 pub mod stream;
 pub mod subs;
+pub mod thumbs;
 pub mod tools;
 
 use std::collections::HashMap;
@@ -57,6 +59,8 @@ type ExtractKey = (String, usize);
 pub struct MediaState {
     pub files: Files,
     pub resume: Resume,
+    pub prefs: prefs::PrefsFile,
+    pub thumbs: thumbs::Thumbs,
     tools: Mutex<Option<Tools>>,
     probes: Mutex<HashMap<String, Arc<MediaInfo>>>,
     sessions: Mutex<Vec<Arc<Session>>>,
@@ -67,10 +71,13 @@ pub struct MediaState {
 }
 
 impl MediaState {
-    pub fn new(resume_file: Option<PathBuf>) -> MediaState {
+    /// `data_dir`: the app's data folder (`None`: nothing kept, as in tests).
+    pub fn new(data_dir: Option<PathBuf>) -> MediaState {
         MediaState {
             files: Files::default(),
-            resume: Resume::load(resume_file),
+            resume: Resume::load(data_dir.as_ref().map(|d| d.join("media-resume.json"))),
+            prefs: prefs::PrefsFile::load(data_dir.as_ref().map(|d| d.join("media-settings.json"))),
+            thumbs: thumbs::Thumbs::default(),
             tools: Mutex::new(None),
             probes: Mutex::new(HashMap::new()),
             sessions: Mutex::new(Vec::new()),
@@ -278,7 +285,12 @@ pub fn read_subtitle_file(path: &Path) -> Result<Vec<u8>, String> {
 }
 
 /// Files dropped on a player window: granted, sorted, and sent to it.
+/// Lexpad's window does not play: what is dropped on it goes to the Player.
 pub fn deliver<R: Runtime>(app: &AppHandle<R>, window: &str, paths: &[PathBuf]) {
+    if window == crate::main_window::LABEL {
+        open_from_system(app, paths);
+        return;
+    }
     let Some(state) = app.try_state::<Arc<MediaState>>() else {
         return;
     };
@@ -310,13 +322,16 @@ pub fn open_from_system<R: Runtime>(app: &AppHandle<R>, paths: &[PathBuf]) -> bo
     true
 }
 
+/// The Player's window (the desktop glue makes it: the web app at `#/player`).
+pub const PLAYER_LABEL: &str = "player";
+
 /// The window that plays files opened from the system: the development
-/// page when this build has it, else Lexpad's window.
+/// page when this build has it, else the Player.
 pub fn player_window() -> &'static str {
     if cfg!(feature = "player-dev") {
         "player-dev"
     } else {
-        crate::main_window::LABEL
+        PLAYER_LABEL
     }
 }
 

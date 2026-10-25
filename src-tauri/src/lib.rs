@@ -315,10 +315,7 @@ pub fn run() {
             let start_on_login = settings.start_on_login;
             let open_on_launch = settings.open_on_launch;
             app.manage(Arc::new(media::MediaState::new(
-                (!smoke)
-                    .then(|| app.path().app_data_dir().ok())
-                    .flatten()
-                    .map(|d| d.join("media-resume.json")),
+                (!smoke).then(|| app.path().app_data_dir().ok()).flatten(),
             )));
             app.manage(word_queue::WordQueue::load(
                 (!smoke)
@@ -459,6 +456,12 @@ pub fn run() {
             media::commands::media_dev_bench_files,
             media::commands::media_default_player_status,
             media::commands::media_default_player_request,
+            media::commands::media_default_player_restore,
+            media::commands::media_recent,
+            media::commands::media_recent_remove,
+            media::commands::media_recent_clear,
+            media::commands::media_set_remember_recent,
+            media::commands::media_prefs,
             commands::words_save,
             commands::words_pending,
             commands::words_flush,

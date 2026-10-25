@@ -63,6 +63,12 @@ fn main() {
             "media_dev_bench_files",
             "media_default_player_status",
             "media_default_player_request",
+            "media_default_player_restore",
+            "media_recent",
+            "media_recent_remove",
+            "media_recent_clear",
+            "media_set_remember_recent",
+            "media_prefs",
             // Words saved before they can reach the account (word_queue.rs).
             "words_save",
             "words_pending",
