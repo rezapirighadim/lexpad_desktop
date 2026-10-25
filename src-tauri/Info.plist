@@ -29,5 +29,91 @@
       <dict/>
     </dict>
   </array>
+  <!-- The video player's file types that macOS itself may not know (it
+       knows MKV and WebM only when another app declares them, and SubRip
+       and ASS not at all), imported so "Open with Lexpad" and "Use Lexpad
+       for video files" (default_player.rs) can name them. Imported, not
+       exported: Lexpad does not own these formats. The document types that
+       list them are bundle.fileAssociations in tauri.macos.conf.json, at
+       rank Alternate: Lexpad becomes the default only when the learner
+       asks for it. -->
+  <key>UTImportedTypeDeclarations</key>
+  <array>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>org.matroska.mkv</string>
+      <key>UTTypeDescription</key>
+      <string>Matroska video</string>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>public.movie</string>
+      </array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array>
+          <string>mkv</string>
+        </array>
+          <key>public.mime-type</key>
+          <string>video/x-matroska</string>
+      </dict>
+    </dict>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>org.webmproject.webm</string>
+      <key>UTTypeDescription</key>
+      <string>WebM video</string>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>public.movie</string>
+      </array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array>
+          <string>webm</string>
+        </array>
+          <key>public.mime-type</key>
+          <string>video/webm</string>
+      </dict>
+    </dict>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>app.lexpad.subrip</string>
+      <key>UTTypeDescription</key>
+      <string>SubRip subtitles</string>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>public.plain-text</string>
+      </array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array>
+          <string>srt</string>
+        </array>
+          <key>public.mime-type</key>
+          <string>application/x-subrip</string>
+      </dict>
+    </dict>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>app.lexpad.ssa</string>
+      <key>UTTypeDescription</key>
+      <string>ASS subtitles</string>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>public.plain-text</string>
+      </array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array>
+          <string>ass</string>
+          <string>ssa</string>
+        </array>
+      </dict>
+    </dict>
+  </array>
 </dict>
 </plist>

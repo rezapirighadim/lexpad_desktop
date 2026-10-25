@@ -7,7 +7,7 @@ use std::sync::Arc;
 use serde::Serialize;
 use serde_json::Value;
 use tauri::ipc::Channel;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_global_shortcut::GlobalShortcutExt as _;
 use tauri_plugin_opener::OpenerExt as _;
 
@@ -23,6 +23,7 @@ use crate::proxy;
 use crate::settings::{remember, RecentWord};
 use crate::state::AppState;
 use crate::store::User;
+use crate::word_queue::{NewWord, Pending, Saved, WordQueue};
 
 /// The most a private note may hold, as the API allows.
 const MAX_MEMO: usize = 500;
@@ -257,7 +258,31 @@ pub async fn connect(app: AppHandle, state: State<'_, AppState>) -> Result<User,
         .await
         .map_err(err)?;
     let _ = app.emit("session:changed", ());
+    // Words saved before signing in go to the account now.
+    flush_words(&app);
     Ok(user)
+}
+
+/// Sends the words waiting on this computer (`word_queue`), in the
+/// background, and tells the windows how many still wait.
+pub fn flush_words(app: &AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let (Some(state), Some(queue)) =
+            (app.try_state::<AppState>(), app.try_state::<WordQueue>())
+        else {
+            return;
+        };
+        let chosen = state
+            .settings
+            .lock()
+            .ok()
+            .and_then(|s| s.notebook_id.clone());
+        let (sent, waiting) = queue.flush(&state.api, chosen.as_deref()).await;
+        if sent > 0 {
+            let _ = app.emit("words:pending", waiting);
+        }
+    });
 }
 
 #[tauri::command]
@@ -800,4 +825,84 @@ mod tests {
         assert!(!super::is_id("01M43H5KGS4XJQX824GWWRSRV/"));
         assert!(!super::is_id(""));
     }
+}
+
+/// Saves a word a window picked (the video player's subtitles): straight to
+/// the notebook for its language when signed in and online, else kept on
+/// this computer until it can go (`word_queue`). Never into a notebook of
+/// another language.
+#[tauri::command]
+pub async fn words_save(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    queue: State<'_, WordQueue>,
+    word: NewWord,
+) -> Result<Saved, String> {
+    let account = state.api.user().await.map(|u| u.id);
+    let pending = word.checked(account.clone(), now_ms())?;
+    let reason = if account.is_none() {
+        "signed_out"
+    } else {
+        let chosen = state
+            .settings
+            .lock()
+            .map_err(|_| "lock")?
+            .notebook_id
+            .clone();
+        match state.api.notebooks().await {
+            Ok(list) => match crate::word_queue::pick_notebook(
+                &list,
+                pending.lang.as_deref(),
+                chosen.as_deref(),
+            ) {
+                Some(nb) => match state.api.add_word(&nb, &pending.body()).await {
+                    Ok(id) => {
+                        return Ok(Saved::Added {
+                            id,
+                            notebook_id: nb,
+                        })
+                    }
+                    Err(Failure::Duplicate) => return Err(err(Failure::Duplicate)),
+                    Err(f) => f.as_str(),
+                },
+                None => "no_notebook_for_language",
+            },
+            Err(f) => f.as_str(),
+        }
+    };
+    let mut pending = pending;
+    pending.waiting = Some(reason.to_owned());
+    let n = queue.push(pending)?;
+    let _ = app.emit("words:pending", n);
+    Ok(Saved::Queued {
+        pending: n,
+        reason: reason.to_owned(),
+    })
+}
+
+/// The words waiting on this computer.
+#[tauri::command]
+pub fn words_pending(queue: State<'_, WordQueue>) -> Vec<Pending> {
+    queue.list()
+}
+
+/// Tries to send the waiting words now (back online, a notebook made).
+#[tauri::command]
+pub async fn words_flush(
+    state: State<'_, AppState>,
+    queue: State<'_, WordQueue>,
+) -> Result<usize, String> {
+    let chosen = state
+        .settings
+        .lock()
+        .map_err(|_| "lock")?
+        .notebook_id
+        .clone();
+    Ok(queue.flush(&state.api, chosen.as_deref()).await.1)
+}
+
+/// The learner drops a waiting word.
+#[tauri::command]
+pub fn words_discard(queue: State<'_, WordQueue>, id: String) -> Result<usize, String> {
+    queue.discard(&id)
 }

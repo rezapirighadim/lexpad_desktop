@@ -28,6 +28,10 @@ use crate::settings::WindowPlace;
 use crate::state::AppState;
 
 pub const LABEL: &str = "main";
+/// The web app's video player, where a file opened from the system lands
+/// (it takes the file with `media_take_pending` or the `media:files` event).
+#[cfg_attr(feature = "player-dev", allow(dead_code))]
+pub const PLAYER: &str = "/player";
 /// The desktop section of Settings in the web app.
 pub const DESKTOP_SETTINGS: &str = "/settings/desktop";
 /// The window's size the first time, in points: the web app's two-column

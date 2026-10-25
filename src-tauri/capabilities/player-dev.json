@@ -1,0 +1,31 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "player-dev",
+  "description": "The video player's development page, which exists only in a build with the player-dev feature (never shipped): the media engine's commands and its benchmark's two, nothing else.",
+  "windows": ["player-dev"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-media-engine",
+    "allow-media-pick",
+    "allow-media-take-pending",
+    "allow-media-probe",
+    "allow-media-open",
+    "allow-media-seek",
+    "allow-media-set-audio",
+    "allow-media-close",
+    "allow-media-subtitles",
+    "allow-media-subtitle-load",
+    "allow-media-subtitle-offset",
+    "allow-media-episodes",
+    "allow-media-resume-save",
+    "allow-media-dev-report",
+    "allow-media-dev-bench-files",
+    "allow-media-default-player-status",
+    "allow-media-default-player-request",
+    "allow-words-save",
+    "allow-words-pending",
+    "allow-words-flush",
+    "allow-words-discard"
+  ]
+}

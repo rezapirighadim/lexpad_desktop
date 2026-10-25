@@ -47,16 +47,16 @@
         "script-src": "'self'",
         "style-src": "'self'",
         "img-src": "'self' data: blob:",
-        "media-src": "'self' data: blob:",
+        "media-src": "'self' data: blob: lexmedia: http://lexmedia.localhost",
         "font-src": "'self'",
-        "connect-src": "ipc: http://ipc.localhost",
+        "connect-src": "ipc: http://ipc.localhost lexmedia: http://lexmedia.localhost",
         "object-src": "'none'",
         "base-uri": "'none'",
         "form-action": "'none'",
         "frame-ancestors": "'none'"
       },
       "freezePrototype": true,
-      "capabilities": ["popup", "panel", "settings", "main"]
+      "capabilities": ["popup", "panel", "settings", "main", "player-dev"]
     }
   },
   "bundle": {
@@ -64,7 +64,7 @@
     "targets": ["app", "dmg", "nsis", "msi"],
     "category": "Education",
     "publisher": "Lexpad",
-    "copyright": "© 2026 Lexpad",
+    "copyright": "\u00a9 2026 Lexpad",
     "shortDescription": "Add a word to Lexpad from any app",
     "longDescription": "Select a word in any app, press the Lexpad shortcut, and see its meaning while it goes into your Lexpad notebook with the sentence you met it in.",
     "icon": [
@@ -80,8 +80,10 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser",
-        "installerIcon": "icons/icon.ico"
+        "installerIcon": "icons/icon.ico",
+        "installerHooks": "windows/media-open-with.nsh"
       }
-    }
+    },
+    "externalBin": ["binaries/ffmpeg", "binaries/ffprobe"]
   }
 }

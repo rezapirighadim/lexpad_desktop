@@ -11,6 +11,8 @@
 //! - `main_window`: Lexpad's own window, the whole web app, whose calls go
 //!   through the core (`proxy`) so the page never holds a session.
 //! - `msix` (Windows): what differs in the Microsoft Store's package.
+//! - `media`: the video player's engine (bundled FFmpeg, the `lexmedia`
+//!   scheme, subtitles, episodes); `player_dev`: its development page.
 
 mod api;
 mod auth;
@@ -22,11 +24,14 @@ mod e2e;
 #[cfg(test)]
 mod e2e_main;
 mod main_window;
+mod media;
 #[cfg(windows)]
 mod msix;
 mod notify;
 mod panel;
 mod placement;
+#[cfg(feature = "player-dev")]
+mod player_dev;
 mod popup;
 mod proxy;
 mod release;
@@ -38,10 +43,11 @@ mod smoke;
 mod state;
 mod store;
 mod tray;
+mod word_queue;
 
 use std::sync::{Arc, Mutex};
 
-use tauri::{AppHandle, Manager, WindowEvent};
+use tauri::{AppHandle, DragDropEvent, Manager, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt as _};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt as _, ShortcutState};
 use tauri_plugin_opener::OpenerExt as _;
@@ -192,6 +198,31 @@ pub fn open_in_browser(app: &AppHandle, word_id: Option<&str>) {
     }
 }
 
+/// Files opened from the system (Finder's or Explorer's "Open with", a
+/// second launch with files): to the player, which comes forward.
+pub fn open_media(app: &AppHandle, paths: &[std::path::PathBuf]) -> bool {
+    if paths.is_empty() || !media::open_from_system(app, paths) {
+        return false;
+    }
+    // macOS sends a double-clicked file just after start, when the hello
+    // (Settings, signed out) may already be up: the player comes instead.
+    if LAUNCHED.get().is_some_and(|t| t.elapsed() < LAUNCH_GRACE) {
+        if let Some(w) = app.get_webview_window(SETTINGS) {
+            let _ = w.hide();
+        }
+    }
+    #[cfg(feature = "player-dev")]
+    player_dev::open(app);
+    #[cfg(not(feature = "player-dev"))]
+    main_window::open(app, Some(main_window::PLAYER.into()));
+    true
+}
+
+/// When the app started, and how soon after it a file opened from the
+/// system counts as "launched to open this file".
+static LAUNCHED: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+const LAUNCH_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// Where the session is kept: the system's credential store, or nothing at
 /// all for the CI smoke test.
 fn session_store(smoke: bool) -> Arc<dyn store::SessionStore> {
@@ -204,6 +235,7 @@ fn session_store(smoke: bool) -> Arc<dyn store::SessionStore> {
 }
 
 pub fn run() {
+    let _ = LAUNCHED.set(std::time::Instant::now());
     #[cfg(feature = "smoke-test")]
     let smoke = smoke::requested();
     #[cfg(not(feature = "smoke-test"))]
@@ -211,10 +243,15 @@ pub fn run() {
 
     let mut builder = tauri::Builder::default();
     // First, so a second launch only brings this one forward. The CI smoke
-    // test runs beside an installed copy, so it is not "a second launch".
-    if !smoke {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            open_web(app, None)
+    // test and the player's development page run beside an installed copy,
+    // so they are not "a second launch".
+    if !smoke && !cfg!(feature = "player-dev") {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // "Open with Lexpad" on Windows starts a second Lexpad with the
+            // file; it hands the file here and quits.
+            if !open_media(app, &media::files_in_args(&args)) {
+                open_web(app, None)
+            }
         }));
     }
     builder
@@ -227,6 +264,20 @@ pub fn run() {
             tauri_plugin_opener::Builder::new()
                 .open_js_links_on_click(false)
                 .build(),
+        )
+        // The media engine's open dialog, called from the core only: no
+        // window is granted any of the dialog plugin's own commands.
+        .plugin(tauri_plugin_dialog::init())
+        // The video player's media, from the core to the page (media/protocol.rs).
+        .register_asynchronous_uri_scheme_protocol(
+            media::protocol::SCHEME,
+            |ctx, request, responder| {
+                let app = ctx.app_handle().clone();
+                let webview = ctx.webview_label().to_owned();
+                tauri::async_runtime::spawn(async move {
+                    responder.respond(media::protocol::handle(&app, &webview, request).await);
+                });
+            },
         )
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
@@ -263,6 +314,18 @@ pub fn run() {
             let shortcut = settings.shortcut.clone();
             let start_on_login = settings.start_on_login;
             let open_on_launch = settings.open_on_launch;
+            app.manage(Arc::new(media::MediaState::new(
+                (!smoke)
+                    .then(|| app.path().app_data_dir().ok())
+                    .flatten()
+                    .map(|d| d.join("media-resume.json")),
+            )));
+            app.manage(word_queue::WordQueue::load(
+                (!smoke)
+                    .then(|| app.path().app_data_dir().ok())
+                    .flatten()
+                    .map(|d| d.join("pending-words.json")),
+            ));
             app.manage(AppState {
                 api: api::Api::new(config::API_ORIGIN, store),
                 settings: Mutex::new(settings),
@@ -292,13 +355,25 @@ pub fn run() {
             services_macos::register(&handle);
             notify::init(&handle);
             notify::start(&handle);
+            // Words saved while signed out or offline, sent when signed in.
+            commands::flush_words(&handle);
 
+            // Started by "Open with Lexpad" (Windows passes the file here):
+            // straight into the player, without the hello below.
+            let opened = open_media(
+                &handle,
+                &media::files_in_args(&std::env::args().collect::<Vec<_>>()),
+            );
             // First run, or not signed in yet: open Settings to say hello.
             let api_user = tauri::async_runtime::block_on(handle.state::<AppState>().api.user());
-            if first_run || api_user.is_none() {
+            if !opened && (first_run || api_user.is_none()) {
                 show_settings(&handle);
             }
-            if open_on_launch {
+            #[cfg(feature = "player-dev")]
+            if !opened {
+                player_dev::open(&handle);
+            }
+            if open_on_launch && !opened {
                 open_web(&handle, None);
             }
             Ok(())
@@ -323,6 +398,12 @@ pub fn run() {
             }
             (main_window::LABEL, WindowEvent::Destroyed) => {
                 refresh_dock(window.app_handle(), false);
+            }
+            // Videos and subtitles dropped on a player window.
+            (label, WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }))
+                if media::protocol::PLAYER_WINDOWS.contains(&label) =>
+            {
+                media::deliver(window.app_handle(), label, paths);
             }
             _ => {}
         })
@@ -361,6 +442,27 @@ pub fn run() {
             commands::schedule_reminders,
             commands::open_notification_settings,
             commands::latest_release,
+            media::commands::media_engine,
+            media::commands::media_pick,
+            media::commands::media_take_pending,
+            media::commands::media_probe,
+            media::commands::media_open,
+            media::commands::media_seek,
+            media::commands::media_set_audio,
+            media::commands::media_close,
+            media::commands::media_subtitles,
+            media::commands::media_subtitle_load,
+            media::commands::media_subtitle_offset,
+            media::commands::media_episodes,
+            media::commands::media_resume_save,
+            media::commands::media_dev_report,
+            media::commands::media_dev_bench_files,
+            media::commands::media_default_player_status,
+            media::commands::media_default_player_request,
+            commands::words_save,
+            commands::words_pending,
+            commands::words_flush,
+            commands::words_discard,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Lexpad")
@@ -376,6 +478,12 @@ pub fn run() {
             // A click on the Dock icon (macOS) opens Lexpad's window.
             #[cfg(target_os = "macos")]
             tauri::RunEvent::Reopen { .. } => open_web(app, None),
+            // Finder's "Open with Lexpad" (macOS sends the files as URLs).
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Opened { urls } => {
+                let paths: Vec<_> = urls.iter().filter_map(|u| u.to_file_path().ok()).collect();
+                open_media(app, &paths);
+            }
             _ => {}
         });
 }
