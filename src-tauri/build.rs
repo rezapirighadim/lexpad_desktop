@@ -74,6 +74,24 @@ fn main() {
             "words_pending",
             "words_flush",
             "words_discard",
+            // The Player's window and the two windows' ways to each other
+            // (player_window.rs, app_menu.rs), and the first launch (welcome.rs).
+            "open_lexpad",
+            "open_player",
+            "open_window",
+            "player_account",
+            "player_fullscreen",
+            "player_mini_open",
+            "player_back_to_big",
+            "player_mini_close",
+            "player_on_top",
+            "player_buttons",
+            "player_take_play",
+            "set_open_at",
+            "open_at",
+            "welcome_state",
+            "welcome_choose",
+            "welcome_finish",
         ]),
     ))
     .expect("failed to run tauri-build");

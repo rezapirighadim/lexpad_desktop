@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "welcome",
+  "description": "The first launch's window: what this computer is and whether it is signed in, the learner's answer to \"What would you like to do first?\", connecting in the browser (with a provider hint), and opening the Player or Lexpad's window at the end. Nothing else.",
+  "windows": ["welcome"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-welcome-state",
+    "allow-welcome-choose",
+    "allow-welcome-finish",
+    "allow-connect",
+    "allow-cancel-connect"
+  ]
+}

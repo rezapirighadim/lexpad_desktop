@@ -28,12 +28,15 @@ const OPENS_ON: MouseButtonState = if cfg!(target_os = "macos") {
 
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Open Lexpad", true, None::<&str>)?;
+    // The Player, straight to the file dialog (spec §2, §24.3).
+    let video = MenuItem::with_id(app, "video", "Open a video…", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Lexpad", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
         &[
             &open,
+            &video,
             &settings,
             &PredefinedMenuItem::separator(app)?,
             &quit,
@@ -45,6 +48,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "open" => crate::open_web(app, None),
+            "video" => crate::player_window::open(app, crate::player_window::Opened::Pick),
             "settings" => crate::open_desktop_settings(app),
             "quit" => app.exit(0),
             _ => {}

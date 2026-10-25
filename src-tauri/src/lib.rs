@@ -15,6 +15,7 @@
 //!   scheme, subtitles, episodes); `player_dev`: its development page.
 
 mod api;
+mod app_menu;
 mod auth;
 mod capture;
 mod commands;
@@ -32,6 +33,7 @@ mod panel;
 mod placement;
 #[cfg(feature = "player-dev")]
 mod player_dev;
+mod player_window;
 mod popup;
 mod proxy;
 mod release;
@@ -43,6 +45,7 @@ mod smoke;
 mod state;
 mod store;
 mod tray;
+mod welcome;
 mod word_queue;
 
 use std::sync::{Arc, Mutex};
@@ -100,7 +103,12 @@ pub fn refresh_dock(app: &AppHandle, opening: bool) {
                 .and_then(|w| w.is_visible().ok())
                 .unwrap_or(false)
         };
-        let policy = if opening || visible(SETTINGS) || visible(main_window::LABEL) {
+        let policy = if opening
+            || visible(SETTINGS)
+            || visible(main_window::LABEL)
+            || visible(player_window::LABEL)
+            || visible(welcome::LABEL)
+        {
             tauri::ActivationPolicy::Regular
         } else {
             tauri::ActivationPolicy::Accessory
@@ -214,7 +222,7 @@ pub fn open_media(app: &AppHandle, paths: &[std::path::PathBuf]) -> bool {
     #[cfg(feature = "player-dev")]
     player_dev::open(app);
     #[cfg(not(feature = "player-dev"))]
-    main_window::open(app, Some(main_window::PLAYER.into()));
+    player_window::open(app, player_window::Opened::File);
     true
 }
 
@@ -249,8 +257,14 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             // "Open with Lexpad" on Windows starts a second Lexpad with the
             // file; it hands the file here and quits.
-            if !open_media(app, &media::files_in_args(&args)) {
-                open_web(app, None)
+            if open_media(app, &media::files_in_args(&args)) {
+                return;
+            }
+            // A pinned Player's taskbar button (Windows) starts Lexpad with --player.
+            if args.iter().any(|a| a == player_window::PLAYER_FLAG) {
+                player_window::open(app, player_window::Opened::Launch);
+            } else {
+                app_menu::open_where_left_off(app);
             }
         }));
     }
@@ -295,6 +309,13 @@ pub fn run() {
         .setup(move |app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            // The menu bar (macOS): Playback, Subtitles, and both windows in Window.
+            #[cfg(target_os = "macos")]
+            if !smoke {
+                let menu = app_menu::build(app.handle())?;
+                app.set_menu(menu)?;
+            }
+            app.on_menu_event(|app, event| app_menu::handle(app, event.id().as_ref()));
 
             // A smoke-test build run with --smoke-test (CI only) keeps its
             // settings in a temporary folder and never touches the
@@ -361,9 +382,18 @@ pub fn run() {
                 &handle,
                 &media::files_in_args(&std::env::args().collect::<Vec<_>>()),
             );
-            // First run, or not signed in yet: open Settings to say hello.
+            // A pinned Player's taskbar button (Windows) starts Lexpad with --player.
+            let player_flag = std::env::args().any(|a| a == player_window::PLAYER_FLAG);
+            if player_flag && !opened {
+                player_window::open(&handle, player_window::Opened::Launch);
+            }
+            // The first launch asks what to do first (spec §24.2), unless a
+            // video opened Lexpad or a session is already there. Later runs
+            // still say hello in Settings while signed out.
             let api_user = tauri::async_runtime::block_on(handle.state::<AppState>().api.user());
-            if !opened && (first_run || api_user.is_none()) {
+            if !opened && !player_flag && first_run && api_user.is_none() {
+                welcome::open(&handle);
+            } else if !opened && !player_flag && api_user.is_none() {
                 show_settings(&handle);
             }
             #[cfg(feature = "player-dev")]
@@ -395,6 +425,24 @@ pub fn run() {
             }
             (main_window::LABEL, WindowEvent::Destroyed) => {
                 refresh_dock(window.app_handle(), false);
+            }
+            // Which window was last in front: where "Open Lexpad" goes back to.
+            (label, WindowEvent::Focused(true)) => app_menu::note_focus(window.app_handle(), label),
+            // The Player is let go when closed too; where it was is kept.
+            (player_window::LABEL, WindowEvent::CloseRequested { .. }) => {
+                player_window::remember(window.app_handle());
+            }
+            (player_window::LABEL | welcome::LABEL, WindowEvent::Destroyed) => {
+                refresh_dock(window.app_handle(), false);
+            }
+            // Closing the welcome without an answer counts as Both.
+            (welcome::LABEL, WindowEvent::CloseRequested { .. }) => {
+                welcome::closed_without_answer(window.app_handle());
+            }
+            // A video dropped anywhere on Lexpad's window opens the Player
+            // with it; nothing plays in the learning window (spec §24.3).
+            (main_window::LABEL, WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. })) => {
+                open_media(window.app_handle(), paths);
             }
             // Videos and subtitles dropped on a player window.
             (label, WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }))
@@ -466,6 +514,22 @@ pub fn run() {
             commands::words_pending,
             commands::words_flush,
             commands::words_discard,
+            player_window::open_lexpad,
+            player_window::open_player,
+            player_window::player_account,
+            player_window::player_fullscreen,
+            player_window::player_mini_open,
+            player_window::player_back_to_big,
+            player_window::player_mini_close,
+            player_window::player_on_top,
+            player_window::player_buttons,
+            player_window::player_take_play,
+            welcome::welcome_state,
+            welcome::welcome_choose,
+            welcome::welcome_finish,
+            app_menu::set_open_at,
+            app_menu::open_at,
+            app_menu::open_window,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Lexpad")
@@ -476,11 +540,12 @@ pub fn run() {
                     api.prevent_exit();
                 } else {
                     main_window::remember(app);
+                    player_window::remember(app);
                 }
             }
             // A click on the Dock icon (macOS) opens Lexpad's window.
             #[cfg(target_os = "macos")]
-            tauri::RunEvent::Reopen { .. } => open_web(app, None),
+            tauri::RunEvent::Reopen { .. } => app_menu::open_where_left_off(app),
             // Finder's "Open with Lexpad" (macOS sends the files as URLs).
             #[cfg(target_os = "macos")]
             tauri::RunEvent::Opened { urls } => {

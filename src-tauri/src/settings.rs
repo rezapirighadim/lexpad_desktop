@@ -41,6 +41,44 @@ pub struct Settings {
     /// applies the old grant though the switch still looks on: missing
     /// after it was allowed in another version is that, not a refusal.
     pub accessibility_granted_in: Option<String>,
+    /// The first launch's answer, "What would you like to do first?"
+    /// (`welcome`): it picks where Lexpad opens and which tips show, and
+    /// locks nothing. None until answered (an install from before it).
+    pub focus: Option<Focus>,
+    /// The window that was last in front: where "Open Lexpad" goes back to.
+    pub last_place: Place,
+    /// Settings → This computer → "When I open Lexpad".
+    pub open_at: OpenAt,
+    /// Where the Player's window was when it last closed.
+    pub player_window: Option<WindowPlace>,
+}
+
+/// What the learner said they would like to do first (spec §24.2).
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum Focus {
+    Watch,
+    Learn,
+    Both,
+}
+
+/// One of Lexpad's two windows.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum Place {
+    #[default]
+    Learn,
+    Player,
+}
+
+/// "When I open Lexpad": where it left off (the default), Today, or the Player.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum OpenAt {
+    #[default]
+    LeftOff,
+    Today,
+    Player,
 }
 
 /// A window's place on screen, remembered between runs.
@@ -103,6 +141,10 @@ impl Default for Settings {
             notifications: true,
             inbox: crate::notify::InboxMemory::default(),
             accessibility_granted_in: None,
+            focus: None,
+            last_place: Place::Learn,
+            open_at: OpenAt::LeftOff,
+            player_window: None,
         }
     }
 }

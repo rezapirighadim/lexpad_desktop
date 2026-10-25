@@ -56,7 +56,7 @@
         "frame-ancestors": "'none'"
       },
       "freezePrototype": true,
-      "capabilities": ["popup", "panel", "settings", "main", "player-dev"]
+      "capabilities": ["popup", "panel", "settings", "main", "player-dev", "player", "welcome"]
     }
   },
   "bundle": {
