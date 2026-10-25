@@ -8,7 +8,10 @@
   <!-- The player test build (tauri.playertest.conf.json): the same as
        Info.plist without the NSServices entry, so the Services menu keeps
        one "Add to Lexpad", the installed app's. Keep the rest in step with
-       Info.plist. -->
+       Info.plist. Tauri merges this file over Info.plist, so the entry is
+       emptied here rather than left out. -->
+  <key>NSServices</key>
+  <array/>
   <!-- The video player's file types that macOS itself may not know (it
        knows MKV and WebM only when another app declares them, and SubRip
        and ASS not at all), imported so "Open with Lexpad" and "Use Lexpad
