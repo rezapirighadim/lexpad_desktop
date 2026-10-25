@@ -82,4 +82,24 @@ Use the installer from the latest `build` run on GitHub (Actions → build → a
     Uninstalling from Start removes the package, its startup task and its data; the session in
     Credential Manager stays until Sign out (as with the installer).
 
+23. **The video player's engine (branch feat/video-player).** Build with
+    `LEXPAD_PLAYER_DEV=1 pnpm tauri build --features player-dev --no-bundle` after
+    `scripts/ffmpeg/fetch-prebuilt.sh win64`, copy `scripts/media-samples.sh`'s files over (made
+    on the Mac), and run the exe: the development page opens. Check, against the Mac:
+    - The engine line names an H.264 encoder (`nvenc`, `qsv`, `amf` or `mediaFoundation`;
+      `openH264` means no hardware encoder worked) and `MSE: yes`. No console window flashes
+      while a file opens, seeks or loads a subtitle (CREATE_NO_WINDOW).
+    - Every sample plays in the same mode as on the Mac, with sound; HEVC 4K and HDR10 play
+      smoothly (tone-mapped: the colours look like the SDR samples, not washed out).
+    - Seeking far ahead answers in about the Mac's time (`scripts/player-bench.sh` numbers in
+      the branch's report); the subtitles stay in step after seeks.
+    - Dropping a video with its .srt files at once, and one at a time, works; a Persian
+      Windows-1256 .srt shows Persian, right to left.
+    - Installed from the NSIS setup: Explorer's "Open with" lists Lexpad for .mkv/.mp4/.srt,
+      double-clicking still opens the old default app; Settings → Apps → Default apps → Lexpad
+      exists and lists the types; choosing Lexpad for .mkv there makes a double-click open the
+      player, and a second file opens in the same Lexpad. Uninstalling removes the entries.
+    - The MSIX copy: "Open with" lists Lexpad too, and ffmpeg.exe and ffprobe.exe are in the
+      package (the player works).
+
 Report anything that differs, with a screenshot, in the to-do list.

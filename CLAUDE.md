@@ -71,6 +71,17 @@ scripts/icons.py                 every icon, drawn from landing/site/assets/favi
                                  it rewrites icon.ico after `tauri icon` (BMP layers 16-96 px, PNG 256, planes 1)
 scripts/icon-check.ps1           CI: the exe's icon layers, the shortcuts, and what Explorer draws at each size
 docs/windows-manual-test.md      the Windows checklist, since Windows cannot run here
+src-tauri/src/media/             the video player's media engine (see "The video player's engine" below)
+src-tauri/src/media/commands.rs  the player's commands (typed for the page in src/lib/media/api.ts)
+src-tauri/src/word_queue.rs      words saved before they can reach the account (signed out, offline), sent after sign-in (tested)
+src-tauri/src/player_dev.rs      the engine's development page's window, only with `--features player-dev` (never shipped)
+src/lib/media/                   the page side: api.ts (typed commands), stream.ts (MSE), cues.ts (subtitle timing, tested)
+src/player-dev.html, player-dev/ the development page (LEXPAD_PLAYER_DEV=1 + feature player-dev): <video> + MSE + 3 subtitle tracks
+scripts/ffmpeg/                  the bundled LGPL FFmpeg: versions.env (pinned), build-macos.sh, fetch-prebuilt.sh, check-lgpl.sh
+scripts/media-samples.sh         the player's test matrix (synthetic clips and subtitles; local only, never committed)
+scripts/player-bench.sh          start-up, seek latency, CPU and memory on this Mac, through the development page
+src-tauri/windows/media-open-with.nsh  the installer's "Open with Lexpad" and Default Apps entry (never the default by itself)
+docs/ffmpeg.md                   FFmpeg's licence (LGPL only), sources, builds, and how to update it
 ```
 
 ## Lexpad's window (0.2): the design
@@ -143,12 +154,56 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
   Settings window ask again every few seconds and on focus while they explain the permission
   (`src/lib/accessibility.ts`), so the hint goes away once it is allowed.
 
+## The video player's engine (branch feat/video-player, 2026-10)
+
+The owner approved a video player in Lexpad's window (memory: lexpad-video-player). The UI is a
+page written by us (designed separately); this repository holds the engine.
+
+- **One stream for both webviews.** WKWebView and WebView2 both play H.264 (8-bit 4:2:0) + AAC
+  in MP4, so every file becomes that (`media/plan.rs`): `direct` (an MP4 that already is, one
+  audio track: served as the file with byte ranges), `remux` (copied into fragmented MP4),
+  `audioTranscode` (AC-3, DTS, Opus, MP3... to AAC), `videoTranscode` (HEVC, VP9, AV1, ProRes,
+  MPEG-2/4, 10-bit H.264, interlaced: hardware H.264, VideoToolbox / NVENC / QSV / AMF / Media
+  Foundation, OpenH264 last; never x264). HEVC/VP9/AV1 are transcoded even where one webview
+  could play them: both platforms must behave the same. HDR (PQ, HLG) is tone-mapped to SDR
+  BT.709 (zscale + Hable, CPU, capped at 1080p).
+- **The bundled FFmpeg is LGPL only** (docs/ffmpeg.md): Tauri sidecars, built on the Mac
+  (`scripts/ffmpeg/build-macos.sh`) or fetched pinned for Windows; `check-lgpl.sh` refuses
+  anything else. `src-tauri/binaries/` is never committed; a build needs it (Tauri checks
+  `externalBin`), so run the script first. Every child process gets CREATE_NO_WINDOW on Windows.
+- **The `lexmedia` scheme, not a socket.** `lexmedia://localhost` (macOS),
+  `http://lexmedia.localhost` (Windows): `/f/<session>` byte ranges for `direct`,
+  `/s/<session>/<run>?from=<offset>` pulls of a run's fragmented MP4 (`media/stream.rs`). A run
+  is one FFmpeg from a start time with `-copyts` and a fixed `TIMELINE_OFFSET`, so every run is
+  on one timeline; a seek outside the buffer starts a new run. A run holds at most 48 MB the
+  page has not pulled, then FFmpeg waits (back-pressure). Only the player windows are answered.
+  The CSP's `connect-src` and `media-src` allow this scheme; nothing else was opened.
+- **Files by id only.** The core grants what the learner dropped (Tauri's drag-drop event),
+  chose (the dialog plugin, called from the core: no window has its commands) or opened with
+  Lexpad, plus the videos and subtitles beside a granted video (episodes, matched subtitles).
+  A window gets opaque ids; no command takes a path.
+- **Subtitles are ours** (`media/subs/`): SRT, WebVTT, ASS/SSA (basic styling kept), mov_text
+  through FFmpeg; embedded tracks are copied as raw bytes so old encodings reach the detector
+  (chardetng, then encoding_rs); a Persian Windows-1256 track's Arabic yeh/kaf are written as
+  Persian. The language comes from the text (whatlang plus a letter check for fa/ar/ur), the
+  file name and the container's tag, with a confidence. Picture subtitles (PGS, VobSub) are
+  reported as unsupported.
+- **Opening files**: drag and drop on a player window, the open dialog, "Open with Lexpad"
+  (macOS `RunEvent::Opened`; Windows argv and the single-instance hand-over). Lexpad never
+  becomes the default by itself (macOS rank Alternate; Windows OpenWithProgids only); "Use
+  Lexpad for video files" (`media/default_player.rs`) sets it on macOS after the page asked,
+  and opens Settings > Default apps on Windows.
+- **Words saved without a session** (signed out, offline) wait in `pending-words.json`
+  (`word_queue.rs`) and go to the notebook of their language after sign-in; never to a notebook
+  of another language.
+
 ## Hard rules
 
 - **The core is the only part that touches tokens or the API.** The windows call commands and
   render answers; a command never returns a token. A new capability is a new command in
   `commands.rs`, listed in `build.rs` and granted in the window's capability file; nothing else
-  is callable. No `fetch` from a window, and the CSP's `connect-src` is IPC only.
+  is callable. No `fetch` from a window to the network: the CSP's `connect-src` is IPC and the
+  local `lexmedia` scheme (the video player's media, served by the core) only.
 - **The app never sees a password.** Signing in is RFC 8252: the system browser, a loopback
   redirect on `127.0.0.1:<random port>/callback`, PKCE S256 and a random state (`auth.rs`). The
   web app's `/connect-desktop` asks the API for a one-time code bound to the challenge and the
