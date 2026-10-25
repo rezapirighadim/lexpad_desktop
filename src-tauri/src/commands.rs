@@ -31,10 +31,10 @@ const MAX_MEMO: usize = 500;
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StateDto {
-    connected: bool,
+    pub(crate) connected: bool,
     user: Option<User>,
-    notebooks: Vec<Value>,
-    notebook_id: Option<String>,
+    pub(crate) notebooks: Vec<Value>,
+    pub(crate) notebook_id: Option<String>,
     capture: Option<Capture>,
     shortcut: String,
     permission: Permission,
@@ -212,12 +212,22 @@ pub fn set_notebook(
 /// Signs in through the browser (auth.rs): opens the connect page, waits for
 /// the learner to allow it, trades the code. Ends with who is signed in.
 #[tauri::command]
-pub async fn connect(app: AppHandle, state: State<'_, AppState>) -> Result<User, String> {
+pub async fn connect(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    provider: Option<String>,
+) -> Result<User, String> {
     let pkce = auth::new_pkce();
     let st = auth::new_state();
     let (listener, port) = auth::listen().await.map_err(|_| err(Failure::Error))?;
     let redirect = auth::redirect_uri(port);
-    let url = auth::connect_url(config::APP_ORIGIN, &redirect, &st, &pkce.challenge);
+    let url = auth::connect_url(
+        config::APP_ORIGIN,
+        &redirect,
+        &st,
+        &pkce.challenge,
+        auth::Provider::parse(provider.as_deref()),
+    );
 
     // A new request replaces any earlier one still waiting.
     let cancel = Arc::new(tokio::sync::Notify::new());
@@ -658,6 +668,10 @@ pub struct DesktopDto {
     accessibility_stale: bool,
     notifications: bool,
     notification_access: notify::Access,
+    /// The first launch's answer (`welcome`), for the tips it picks.
+    focus: Option<crate::settings::Focus>,
+    /// "When I open Lexpad".
+    open_at: crate::settings::OpenAt,
 }
 
 #[tauri::command]
@@ -684,6 +698,8 @@ pub async fn desktop_settings(state: State<'_, AppState>) -> Result<DesktopDto, 
         accessibility_stale,
         notifications: s.notifications,
         notification_access,
+        focus: s.focus,
+        open_at: s.open_at,
     })
 }
 

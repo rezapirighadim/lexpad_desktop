@@ -155,7 +155,7 @@ async fn connect(ctx: &Ctx) -> Result<Value, String> {
     let redirect = auth::redirect_uri(port);
     write(
         &format!("{}/connect-url.txt", ctx.dir),
-        &auth::connect_url(&ctx.app_origin, &redirect, &state, &pkce.challenge),
+        &auth::connect_url(&ctx.app_origin, &redirect, &state, &pkce.challenge, None),
     );
     let cancel = Notify::new();
     let answer = tokio::time::timeout(

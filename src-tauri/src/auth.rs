@@ -76,15 +76,53 @@ pub fn redirect_uri(port: u16) -> String {
 }
 
 /// The connect page's address, with every part encoded.
-pub fn connect_url(app_origin: &str, redirect: &str, state: &str, challenge: &str) -> String {
+pub fn connect_url(
+    app_origin: &str,
+    redirect: &str,
+    state: &str,
+    challenge: &str,
+    provider: Option<Provider>,
+) -> String {
     let mut url = url::Url::parse(app_origin).expect("APP_ORIGIN is a valid URL");
     url.set_path(crate::config::CONNECT_PATH);
-    url.query_pairs_mut()
-        .append_pair("redirect_uri", redirect)
-        .append_pair("state", state)
-        .append_pair("code_challenge", challenge)
-        .append_pair("code_challenge_method", "S256");
+    {
+        let mut q = url.query_pairs_mut();
+        q.append_pair("redirect_uri", redirect)
+            .append_pair("state", state)
+            .append_pair("code_challenge", challenge)
+            .append_pair("code_challenge_method", "S256");
+        // One tap from the welcome or the player's card: the connect page
+        // goes straight to that provider (spec §24.2).
+        if let Some(p) = provider {
+            q.append_pair("provider", p.as_str());
+        }
+    }
     url.into()
+}
+
+/// A sign-in provider the connect page may go straight to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Provider {
+    Google,
+    Apple,
+}
+
+impl Provider {
+    /// Only these two words; anything else is no hint at all.
+    pub fn parse(word: Option<&str>) -> Option<Provider> {
+        match word {
+            Some("google") => Some(Provider::Google),
+            Some("apple") => Some(Provider::Apple),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Provider::Google => "google",
+            Provider::Apple => "apple",
+        }
+    }
 }
 
 /// What the browser brought back.
@@ -247,7 +285,13 @@ mod tests {
 
     #[test]
     fn the_connect_url_carries_everything_encoded() {
-        let url = connect_url("https://app.lexpad.app", &redirect_uri(53682), "st", "ch");
+        let url = connect_url(
+            "https://app.lexpad.app",
+            &redirect_uri(53682),
+            "st",
+            "ch",
+            None,
+        );
         let parsed = url::Url::parse(&url).unwrap();
         assert_eq!(
             parsed.origin().ascii_serialization(),
@@ -259,6 +303,28 @@ mod tests {
         assert_eq!(q["state"], "st");
         assert_eq!(q["code_challenge"], "ch");
         assert_eq!(q["code_challenge_method"], "S256");
+        assert!(!q.contains_key("provider"));
+    }
+
+    #[test]
+    fn a_provider_hint_goes_only_as_one_of_two_words() {
+        let url = connect_url(
+            "https://app.lexpad.app",
+            &redirect_uri(1),
+            "st",
+            "ch",
+            Provider::parse(Some("google")),
+        );
+        let q: std::collections::HashMap<_, _> = url::Url::parse(&url)
+            .unwrap()
+            .query_pairs()
+            .into_owned()
+            .collect();
+        assert_eq!(q["provider"], "google");
+        assert_eq!(Provider::parse(Some("apple")), Some(Provider::Apple));
+        assert_eq!(Provider::parse(Some("github")), None);
+        assert_eq!(Provider::parse(Some("google&x=1")), None);
+        assert_eq!(Provider::parse(None), None);
     }
 
     #[test]

@@ -167,7 +167,7 @@ async fn local_stack_end_to_end() {
     let redirect = auth::redirect_uri(port);
     write(
         &format!("{dir}/connect-url.txt"),
-        &auth::connect_url(&app_origin, &redirect, &state, &pkce.challenge),
+        &auth::connect_url(&app_origin, &redirect, &state, &pkce.challenge, None),
     );
     let cancel = tokio::sync::Notify::new();
     let answer = tokio::time::timeout(
