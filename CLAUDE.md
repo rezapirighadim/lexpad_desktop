@@ -77,6 +77,11 @@ src-tauri/src/word_queue.rs      words saved before they can reach the account (
 src-tauri/src/player_dev.rs      the engine's development page's window, only with `--features player-dev` (never shipped)
 src/lib/media/                   the page side: api.ts (typed commands), stream.ts (MSE), cues.ts (subtitle timing, tested)
 src/player-dev.html, player-dev/ the development page (LEXPAD_PLAYER_DEV=1 + feature player-dev): <video> + MSE + 3 subtitle tracks
+src-tauri/src/player_window.rs   the Lexpad Player's window (the web app's /player), the mini player, its Windows taskbar button (tested)
+src-tauri/src/app_menu.rs        the two windows: where Lexpad opens, ⌘1 / ⌘2, the macOS menu bar's Playback, Subtitles and Window menus (tested)
+src-tauri/src/welcome.rs         the first launch's window and its commands (tested)
+src/welcome.html, src/welcome/   "What would you like to do first?" and the soft sign-in (tested with happy-dom)
+docs/player-dock-icon.md         why the Player shares Lexpad's Dock tile on macOS (phase 1)
 scripts/ffmpeg/                  the bundled LGPL FFmpeg: versions.env (pinned), build-macos.sh, fetch-prebuilt.sh, check-lgpl.sh
 scripts/media-samples.sh         the player's test matrix (synthetic clips and subtitles; local only, never committed)
 scripts/player-bench.sh          start-up, seek latency, CPU and memory on this Mac, through the development page
@@ -196,6 +201,47 @@ page written by us (designed separately); this repository holds the engine.
 - **Words saved without a session** (signed out, offline) wait in `pending-words.json`
   (`word_queue.rs`) and go to the notebook of their language after sign-in; never to a notebook
   of another language.
+
+## The video player's windows (branch feat/video-player, 2026-10)
+
+The Player's page is the web app's `/player` route (lexpad_front `features/player`), bundled in
+`web/` like the rest; this repository holds its window and the app's structure around it (spec
+`uiux/specs/2026-10-25-video-player.md` §2, §13, §24).
+
+- **Two windows, one app.** Lexpad's window (learning) and the Player (`player_window.rs`, label
+  `player`): the same bundled build, configuration script, navigation lock and session rule as
+  Lexpad's window, started on `#/player` by its initialization script (`?from=app|file|pick`
+  says how it was opened). Frameless: on macOS the traffic lights sit at (18, 18) over the page
+  and hide with the player's chrome (`player_buttons`); on Windows the page draws the caption
+  buttons. 72% of the work area at 16:9, its place remembered (`player_window` in settings.json).
+  The mini player is the same window made 448×252 and kept on top, in the screen's corner, and
+  back again (one decoder, one stream). Full screen is the system's (macOS space, Windows
+  borderless).
+- **Each opens the other.** "Watch" in the learning window's rail and its Watch page open the
+  Player (`open_player`, with `pick` for the file dialog or a Continue watching `file_id`);
+  the Player's "Lexpad" button and "See it in your notebook" open the learning window at a
+  checked app path (`open_lexpad`). ⌘1 / ⌘2 are the Window menu's items on macOS; on Windows
+  each page answers Ctrl+1 / Ctrl+2 (`open_window`). Files opened from the system and drops on
+  either window open the Player.
+- **Lexpad opens where it was left** (`app_menu`): the window last in front (`last_place`),
+  unless Settings → This computer → "When I open Lexpad" names Today or the Player (`open_at`).
+  The Dock, a second launch and the tray's Open Lexpad go there; a pinned Player button on
+  Windows starts Lexpad with `--player`.
+- **One Dock tile on macOS** for both windows (`docs/player-dock-icon.md`). Windows gives the
+  Player its own taskbar button (AppUserModelID `Lexpad.Player`, `taskbar::own_button`).
+- **The menu bar mirrors the Player's keys** (Playback, Subtitles) with no bare-key
+  accelerators: a menu item with a plain key would be taken from every text field. Each item
+  sends its command to the Player (`player:menu`); the page owns the keys.
+- **The first launch asks what to do first** (`welcome.rs`, `src/welcome/`): Watch, Learn or
+  Both, then a soft sign-in for that path with a provider hint (`connect(provider)` adds
+  `provider=google|apple` to the connect page). It replaces the first run's Settings hello; it
+  is skipped when a video opened Lexpad or a session exists; closing it counts as Both. The
+  answer (`focus`) picks where Lexpad opens and which tips show, and locks nothing. No trial,
+  no Pro and no numbers on it.
+- **Capabilities.** `player.json` grants the Player the engine, the words queue, the card's
+  calls, the API proxy and its own window's controls; `main.json` keeps of the engine only what
+  the Watch page and Settings → Video player read; `welcome.json` its five commands.
+- **Engine requests** go in `NOTES-player-ui.md`, never as edits to `src-tauri/src/media/`.
 
 ## Hard rules
 
