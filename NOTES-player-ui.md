@@ -71,3 +71,16 @@ etaSeconds?: number }` while a transcode runs, so the processing screen can say 
   file-open handling. The fallback the spec names is used: one Lexpad tile (Regular while any
   window is open), the Window menu listing "Lexpad ⌘1" and "Lexpad Player ⌘2", and ⌘1 / ⌘2.
 - Windows gets the Player its own taskbar button with its own AppUserModelID (`Lexpad.Player`).
+
+## UI side, done (65b9a5c and after)
+
+- `player_window::LABEL` (`"player"`) exists; `open_media` opens it (`Opened::File`), drops on
+  Lexpad's window go through `open_media` too (so the Player comes forward), and the Player's
+  capability (`capabilities/player.json`) grants every `media_*` and `words_*` command.
+  `main.json` keeps only `media_engine`, `media_recent*`, `media_default_player_*` and
+  `words_pending/flush/discard` (the Watch page and Settings → Video player).
+- The mini player is the same `player` window resized and kept on top, not a second window, so
+  `player-mini` in `PLAYER_WINDOWS` is unused for now (harmless).
+- The front copied `stream.ts` again at 89f7a87.
+- Asked: nothing new. Picture subtitles (item 4) stay listed as "picture" chips the UI cannot
+  load until the engine returns image cues; the UI already draws them.
