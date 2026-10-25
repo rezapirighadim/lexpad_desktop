@@ -56,7 +56,6 @@ export class StreamPlayer {
   private sb: SourceBuffer | undefined;
   private run: Run | undefined;
   private runToken = 0;
-  private abort: AbortController | undefined;
   private objectUrl: string | undefined;
   private runEnded = false;
   private seekStarted = 0;
@@ -138,8 +137,6 @@ export class StreamPlayer {
 
   /** Ends playback and lets the core stop its FFmpeg (unless the session goes on). */
   stop(keepSession = false): void {
-    this.abort?.abort();
-    this.abort = undefined;
     this.runToken++;
     this.run = undefined;
     if (this.playback !== undefined && !keepSession) void media.close(this.playback.session);
@@ -218,8 +215,10 @@ export class StreamPlayer {
   }
 
   private startPulling(run: Run): void {
-    this.abort?.abort();
-    this.abort = new AbortController();
+    // The old run's pull is not aborted: the core answers it at once
+    // ("gone") once the run is replaced, and the token makes the page drop
+    // it. Aborting it instead made WebKit cancel a request the core was
+    // still answering, a race with the custom scheme's handler.
     this.run = run;
     this.runEnded = false;
     const token = ++this.runToken;
@@ -230,7 +229,7 @@ export class StreamPlayer {
     } catch {
       /* not updating: nothing to reset */
     }
-    void this.pull(run, token, this.abort.signal);
+    void this.pull(run, token);
   }
 
   private wake: (() => void) | undefined;
@@ -242,9 +241,9 @@ export class StreamPlayer {
     }
   }
 
-  private async pull(run: Run, token: number, signal: AbortSignal): Promise<void> {
+  private async pull(run: Run, token: number): Promise<void> {
     let next = 0;
-    while (token === this.runToken && !signal.aborted) {
+    while (token === this.runToken) {
       if (this.ahead() >= AHEAD_S) {
         await new Promise<void>((resolve) => {
           this.wake = resolve;
@@ -254,9 +253,9 @@ export class StreamPlayer {
       }
       let res: Response;
       try {
-        res = await fetch(`${run.url ?? ''}?from=${next}`, { signal });
+        res = await fetch(`${run.url ?? ''}?from=${next}`);
       } catch {
-        if (signal.aborted) return;
+        if (token !== this.runToken) return;
         await new Promise((r) => setTimeout(r, 300));
         continue;
       }
