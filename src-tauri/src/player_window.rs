@@ -49,6 +49,8 @@ pub const PLAYER_FLAG: &str = "--player";
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Opened {
     App,
+    // With `player-dev`, files open in the development page instead.
+    #[cfg_attr(feature = "player-dev", allow(dead_code))]
     File,
     Pick,
     Launch,

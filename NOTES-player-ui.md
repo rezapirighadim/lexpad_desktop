@@ -84,3 +84,11 @@ etaSeconds?: number }` while a transcode runs, so the processing screen can say 
 - The front copied `stream.ts` again at 89f7a87.
 - Asked: nothing new. Picture subtitles (item 4) stay listed as "picture" chips the UI cannot
   load until the engine returns image cues; the UI already draws them.
+- The front copied `stream.ts` again at 3bd5b6f (front 1eaf345).
+- The release benchmark's abort ("panic in a function that cannot unwind", first real film) is
+  fixed in `lib.rs`, not in the engine: the `lexmedia` handler answered from a tokio worker, and
+  WebKit cancelled the task on the main thread between wry's liveness check and
+  `didReceiveResponse`, so WebKit threw "task already stopped" through an `extern "C"` call. On
+  macOS the answer now goes through `run_on_main_thread`, where the check and the call cannot be
+  split. `scripts/player-bench.sh` (release settings) then passed twice on Big Buck Bunny,
+  Sintel and Tears of Steel (mp4, mkv remux, mov audio transcode): first frame 94–258 ms.

@@ -289,7 +289,27 @@ pub fn run() {
                 let app = ctx.app_handle().clone();
                 let webview = ctx.webview_label().to_owned();
                 tauri::async_runtime::spawn(async move {
-                    responder.respond(media::protocol::handle(&app, &webview, request).await);
+                    let response = media::protocol::handle(&app, &webview, request).await;
+                    // macOS: answer on the main thread. WebKit cancels a
+                    // request (a seek, a closed window) on the main thread, and
+                    // wry checks the task is still live before each
+                    // didReceiveResponse/Data/Finish; from a worker thread the
+                    // cancel can land between that check and the call, WebKit
+                    // then throws "This task has already been stopped", and an
+                    // Objective-C exception through Rust aborts the app (the
+                    // release benchmark's "panic in a function that cannot
+                    // unwind", 2026-10-25). On the main thread the check and the
+                    // call cannot be split. Windows answers as before.
+                    #[cfg(target_os = "macos")]
+                    {
+                        let main = app.clone();
+                        if let Err(e) = main.run_on_main_thread(move || responder.respond(response))
+                        {
+                            log::warn!("media: could not answer on the main thread: {e}");
+                        }
+                    }
+                    #[cfg(not(target_os = "macos"))]
+                    responder.respond(response);
                 });
             },
         )
