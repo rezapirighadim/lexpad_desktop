@@ -88,7 +88,9 @@ impl Encoder {
                 "-usage",
                 "lowlatency",
             ],
-            Encoder::MediaFoundation => &["-hw_encoding", "1", "-scenario", "display_remoting"],
+            // Not -hw_encoding 1: where the GPU has no H.264 MFT, Windows'
+            // own software MFT (always there) does the work.
+            Encoder::MediaFoundation => &["-scenario", "display_remoting"],
             Encoder::OpenH264 => &["-profile:v", "high", "-allow_skip_frames", "1"],
         };
         o.iter().map(|s| s.to_string()).collect()
@@ -240,30 +242,43 @@ async fn find_encoder(tools: &Tools) -> Option<Encoder> {
         if !listed.contains(enc.ffmpeg_name()) {
             continue;
         }
-        let ok = output(
-            &tools.ffmpeg,
-            &[
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-f",
-                "lavfi",
-                "-i",
-                "color=c=black:s=640x360:r=30:d=0.2",
-                "-vf",
-                &format!("format={}", enc.pix_fmt()),
+        // The trial runs the encoder exactly as a transcode will (its
+        // options, a bit rate, key frames): a listed encoder that opens
+        // with defaults may still refuse the real settings (Media
+        // Foundation with hardware forced, on a machine without a GPU).
+        let mut args: Vec<String> = [
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=640x360:r=30:d=0.5",
+            "-vf",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        args.push(format!("format={}", enc.pix_fmt()));
+        args.extend(
+            [
                 "-c:v",
                 enc.ffmpeg_name(),
-                "-frames:v",
-                "5",
-                "-f",
-                "null",
-                "-",
-            ],
-            TRIAL_TIMEOUT,
-        )
-        .await
-        .is_ok();
+                "-b:v",
+                "2000000",
+                "-maxrate",
+                "3000000",
+                "-bufsize",
+                "4000000",
+                "-g",
+                "60",
+            ]
+            .map(String::from),
+        );
+        args.extend(enc.options());
+        args.extend(["-frames:v", "10", "-f", "null", "-"].map(String::from));
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        let ok = output(&tools.ffmpeg, &refs, TRIAL_TIMEOUT).await.is_ok();
         if ok {
             return Some(*enc);
         }
