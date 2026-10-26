@@ -101,7 +101,8 @@ docs/ffmpeg.md                   FFmpeg's licence (LGPL only), sources, builds, 
 - **The core stays the only holder of tokens.** The window never gets a session of its own: every
   API call goes to the core (`api_fetch`), which checks it (`proxy.rs`: the API's own origin under
   `/api/v1/`, the client's headers only, no sign-in, refresh, password, other-session or assistant
-  calls) and sends it with the desktop app's own delegated session from the credential store,
+  calls; the activity headers `X-Lexpad-Surface` / `X-Lexpad-Context` only when well formed, and a
+  surface only when it is the desktop app's own, `desktop.`…) and sends it with the desktop app's own delegated session from the credential store,
   refreshing it single-flight, streaming the body back over a channel. No server change was
   needed: the delegated session may do everything the app does day to day, and what it may not
   (a password, linking Google or Apple, connecting another client or an assistant) the window
@@ -261,6 +262,13 @@ The Player's page is the web app's `/player` route (lexpad_front `features/playe
   development build never touches the production session): the refresh token and who it
   belongs to. The access token is memory only. Refresh is single-flight (the session mutex in
   `api.rs`); a refused refresh forgets the session.
+- **Where a word came from, for the activity reports** (reports/specs/2026-10-26-activity-tracking.md
+  in the workspace): the core's own lookup and add send `X-Lexpad-Surface` from the capture that
+  opened the popup (`commands::surface_of`: the shortcut, the selection or a word typed after it,
+  is `desktop.shortcut`; the Services menu `desktop.services`; the tray panel's box `desktop.tray`),
+  and only while GET /config says `activity: true` (`Api::activity_on`, kept 6 hours, a failed read
+  is off for 5 minutes). The window's app sets its own (`desktop.app.*`, `desktop.player…`) and the
+  proxy lets them through. Background calls (the inbox poll, settings) say nothing.
 - **Every call says which copy it is, in its User-Agent and nothing else** (`config::user_agent`,
   since 0.3.11): `Lexpad-Desktop/<version> (macOS)`, `(Windows; store)` for the Microsoft
   Store's MSIX (`msix::is_packaged`) or `(Windows; direct)` for the installer from lexpad.app.
