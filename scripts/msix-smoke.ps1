@@ -28,8 +28,12 @@ $signtool = Join-Path $bin.FullName 'x64\signtool.exe'
 
 [xml]$manifest = Get-Content (Join-Path $root 'msix/AppxManifest.xml')
 $identity = $manifest.Package.Identity
-$appId = $manifest.Package.Applications.Application.Id
-$taskId = $manifest.Package.Applications.Application.Extensions.Extension.StartupTask.TaskId
+# The main app (the package also has "Lexpad Player", the same exe with --player).
+$mainApp = @($manifest.Package.Applications.Application)[0]
+$appId = $mainApp.Id
+$taskId = $mainApp.Extensions.Extension.StartupTask.TaskId
+$playerApp = @($manifest.Package.Applications.Application) | Where-Object { $_.Id -eq 'LexpadPlayer' }
+if (-not $playerApp) { throw 'the package has no "Lexpad Player" app entry' }
 
 # A test certificate for this runner only.
 $cert = New-SelfSignedCertificate -Type Custom -Subject $identity.Publisher -KeyUsage DigitalSignature `

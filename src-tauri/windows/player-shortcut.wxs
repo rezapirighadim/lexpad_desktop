@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The MSI's "Lexpad Player" Start menu entry (owner, 26 Oct 2026: one app,
+  two ways in): the same Lexpad.exe started with dash-dash-player, beside
+  "Lexpad" in the Start menu's Lexpad folder, with the Player's own
+  AppUserModelID (Lexpad.Player, as its window has: player_window.rs) so it
+  groups with the Player's taskbar button. The NSIS installer adds the same
+  entry in windows/media-open-with.nsh. Hooked in by tauri.conf.json,
+  bundle.windows.wix.fragmentPaths and componentRefs.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <DirectoryRef Id="ApplicationProgramsFolder">
+      <Component Id="LexpadPlayerShortcut" Guid="*">
+        <Shortcut Id="LexpadPlayerStartMenuShortcut"
+                  Name="Lexpad Player"
+                  Description="Watch videos with subtitles and keep the words you click"
+                  Target="[!Path]"
+                  Arguments="--player"
+                  Icon="ProductIcon"
+                  WorkingDirectory="INSTALLDIR">
+          <ShortcutProperty Key="System.AppUserModel.ID" Value="Lexpad.Player"/>
+        </Shortcut>
+        <RegistryValue Root="HKCU" Key="Software\Lexpad\Lexpad Player" Name="Start Menu Shortcut" Type="integer" Value="1" KeyPath="yes"/>
+      </Component>
+    </DirectoryRef>
+  </Fragment>
+</Wix>

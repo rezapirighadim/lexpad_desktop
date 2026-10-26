@@ -64,7 +64,7 @@
     "targets": ["app", "dmg", "nsis", "msi"],
     "category": "Education",
     "publisher": "Lexpad",
-    "copyright": "\u00a9 2026 Lexpad",
+    "copyright": "© 2026 Lexpad",
     "shortDescription": "Add a word to Lexpad from any app",
     "longDescription": "Select a word in any app, press the Lexpad shortcut, and see its meaning while it goes into your Lexpad notebook with the sentence you met it in.",
     "icon": [
@@ -82,6 +82,10 @@
         "installMode": "currentUser",
         "installerIcon": "icons/icon.ico",
         "installerHooks": "windows/media-open-with.nsh"
+      },
+      "wix": {
+        "fragmentPaths": ["windows/player-shortcut.wxs"],
+        "componentRefs": ["LexpadPlayerShortcut"]
       }
     },
     "externalBin": ["binaries/ffmpeg", "binaries/ffprobe"]
