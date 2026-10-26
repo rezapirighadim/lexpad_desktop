@@ -320,12 +320,21 @@ export function frameUrl(baseUrl: string, fileId: string, seconds: number): stri
   return `${baseUrl}/t/${fileId}/${s * 1000}.jpg`;
 }
 
+/**
+ * Where in the player a word was picked. Passed as `from` to `words_save`,
+ * and to `lookup` / `add_word` when the player calls them; the core refuses
+ * any other value. Without it `lookup` / `add_word` are the popup's.
+ */
+export type PickedIn = 'subtitles' | 'transcript';
+
 export interface NewWord {
   headword: string;
   /** ISO 639-1 of the subtitle it came from. */
   lang?: string;
   sentence?: string;
   memo?: string;
+  /** Where in the player it was picked, for the activity reports; absent means the subtitles. */
+  from?: PickedIn;
 }
 
 export type SavedWord =
@@ -389,6 +398,12 @@ export const words = {
   pending: (): Promise<PendingWord[]> => invoke('words_pending'),
   flush: (): Promise<number> => invoke('words_flush'),
   discard: (id: string): Promise<number> => invoke('words_discard', { id }),
+  /**
+   * Sends one waiting word now, on the learner's tap, whatever its age
+   * (e.g. `waiting: 'too_old_to_move'`). Refused ('not_this_account') for a
+   * word another account saved; 'duplicate' when it is already there.
+   */
+  sendOne: (id: string): Promise<SavedWord> => invoke('words_send_one', { id }),
   onPending: (handler: (waiting: number) => void): Promise<UnlistenFn> =>
     listen<number>('words:pending', (e) => handler(e.payload)),
 };

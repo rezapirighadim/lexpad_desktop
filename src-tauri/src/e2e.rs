@@ -108,11 +108,16 @@ async fn bridge(api: Arc<Api>, user: Value, capture: Capture, listener: TcpListe
                     args["notebookId"].as_str().unwrap_or(""),
                     args["headword"].as_str().unwrap_or(""),
                     args["hint"].as_str(),
+                    None,
                 )
                 .await
                 .map_err(|f| f.as_str().to_owned()),
             "add_word" => api
-                .add_word(args["notebookId"].as_str().unwrap_or(""), &args["word"])
+                .add_word(
+                    args["notebookId"].as_str().unwrap_or(""),
+                    &args["word"],
+                    None,
+                )
                 .await
                 .map(Value::String)
                 .map_err(|f| f.as_str().to_owned()),

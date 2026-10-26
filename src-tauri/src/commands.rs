@@ -11,7 +11,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_global_shortcut::GlobalShortcutExt as _;
 use tauri_plugin_opener::OpenerExt as _;
 
-use crate::api::{Device, Failure};
+use crate::api::{Device, Failure, Surface};
 use crate::auth::{self, Answer};
 use crate::capture::{self, Capture, Permission, Via};
 use crate::config;
@@ -23,7 +23,7 @@ use crate::proxy;
 use crate::settings::{remember, RecentWord};
 use crate::state::AppState;
 use crate::store::User;
-use crate::word_queue::{NewWord, Pending, Saved, WordQueue};
+use crate::word_queue::{NewWord, Pending, PickedIn, Saved, WordQueue};
 
 /// The most a private note may hold, as the API allows.
 const MAX_MEMO: usize = 500;
@@ -78,6 +78,13 @@ fn is_id(id: &str) -> bool {
 
 /// Everything a window needs to draw itself. Reads the notebooks again each
 /// time, falling back to the last list when offline.
+impl StateDto {
+    /// The signed-in account's id, when connected.
+    pub(crate) fn user_id(&self) -> Option<String> {
+        self.user.as_ref().map(|u| u.id.clone())
+    }
+}
+
 #[tauri::command]
 pub async fn state(app: AppHandle, state: State<'_, AppState>) -> Result<StateDto, String> {
     let user = state.api.user().await;
@@ -123,12 +130,44 @@ pub async fn state(app: AppHandle, state: State<'_, AppState>) -> Result<StateDt
     })
 }
 
+/// Where the popup's word came from, for the activity headers (api.rs
+/// `Surface`): the capture that opened it says. A shortcut that found no
+/// selection opens the popup with an empty capture (`Via::None`) and the
+/// word is typed there, so that is the shortcut too. The clipboard is only
+/// the shortcut's second way of reading a selection, never a feature of its
+/// own, so it is the shortcut as well. No capture at all: nothing is said.
+pub fn surface_of(capture: Option<&Capture>) -> Option<Surface> {
+    capture.map(|c| match c.via {
+        Via::Accessibility | Via::Clipboard | Via::None => Surface::Shortcut,
+        Via::Service => Surface::Services,
+        Via::Typed => Surface::Tray,
+    })
+}
+
+/// The surface of a lookup or an add: the video player says where in it
+/// the word was picked (`from`, `subtitles` | `transcript`), and that wins;
+/// without it, it is the popup's, from its capture. Any other `from` is
+/// refused before the command runs (it does not deserialize), so a window
+/// can never name a surface of its own.
+pub fn surface_for(from: Option<PickedIn>, capture: Option<&Capture>) -> Option<Surface> {
+    match from {
+        Some(p) => Some(p.surface()),
+        None => surface_of(capture),
+    }
+}
+
+fn call_surface(state: &AppState, from: Option<PickedIn>) -> Option<Surface> {
+    let capture = state.capture.lock().ok().and_then(|c| c.clone());
+    surface_for(from, capture.as_ref())
+}
+
 #[tauri::command]
 pub async fn lookup(
     state: State<'_, AppState>,
     notebook_id: String,
     headword: String,
     hint: Option<String>,
+    from: Option<PickedIn>,
 ) -> Result<Value, String> {
     if !is_id(&notebook_id) || headword.trim().is_empty() || headword.chars().count() > 60 {
         return Err(err(Failure::Error));
@@ -136,7 +175,12 @@ pub async fn lookup(
     let hint = hint.map(|h| capture::clip(&h, 200));
     state
         .api
-        .lookup(&notebook_id, &headword, hint.as_deref())
+        .lookup(
+            &notebook_id,
+            &headword,
+            hint.as_deref(),
+            call_surface(&state, from),
+        )
         .await
         .map_err(err)
 }
@@ -149,6 +193,7 @@ pub async fn add_word(
     state: State<'_, AppState>,
     notebook_id: String,
     word: Value,
+    from: Option<PickedIn>,
 ) -> Result<String, String> {
     let Some(obj) = word.as_object() else {
         return Err(err(Failure::Error));
@@ -163,7 +208,12 @@ pub async fn add_word(
     if !is_id(&notebook_id) || !headword_ok || !memo_ok {
         return Err(err(Failure::Error));
     }
-    let id = state.api.add_word(&notebook_id, &word).await.map_err(err)?;
+    let surface = call_surface(&state, from);
+    let id = state
+        .api
+        .add_word(&notebook_id, &word, surface)
+        .await
+        .map_err(err)?;
     // Remembered for the panel's "Added from this computer" list.
     if let Some(user) = state.api.user().await {
         let added = RecentWord {
@@ -798,6 +848,56 @@ pub async fn latest_release() -> Result<crate::release::Release, String> {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn the_popup_says_where_its_word_came_from() {
+        use crate::api::Surface;
+        use crate::capture::{Capture, Permission, Via};
+        let with = |via| {
+            let mut c = Capture::empty(Permission::Granted, None);
+            c.via = via;
+            super::surface_of(Some(&c))
+        };
+        assert_eq!(with(Via::Accessibility), Some(Surface::Shortcut));
+        assert_eq!(with(Via::Clipboard), Some(Surface::Shortcut));
+        assert_eq!(with(Via::None), Some(Surface::Shortcut));
+        assert_eq!(with(Via::Service), Some(Surface::Services));
+        assert_eq!(with(Via::Typed), Some(Surface::Tray));
+        assert_eq!(super::surface_of(None), None);
+    }
+
+    #[test]
+    fn the_players_from_wins_over_the_popups_capture() {
+        use crate::api::Surface;
+        use crate::capture::{Capture, Permission, Via};
+        use crate::word_queue::PickedIn;
+        let mut shortcut = Capture::empty(Permission::Granted, None);
+        shortcut.via = Via::Accessibility;
+        assert_eq!(
+            super::surface_for(Some(PickedIn::Subtitles), Some(&shortcut)),
+            Some(Surface::Player)
+        );
+        assert_eq!(
+            super::surface_for(Some(PickedIn::Transcript), None),
+            Some(Surface::PlayerTranscript)
+        );
+        // Without it, the popup is as before.
+        assert_eq!(
+            super::surface_for(None, Some(&shortcut)),
+            Some(Surface::Shortcut)
+        );
+        assert_eq!(super::surface_for(None, None), None);
+        // The command's argument: only the two names; anything else refuses the call.
+        let parse = |v: serde_json::Value| serde_json::from_value::<Option<PickedIn>>(v);
+        assert_eq!(
+            parse(serde_json::json!("transcript")).unwrap(),
+            Some(PickedIn::Transcript)
+        );
+        assert_eq!(parse(serde_json::Value::Null).unwrap(), None);
+        for bad in ["desktop.shortcut", "Subtitles", "film.mkv", ""] {
+            assert!(parse(serde_json::json!(bad)).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
     fn only_plain_paths_of_the_web_app_open_in_the_browser() {
         let ok = super::app_path("/settings/account").unwrap();
         assert_eq!(
@@ -871,7 +971,11 @@ pub async fn words_save(
                 pending.lang.as_deref(),
                 chosen.as_deref(),
             ) {
-                Some(nb) => match state.api.add_word(&nb, &pending.body()).await {
+                Some(nb) => match state
+                    .api
+                    .add_word(&nb, &pending.body(), Some(pending.surface()))
+                    .await
+                {
                     Ok(id) => {
                         return Ok(Saved::Added {
                             id,
@@ -915,6 +1019,28 @@ pub async fn words_flush(
         .notebook_id
         .clone();
     Ok(queue.flush(&state.api, chosen.as_deref()).await.1)
+}
+
+/// Sends one waiting word now, on the learner's tap (the Player's list of
+/// words kept on this computer, e.g. one marked `too_old_to_move`): to the
+/// signed-in account whatever its age, refused if another account saved it.
+/// Answers as `words_save`: added, or still queued and why.
+#[tauri::command]
+pub async fn words_send_one(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    queue: State<'_, WordQueue>,
+    id: String,
+) -> Result<Saved, String> {
+    let chosen = state
+        .settings
+        .lock()
+        .map_err(|_| "lock")?
+        .notebook_id
+        .clone();
+    let out = queue.send_one(&state.api, &id, chosen.as_deref()).await;
+    let _ = app.emit("words:pending", queue.list().len());
+    out
 }
 
 /// The learner drops a waiting word.

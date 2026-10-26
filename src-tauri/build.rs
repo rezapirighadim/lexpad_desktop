@@ -74,6 +74,7 @@ fn main() {
             "words_pending",
             "words_flush",
             "words_discard",
+            "words_send_one",
             // The Player's window and the two windows' ways to each other
             // (player_window.rs, app_menu.rs), and the first launch (welcome.rs).
             "open_lexpad",

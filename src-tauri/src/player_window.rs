@@ -267,6 +267,102 @@ pub fn open_lexpad(app: AppHandle, path: Option<String>) -> Result<(), String> {
 /// on the Watch page): the engine's file id, never a path.
 static PLAY: Mutex<Option<String>> = Mutex::new(None);
 
+/// How long the Player's page has to finish closing (its `onCloseRequested`
+/// saves where the video was, then `destroy()`s the window) before the core
+/// closes the window itself, a page that hung included.
+pub const CLOSE_FALLBACK: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// What the core does with a close request for the Player (`CloseGuard`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CloseStep {
+    /// The first request: the page closes it; the core waits, with this ticket.
+    Arm(u64),
+    /// A second request while one is pending: the core closes it now.
+    Destroy,
+}
+
+/// The core's side of closing the Player. The page registers a close
+/// listener, so Tauri holds every close (button, ⌘W, Alt+F4, the mini
+/// player's close, the system's) for the page to finish; if the page never
+/// does, this closes the window: on a second request at once, or when
+/// `CLOSE_FALLBACK` passes after the first. Pure, so it is tested alone.
+#[derive(Debug, Default)]
+pub struct CloseGuard {
+    armed: Option<u64>,
+    next: u64,
+}
+
+impl CloseGuard {
+    pub const fn new() -> Self {
+        Self {
+            armed: None,
+            next: 0,
+        }
+    }
+
+    /// A close was asked for.
+    pub fn request(&mut self) -> CloseStep {
+        if self.armed.take().is_some() {
+            CloseStep::Destroy
+        } else {
+            self.next += 1;
+            self.armed = Some(self.next);
+            CloseStep::Arm(self.next)
+        }
+    }
+
+    /// The wait for `ticket` ran out: whether the core closes the window now
+    /// (false when the window already went, or a newer request took over).
+    pub fn timed_out(&mut self, ticket: u64) -> bool {
+        if self.armed == Some(ticket) {
+            self.armed = None;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// The window is gone; a timer still running finds nothing to do.
+    pub fn closed(&mut self) {
+        self.armed = None;
+    }
+}
+
+static CLOSING: Mutex<CloseGuard> = Mutex::new(CloseGuard::new());
+
+fn destroy_player(app: &AppHandle) {
+    if let Some(win) = app.get_webview_window(LABEL) {
+        log::warn!("the Player did not close by itself; closing it");
+        let _ = win.destroy();
+    }
+}
+
+/// A close request reached the Player (see `CloseGuard`).
+pub fn close_requested(app: &AppHandle) {
+    let step = CLOSING.lock().map(|mut g| g.request());
+    match step {
+        Ok(CloseStep::Destroy) => destroy_player(app),
+        Ok(CloseStep::Arm(ticket)) => {
+            let app = app.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(CLOSE_FALLBACK);
+                if CLOSING.lock().is_ok_and(|mut g| g.timed_out(ticket)) {
+                    let handle = app.clone();
+                    let _ = app.run_on_main_thread(move || destroy_player(&handle));
+                }
+            });
+        }
+        Err(_) => destroy_player(app),
+    }
+}
+
+/// The Player's window is gone.
+pub fn destroyed() {
+    if let Ok(mut g) = CLOSING.lock() {
+        g.closed();
+    }
+}
+
 /// The Player, opened or brought forward (the Watch page, ⌘2 / Ctrl+2): to
 /// the open dialog with `pick`, or to play `file_id` (an id the engine gave).
 #[tauri::command]
@@ -315,6 +411,9 @@ pub fn player_take_play() -> Option<String> {
 #[serde(rename_all = "camelCase")]
 pub struct Account {
     connected: bool,
+    /// The signed-in account's id (null signed out), so the Player labels
+    /// what it records with the core's account, never another window's.
+    user_id: Option<String>,
     notebooks: Vec<serde_json::Value>,
     notebook_id: Option<String>,
 }
@@ -324,6 +423,7 @@ pub async fn player_account(app: AppHandle) -> Result<Account, String> {
     let s = crate::commands::state(app.clone(), app.state::<AppState>()).await?;
     Ok(Account {
         connected: s.connected,
+        user_id: s.user_id(),
         notebooks: s.notebooks,
         notebook_id: s.notebook_id,
     })
@@ -518,5 +618,92 @@ mod tests {
         assert!(s.contains("window.__LEXPAD_CONFIG"));
         assert!(s.contains("#/player?from=pick"));
         assert!(init_script("dev", Opened::Launch).ends_with("'#/player');"));
+    }
+}
+
+#[cfg(test)]
+mod close_tests {
+    use super::{CloseGuard, CloseStep};
+
+    #[test]
+    fn a_first_close_waits_a_second_or_the_timeout_closes() {
+        let mut g = CloseGuard::new();
+        // First request: armed; the page has its moment.
+        let CloseStep::Arm(t1) = g.request() else {
+            panic!("first request must arm")
+        };
+        // A second request (the learner pressed again): closed at once.
+        assert_eq!(g.request(), CloseStep::Destroy);
+        // The first timer then finds nothing to do.
+        assert!(!g.timed_out(t1));
+
+        // A first request whose page never answers: the timer closes it.
+        let CloseStep::Arm(t2) = g.request() else {
+            panic!()
+        };
+        assert!(g.timed_out(t2));
+        assert!(!g.timed_out(t2), "only once");
+
+        // The page closed it in time: the timer is a no-op.
+        let CloseStep::Arm(t3) = g.request() else {
+            panic!()
+        };
+        g.closed();
+        assert!(!g.timed_out(t3));
+
+        // A timer from an earlier window never closes a newer one.
+        let CloseStep::Arm(t4) = g.request() else {
+            panic!()
+        };
+        g.closed();
+        let CloseStep::Arm(t5) = g.request() else {
+            panic!()
+        };
+        assert!(!g.timed_out(t4));
+        assert!(g.timed_out(t5));
+    }
+
+    #[test]
+    fn the_player_windows_may_destroy_themselves() {
+        // The page's close listener ends with destroy(); without the
+        // permission the window could never close.
+        for (name, file) in [
+            ("player.json", include_str!("../capabilities/player.json")),
+            (
+                "player-dev.json",
+                include_str!("../capabilities/player-dev.json"),
+            ),
+        ] {
+            let v: serde_json::Value = serde_json::from_str(file).unwrap();
+            let perms: Vec<&str> = v["permissions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(|p| p.as_str())
+                .collect();
+            assert!(perms.contains(&"core:window:allow-destroy"), "{name}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod account_tests {
+    #[test]
+    fn the_player_is_told_the_cores_account_or_null() {
+        let signed_in = super::Account {
+            connected: true,
+            user_id: Some("u1".into()),
+            notebooks: vec![],
+            notebook_id: None,
+        };
+        let v = serde_json::to_value(&signed_in).unwrap();
+        assert_eq!(v["userId"], "u1");
+        let out = super::Account {
+            connected: false,
+            user_id: None,
+            notebooks: vec![],
+            notebook_id: None,
+        };
+        assert!(serde_json::to_value(&out).unwrap()["userId"].is_null());
     }
 }

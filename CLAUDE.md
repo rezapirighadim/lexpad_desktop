@@ -101,7 +101,8 @@ docs/ffmpeg.md                   FFmpeg's licence (LGPL only), sources, builds, 
 - **The core stays the only holder of tokens.** The window never gets a session of its own: every
   API call goes to the core (`api_fetch`), which checks it (`proxy.rs`: the API's own origin under
   `/api/v1/`, the client's headers only, no sign-in, refresh, password, other-session or assistant
-  calls) and sends it with the desktop app's own delegated session from the credential store,
+  calls; the activity headers `X-Lexpad-Surface` / `X-Lexpad-Context` only when well formed, and a
+  surface only when it is the desktop app's own, `desktop.`…) and sends it with the desktop app's own delegated session from the credential store,
   refreshing it single-flight, streaming the body back over a channel. No server change was
   needed: the delegated session may do everything the app does day to day, and what it may not
   (a password, linking Google or Apple, connecting another client or an assistant) the window
@@ -200,9 +201,22 @@ page written by us (designed separately); this repository holds the engine.
   and opens Settings > Default apps on Windows.
 - **Words saved without a session** (signed out, offline) wait in `pending-words.json`
   (`word_queue.rs`) and go to the notebook of their language after sign-in; never to a notebook
-  of another language.
+  of another language. A word saved signed out moves to the account that signs in only within 24 h
+  (`may_join`, owner 26 Oct 2026, the same limit as anonymous activity events); an older one, or
+  one dated ahead of the clock by more than five minutes, stays on this computer unsent as
+  `too_old_to_move` for the learner to discard (`words_discard`) or send on a tap
+  (`words_send_one`, to the signed-in account whatever its age, with its own surface). A word saved
+  under one account never goes to another (`words_send_one` refuses it: `not_this_account`).
+  `player_account` answers `userId` (null signed out), so the Player labels its events with the
+  core's account.
 
 ## The video player's windows (branch feat/video-player, 2026-10)
+
+- **Closing the Player.** Its page listens for a close (it saves where the video was), so Tauri
+  holds every close for it and the page ends with `destroy()` (`core:window:allow-destroy` in
+  player.json). If the page never does (a hung webview), the core closes it itself
+  (`player_window::CloseGuard`): on a second close request at once, else `CLOSE_FALLBACK` (2 s)
+  after the first.
 
 The Player's page is the web app's `/player` route (lexpad_front `features/player`), bundled in
 `web/` like the rest; this repository holds its window and the app's structure around it (spec
@@ -261,6 +275,17 @@ The Player's page is the web app's `/player` route (lexpad_front `features/playe
   development build never touches the production session): the refresh token and who it
   belongs to. The access token is memory only. Refresh is single-flight (the session mutex in
   `api.rs`); a refused refresh forgets the session.
+- **Where a word came from, for the activity reports** (reports/specs/2026-10-26-activity-tracking.md
+  in the workspace): the core's own lookup and add send `X-Lexpad-Surface` from the capture that
+  opened the popup (`commands::surface_of`: the shortcut, the selection or a word typed after it,
+  is `desktop.shortcut`; the Services menu `desktop.services`; the tray panel's box `desktop.tray`;
+  a word the video player saves through `words_save` (sent now or from the queue), or looks up and
+  adds through `lookup` / `add_word`, `desktop.player` or `desktop.player.transcript`, from its
+  `from`, which wins over the popup's capture and refuses any other value),
+  and only while GET /config says `activity: true` (`Api::activity_now`: the cached answer only,
+  never awaited on a word's path; refreshed in the background at start, after sign-in and when 6
+  hours old, one read at a time; unknown or a failed read is off). The window's app sets its own (`desktop.app.*`) and the
+  proxy lets them through. Background calls (the inbox poll, settings) say nothing.
 - **Every call says which copy it is, in its User-Agent and nothing else** (`config::user_agent`,
   since 0.3.11): `Lexpad-Desktop/<version> (macOS)`, `(Windows; store)` for the Microsoft
   Store's MSIX (`msix::is_packaged`) or `(Windows; direct)` for the installer from lexpad.app.
