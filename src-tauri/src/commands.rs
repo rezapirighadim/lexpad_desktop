@@ -11,7 +11,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_global_shortcut::GlobalShortcutExt as _;
 use tauri_plugin_opener::OpenerExt as _;
 
-use crate::api::{Device, Failure};
+use crate::api::{Device, Failure, Surface};
 use crate::auth::{self, Answer};
 use crate::capture::{self, Capture, Permission, Via};
 use crate::config;
@@ -123,6 +123,24 @@ pub async fn state(app: AppHandle, state: State<'_, AppState>) -> Result<StateDt
     })
 }
 
+/// Where the popup's word came from, for the activity headers (api.rs
+/// `Surface`): the capture that opened it says. A shortcut that found no
+/// selection opens the popup with an empty capture (`Via::None`) and the
+/// word is typed there, so that is the shortcut too. The clipboard is only
+/// the shortcut's second way of reading a selection, never a feature of its
+/// own, so it is the shortcut as well. No capture at all: nothing is said.
+pub fn surface_of(capture: Option<&Capture>) -> Option<Surface> {
+    capture.map(|c| match c.via {
+        Via::Accessibility | Via::Clipboard | Via::None => Surface::Shortcut,
+        Via::Service => Surface::Services,
+        Via::Typed => Surface::Tray,
+    })
+}
+
+fn popup_surface(state: &AppState) -> Option<Surface> {
+    surface_of(state.capture.lock().ok()?.as_ref())
+}
+
 #[tauri::command]
 pub async fn lookup(
     state: State<'_, AppState>,
@@ -136,7 +154,12 @@ pub async fn lookup(
     let hint = hint.map(|h| capture::clip(&h, 200));
     state
         .api
-        .lookup(&notebook_id, &headword, hint.as_deref())
+        .lookup(
+            &notebook_id,
+            &headword,
+            hint.as_deref(),
+            popup_surface(&state),
+        )
         .await
         .map_err(err)
 }
@@ -163,7 +186,12 @@ pub async fn add_word(
     if !is_id(&notebook_id) || !headword_ok || !memo_ok {
         return Err(err(Failure::Error));
     }
-    let id = state.api.add_word(&notebook_id, &word).await.map_err(err)?;
+    let surface = popup_surface(&state);
+    let id = state
+        .api
+        .add_word(&notebook_id, &word, surface)
+        .await
+        .map_err(err)?;
     // Remembered for the panel's "Added from this computer" list.
     if let Some(user) = state.api.user().await {
         let added = RecentWord {
@@ -797,6 +825,23 @@ pub async fn latest_release() -> Result<crate::release::Release, String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_popup_says_where_its_word_came_from() {
+        use crate::api::Surface;
+        use crate::capture::{Capture, Permission, Via};
+        let with = |via| {
+            let mut c = Capture::empty(Permission::Granted, None);
+            c.via = via;
+            super::surface_of(Some(&c))
+        };
+        assert_eq!(with(Via::Accessibility), Some(Surface::Shortcut));
+        assert_eq!(with(Via::Clipboard), Some(Surface::Shortcut));
+        assert_eq!(with(Via::None), Some(Surface::Shortcut));
+        assert_eq!(with(Via::Service), Some(Surface::Services));
+        assert_eq!(with(Via::Typed), Some(Surface::Tray));
+        assert_eq!(super::surface_of(None), None);
+    }
+
     #[test]
     fn only_plain_paths_of_the_web_app_open_in_the_browser() {
         let ok = super::app_path("/settings/account").unwrap();

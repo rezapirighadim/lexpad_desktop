@@ -51,6 +51,34 @@ const FORWARD_SILENCE: Duration = Duration::from_secs(90);
 /// How often a queued AI job is asked about, and how many times.
 const POLL_EVERY: Duration = Duration::from_millis(1200);
 const POLL_TIMES: usize = 40;
+/// How long the server's answer on the activity headers is kept
+/// (`activity` in GET /config, reports/specs/2026-10-26-activity-tracking.md
+/// §2.1), and how soon a failed read is asked again. Off until it has said.
+const ACTIVITY_KEEP: Duration = Duration::from_secs(6 * 60 * 60);
+const ACTIVITY_RETRY: Duration = Duration::from_secs(5 * 60);
+
+/// Where in the app a call comes from (§4 of the activity spec), sent as
+/// `X-Lexpad-Surface` while the server says it takes it. A fixed name:
+/// nothing the person typed or selected ever goes in it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Surface {
+    /// The global shortcut's popup (the selection, or a word typed in it).
+    Shortcut,
+    /// The macOS Services menu, "Add to Lexpad".
+    Services,
+    /// The menu-bar / tray panel's "Add a word" box.
+    Tray,
+}
+
+impl Surface {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Surface::Shortcut => "desktop.shortcut",
+            Surface::Services => "desktop.services",
+            Surface::Tray => "desktop.tray",
+        }
+    }
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -104,6 +132,8 @@ pub struct Api {
     base: String,
     store: Arc<dyn SessionStore>,
     inner: Mutex<Inner>,
+    /// The server's last answer on the activity headers, and until when it holds.
+    activity: std::sync::Mutex<Option<(bool, Instant)>>,
 }
 
 impl Api {
@@ -128,6 +158,7 @@ impl Api {
                 saved: None,
                 access: None,
             }),
+            activity: std::sync::Mutex::new(None),
         }
     }
 
@@ -273,6 +304,38 @@ impl Api {
         Ok(next.access_token)
     }
 
+    /// Whether the server takes the activity headers now (`activity: true`
+    /// in GET /config). Read once and kept for `ACTIVITY_KEEP`; a failed or
+    /// absent answer is "no", asked again after `ACTIVITY_RETRY`. Not a CORS
+    /// matter here, but the same one switch as every other client.
+    pub async fn activity_on(&self) -> bool {
+        if let Some((on, until)) = *self.activity.lock().expect("activity lock") {
+            if Instant::now() < until {
+                return on;
+            }
+        }
+        let answer = async {
+            let res = self
+                .http
+                .get(format!("{}/config", self.base))
+                .send()
+                .await
+                .ok()?;
+            if !res.status().is_success() {
+                return None;
+            }
+            let body: Value = res.json().await.ok()?;
+            Some(body.get("activity").and_then(Value::as_bool) == Some(true))
+        }
+        .await;
+        let kept = match answer {
+            Some(on) => (on, Instant::now() + ACTIVITY_KEEP),
+            None => (false, Instant::now() + ACTIVITY_RETRY),
+        };
+        *self.activity.lock().expect("activity lock") = Some(kept);
+        kept.0
+    }
+
     /// One request with the bearer token, refreshed once on a 401.
     pub(crate) async fn request(
         &self,
@@ -281,6 +344,24 @@ impl Api {
         body: Option<&Value>,
         idempotent: bool,
     ) -> Result<Value, Failure> {
+        self.request_from(method, path, body, idempotent, None)
+            .await
+    }
+
+    /// The same, saying where in the app the person asked for it, while the
+    /// server takes that (`activity_on`).
+    pub(crate) async fn request_from(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&Value>,
+        idempotent: bool,
+        surface: Option<Surface>,
+    ) -> Result<Value, Failure> {
+        let surface = match surface {
+            Some(s) if self.activity_on().await => Some(s),
+            _ => None,
+        };
         let mut token = self.token().await?;
         let key = idempotent.then(|| uuid::Uuid::new_v4().to_string());
         for attempt in 0..2 {
@@ -293,6 +374,9 @@ impl Api {
             }
             if let Some(k) = &key {
                 req = req.header("Idempotency-Key", k);
+            }
+            if let Some(s) = surface {
+                req = req.header("X-Lexpad-Surface", s.as_str());
             }
             let res = req.send().await.map_err(|_| Failure::Offline)?;
             let status = res.status().as_u16();
@@ -380,13 +464,20 @@ impl Api {
         notebook_id: &str,
         headword: &str,
         hint: Option<&str>,
+        surface: Option<Surface>,
     ) -> Result<Value, Failure> {
         let mut body = json!({ "notebookId": notebook_id, "words": [headword] });
         if let Some(h) = hint {
             body["hint"] = json!(h);
         }
         let mut job = self
-            .request(reqwest::Method::POST, "/ai/cards", Some(&body), true)
+            .request_from(
+                reqwest::Method::POST,
+                "/ai/cards",
+                Some(&body),
+                true,
+                surface,
+            )
             .await?;
         for _ in 0..POLL_TIMES {
             let status = job.get("status").and_then(Value::as_str).unwrap_or("");
@@ -413,14 +504,20 @@ impl Api {
     }
 
     /// Adds one word to a notebook and returns its id.
-    pub async fn add_word(&self, notebook_id: &str, word: &Value) -> Result<String, Failure> {
+    pub async fn add_word(
+        &self,
+        notebook_id: &str,
+        word: &Value,
+        surface: Option<Surface>,
+    ) -> Result<String, Failure> {
         let body = json!({ "items": [word] });
         let created = self
-            .request(
+            .request_from(
                 reqwest::Method::POST,
                 &format!("/notebooks/{notebook_id}/words"),
                 Some(&body),
                 true,
+                surface,
             )
             .await?;
         created
@@ -459,6 +556,21 @@ mod tests {
     where
         F: Fn(&str, &str, &str) -> (u16, String) + Send + Sync + 'static,
     {
+        serve_head(move |line, head, body| {
+            let auth = head
+                .lines()
+                .find_map(|l| l.strip_prefix("authorization: Bearer "))
+                .unwrap_or("");
+            handle(line, auth, body)
+        })
+        .await
+    }
+
+    /// The same, handing over the whole request head (lower-case header names).
+    async fn serve_head<F>(handle: F) -> String
+    where
+        F: Fn(&str, &str, &str) -> (u16, String) + Send + Sync + 'static,
+    {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let handle = Arc::new(handle);
@@ -490,12 +602,8 @@ mod tests {
                             if buf.len() >= end + 4 + len {
                                 let head = &text[..end];
                                 let line = head.lines().next().unwrap_or_default();
-                                let auth = head
-                                    .lines()
-                                    .find_map(|l| l.strip_prefix("authorization: Bearer "))
-                                    .unwrap_or("");
                                 let body = &text[end + 4..end + 4 + len];
-                                let (status, out) = handle(line, auth, body);
+                                let (status, out) = handle(line, head, body);
                                 let resp = format!("HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{out}", out.len());
                                 let _ = s.write_all(resp.as_bytes()).await;
                                 return;
@@ -676,5 +784,62 @@ mod tests {
             .unwrap();
         assert_eq!(user.email, "e@example.com");
         assert_eq!(store.load().unwrap().refresh_token, "rt-2");
+    }
+
+    #[tokio::test]
+    async fn the_surface_goes_only_while_the_server_takes_it() {
+        for (config, expect) in [
+            (r#"{"activity":true}"#, Some("desktop.shortcut")),
+            (r#"{"text":{"read":1,"paste":1}}"#, None),
+        ] {
+            let seen: Arc<std::sync::Mutex<Vec<Option<String>>>> = Arc::default();
+            let s = seen.clone();
+            let configs = Arc::new(AtomicUsize::new(0));
+            let c = configs.clone();
+            let config = config.to_string();
+            let base = serve_head(move |line, head, _| {
+                if line.starts_with("POST /api/v1/auth/refresh") {
+                    return (200, SESSION.into());
+                }
+                if line.starts_with("GET /api/v1/config") {
+                    c.fetch_add(1, Ordering::SeqCst);
+                    return (200, config.clone());
+                }
+                let surface = head
+                    .lines()
+                    .find_map(|l| l.strip_prefix("x-lexpad-surface: "))
+                    .map(str::to_owned);
+                s.lock().unwrap().push(surface);
+                (200, r#"[{"id":"w1"}]"#.into())
+            })
+            .await;
+            let api = Api::new(&base, signed_in());
+            let word = json!({ "headword": "hello" });
+            assert_eq!(
+                api.add_word("n1", &word, Some(Surface::Shortcut))
+                    .await
+                    .unwrap(),
+                "w1"
+            );
+            api.add_word("n1", &word, Some(Surface::Shortcut))
+                .await
+                .unwrap();
+            // Untagged calls never carry it, whatever the server says.
+            api.add_word("n1", &word, None).await.unwrap();
+            let seen = seen.lock().unwrap().clone();
+            assert_eq!(
+                seen,
+                [expect.map(str::to_owned), expect.map(str::to_owned), None]
+            );
+            // The answer is kept: one read for all three calls.
+            assert_eq!(configs.load(Ordering::SeqCst), 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn a_config_that_cannot_be_read_is_off() {
+        let base = serve(|_, _, _| (503, "{}".into())).await;
+        let api = Api::new(&base, Arc::new(Memory::default()));
+        assert!(!api.activity_on().await);
     }
 }
