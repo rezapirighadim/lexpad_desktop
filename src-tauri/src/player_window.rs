@@ -315,6 +315,9 @@ pub fn player_take_play() -> Option<String> {
 #[serde(rename_all = "camelCase")]
 pub struct Account {
     connected: bool,
+    /// The signed-in account's id (null signed out), so the Player labels
+    /// what it records with the core's account, never another window's.
+    user_id: Option<String>,
     notebooks: Vec<serde_json::Value>,
     notebook_id: Option<String>,
 }
@@ -324,6 +327,7 @@ pub async fn player_account(app: AppHandle) -> Result<Account, String> {
     let s = crate::commands::state(app.clone(), app.state::<AppState>()).await?;
     Ok(Account {
         connected: s.connected,
+        user_id: s.user_id(),
         notebooks: s.notebooks,
         notebook_id: s.notebook_id,
     })
@@ -518,5 +522,27 @@ mod tests {
         assert!(s.contains("window.__LEXPAD_CONFIG"));
         assert!(s.contains("#/player?from=pick"));
         assert!(init_script("dev", Opened::Launch).ends_with("'#/player');"));
+    }
+}
+
+#[cfg(test)]
+mod account_tests {
+    #[test]
+    fn the_player_is_told_the_cores_account_or_null() {
+        let signed_in = super::Account {
+            connected: true,
+            user_id: Some("u1".into()),
+            notebooks: vec![],
+            notebook_id: None,
+        };
+        let v = serde_json::to_value(&signed_in).unwrap();
+        assert_eq!(v["userId"], "u1");
+        let out = super::Account {
+            connected: false,
+            user_id: None,
+            notebooks: vec![],
+            notebook_id: None,
+        };
+        assert!(serde_json::to_value(&out).unwrap()["userId"].is_null());
     }
 }

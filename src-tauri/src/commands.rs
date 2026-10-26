@@ -78,6 +78,13 @@ fn is_id(id: &str) -> bool {
 
 /// Everything a window needs to draw itself. Reads the notebooks again each
 /// time, falling back to the last list when offline.
+impl StateDto {
+    /// The signed-in account's id, when connected.
+    pub(crate) fn user_id(&self) -> Option<String> {
+        self.user.as_ref().map(|u| u.id.clone())
+    }
+}
+
 #[tauri::command]
 pub async fn state(app: AppHandle, state: State<'_, AppState>) -> Result<StateDto, String> {
     let user = state.api.user().await;
