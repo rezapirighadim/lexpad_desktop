@@ -4,6 +4,7 @@
   "description": "The video player's development page, which exists only in a build with the player-dev feature (never shipped): the media engine's commands and its benchmark's two, nothing else.",
   "windows": ["player-dev"],
   "permissions": [
+    "core:window:allow-destroy",
     "core:event:allow-listen",
     "core:event:allow-unlisten",
     "allow-media-engine",
