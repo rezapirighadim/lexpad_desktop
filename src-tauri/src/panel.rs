@@ -172,6 +172,8 @@ pub(crate) fn show(app: &AppHandle, icon: tauri::Rect) {
 
 /// The panel as the one-time "Lexpad is still here" hint (Start window spec
 /// §6): placed from the icon like the panel, the page draws the hint.
+// Windows says it with a toast instead (tray::still_here).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn show_hint(app: &AppHandle, icon: tauri::Rect) {
     show_with(app, icon, "panel:hint");
 }
