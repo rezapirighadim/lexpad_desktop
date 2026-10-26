@@ -374,6 +374,9 @@ pub fn run() {
             });
 
             let handle = app.handle().clone();
+            // Whether the server takes the activity headers, asked once in
+            // the background; no word ever waits for it.
+            handle.state::<AppState>().api.kick_activity();
             if smoke {
                 panel::create(&handle)?;
                 tray::build(&handle)?;
