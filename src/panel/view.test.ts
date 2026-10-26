@@ -193,7 +193,7 @@ describe('the one-time hint after the last window closed', () => {
         'Click this icon to open Lexpad or a video again.',
       );
       const ok = root.querySelector<HTMLButtonElement>('.still-ok');
-      expect(document.activeElement).toBe(ok);
+      expect(document.activeElement).not.toBe(ok);
       ok?.click();
       expect(backend.hidePanel).toHaveBeenCalledTimes(1);
       vi.advanceTimersByTime(8000);

@@ -121,8 +121,9 @@ export class Panel {
     head.append(mark, el('h1', 'still-title', 'Lexpad is still here'));
     const ok = button('btn still-ok', 'Got it', () => void this.backend.hidePanel());
     box.append(head, el('p', 'still-body', 'Click this icon to open Lexpad or a video again.'), ok);
+    // No focus moved here: a ring on Got it would look like a keyboard was in
+    // use (Esc, a click elsewhere or Tab still reach it).
     this.root.replaceChildren(box);
-    ok.focus();
     window.setTimeout(() => {
       if (this.hinting) void this.backend.hidePanel();
     }, HINT_MS);
