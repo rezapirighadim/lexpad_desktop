@@ -988,4 +988,55 @@ mod tests {
         assert_eq!(res.status().as_u16(), 202);
         assert_eq!(configs.load(Ordering::SeqCst), 0);
     }
+
+    #[tokio::test]
+    async fn a_queued_player_word_goes_only_to_its_own_account_with_its_surface() {
+        use crate::word_queue::{NewWord, PickedIn, WordQueue};
+        let (base, seen, _) = gate_server(Some(r#"{"activity":true}"#)).await;
+        let api = Api::new(&base, signed_in()); // signed in as "u"
+        let queue = WordQueue::load(None);
+        let word = |headword: &str, from| NewWord {
+            headword: headword.into(),
+            lang: None,
+            sentence: None,
+            memo: None,
+            from,
+        };
+        // Saved while another account was signed in on this computer: never sent as "u".
+        queue
+            .push(
+                word("theirs", Some(PickedIn::Transcript))
+                    .checked(Some("other".into()), 1)
+                    .unwrap(),
+            )
+            .unwrap();
+        queue
+            .push(
+                word("mine", Some(PickedIn::Transcript))
+                    .checked(Some("u".into()), 1)
+                    .unwrap(),
+            )
+            .unwrap();
+        // Saved signed out: goes to whoever signs in (by design, word_queue.rs).
+        queue
+            .push(word("anyone", None).checked(None, 1).unwrap())
+            .unwrap();
+        let (sent, waiting) = queue.flush(&api, None).await;
+        assert_eq!((sent, waiting), (2, 1));
+        assert_eq!(queue.list()[0].headword, "theirs");
+        let adds: Vec<String> = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|l| l.starts_with("POST "))
+            .cloned()
+            .collect();
+        assert_eq!(
+            adds,
+            [
+                "POST /api/v1/notebooks/w1/words x-lexpad-surface: desktop.player.transcript",
+                "POST /api/v1/notebooks/w1/words x-lexpad-surface: desktop.player"
+            ]
+        );
+    }
 }
