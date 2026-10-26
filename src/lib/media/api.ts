@@ -320,6 +320,13 @@ export function frameUrl(baseUrl: string, fileId: string, seconds: number): stri
   return `${baseUrl}/t/${fileId}/${s * 1000}.jpg`;
 }
 
+/**
+ * Where in the player a word was picked. Passed as `from` to `words_save`,
+ * and to `lookup` / `add_word` when the player calls them; the core refuses
+ * any other value. Without it `lookup` / `add_word` are the popup's.
+ */
+export type PickedIn = 'subtitles' | 'transcript';
+
 export interface NewWord {
   headword: string;
   /** ISO 639-1 of the subtitle it came from. */
@@ -327,7 +334,7 @@ export interface NewWord {
   sentence?: string;
   memo?: string;
   /** Where in the player it was picked, for the activity reports; absent means the subtitles. */
-  from?: 'subtitles' | 'transcript';
+  from?: PickedIn;
 }
 
 export type SavedWord =

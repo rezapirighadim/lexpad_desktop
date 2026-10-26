@@ -72,6 +72,16 @@ pub enum PickedIn {
     Transcript,
 }
 
+impl PickedIn {
+    /// The activity surface a word picked here is sent with.
+    pub fn surface(self) -> Surface {
+        match self {
+            PickedIn::Subtitles => Surface::Player,
+            PickedIn::Transcript => Surface::PlayerTranscript,
+        }
+    }
+}
+
 /// What a window asks to save.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -146,10 +156,7 @@ impl NewWord {
 impl Pending {
     /// The activity surface it is sent with (`X-Lexpad-Surface`).
     pub fn surface(&self) -> Surface {
-        match self.from {
-            Some(PickedIn::Transcript) => Surface::PlayerTranscript,
-            Some(PickedIn::Subtitles) | None => Surface::Player,
-        }
+        self.from.unwrap_or(PickedIn::Subtitles).surface()
     }
 
     /// The API's WordCreate for it: a word the learner chose, the line it

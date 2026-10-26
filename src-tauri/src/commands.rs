@@ -23,7 +23,7 @@ use crate::proxy;
 use crate::settings::{remember, RecentWord};
 use crate::state::AppState;
 use crate::store::User;
-use crate::word_queue::{NewWord, Pending, Saved, WordQueue};
+use crate::word_queue::{NewWord, Pending, PickedIn, Saved, WordQueue};
 
 /// The most a private note may hold, as the API allows.
 const MAX_MEMO: usize = 500;
@@ -137,8 +137,21 @@ pub fn surface_of(capture: Option<&Capture>) -> Option<Surface> {
     })
 }
 
-fn popup_surface(state: &AppState) -> Option<Surface> {
-    surface_of(state.capture.lock().ok()?.as_ref())
+/// The surface of a lookup or an add: the video player says where in it
+/// the word was picked (`from`, `subtitles` | `transcript`), and that wins;
+/// without it, it is the popup's, from its capture. Any other `from` is
+/// refused before the command runs (it does not deserialize), so a window
+/// can never name a surface of its own.
+pub fn surface_for(from: Option<PickedIn>, capture: Option<&Capture>) -> Option<Surface> {
+    match from {
+        Some(p) => Some(p.surface()),
+        None => surface_of(capture),
+    }
+}
+
+fn call_surface(state: &AppState, from: Option<PickedIn>) -> Option<Surface> {
+    let capture = state.capture.lock().ok().and_then(|c| c.clone());
+    surface_for(from, capture.as_ref())
 }
 
 #[tauri::command]
@@ -147,6 +160,7 @@ pub async fn lookup(
     notebook_id: String,
     headword: String,
     hint: Option<String>,
+    from: Option<PickedIn>,
 ) -> Result<Value, String> {
     if !is_id(&notebook_id) || headword.trim().is_empty() || headword.chars().count() > 60 {
         return Err(err(Failure::Error));
@@ -158,7 +172,7 @@ pub async fn lookup(
             &notebook_id,
             &headword,
             hint.as_deref(),
-            popup_surface(&state),
+            call_surface(&state, from),
         )
         .await
         .map_err(err)
@@ -172,6 +186,7 @@ pub async fn add_word(
     state: State<'_, AppState>,
     notebook_id: String,
     word: Value,
+    from: Option<PickedIn>,
 ) -> Result<String, String> {
     let Some(obj) = word.as_object() else {
         return Err(err(Failure::Error));
@@ -186,7 +201,7 @@ pub async fn add_word(
     if !is_id(&notebook_id) || !headword_ok || !memo_ok {
         return Err(err(Failure::Error));
     }
-    let surface = popup_surface(&state);
+    let surface = call_surface(&state, from);
     let id = state
         .api
         .add_word(&notebook_id, &word, surface)
@@ -840,6 +855,39 @@ mod tests {
         assert_eq!(with(Via::Service), Some(Surface::Services));
         assert_eq!(with(Via::Typed), Some(Surface::Tray));
         assert_eq!(super::surface_of(None), None);
+    }
+
+    #[test]
+    fn the_players_from_wins_over_the_popups_capture() {
+        use crate::api::Surface;
+        use crate::capture::{Capture, Permission, Via};
+        use crate::word_queue::PickedIn;
+        let mut shortcut = Capture::empty(Permission::Granted, None);
+        shortcut.via = Via::Accessibility;
+        assert_eq!(
+            super::surface_for(Some(PickedIn::Subtitles), Some(&shortcut)),
+            Some(Surface::Player)
+        );
+        assert_eq!(
+            super::surface_for(Some(PickedIn::Transcript), None),
+            Some(Surface::PlayerTranscript)
+        );
+        // Without it, the popup is as before.
+        assert_eq!(
+            super::surface_for(None, Some(&shortcut)),
+            Some(Surface::Shortcut)
+        );
+        assert_eq!(super::surface_for(None, None), None);
+        // The command's argument: only the two names; anything else refuses the call.
+        let parse = |v: serde_json::Value| serde_json::from_value::<Option<PickedIn>>(v);
+        assert_eq!(
+            parse(serde_json::json!("transcript")).unwrap(),
+            Some(PickedIn::Transcript)
+        );
+        assert_eq!(parse(serde_json::Value::Null).unwrap(), None);
+        for bad in ["desktop.shortcut", "Subtitles", "film.mkv", ""] {
+            assert!(parse(serde_json::json!(bad)).is_err(), "{bad}");
+        }
     }
 
     #[test]
