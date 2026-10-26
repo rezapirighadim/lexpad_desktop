@@ -7,9 +7,10 @@
 #
 # 1. Add-AppxPackage, start Lexpad from its package, and require it to be
 #    running 20 seconds later.
-# 2. Start on login: the app turns its StartupTask on at start (the setting
-#    is on by default), so a process inside the package must read the task
-#    as Enabled.
+# 2. Start on login: the package declares its StartupTask, and a fresh
+#    install leaves it off (since 0.3.19 nothing starts at login until the
+#    learner asks, Start window spec §6), so a process inside the package
+#    must read the task, as Disabled.
 # 3. Sign-in: a process inside the package listens on 127.0.0.1 as auth.rs
 #    does, and a request from outside the package (the browser's redirect)
 #    must reach it.
@@ -81,7 +82,7 @@ try {
 "@ $stateFile
 $state = if (Test-Path $stateFile) { (Get-Content $stateFile -Raw).Trim() } else { 'no answer' }
 Write-Host "StartupTask '$taskId': $state"
-if ($state -ne 'Enabled') { throw "start on login is not on inside the package: $state" }
+if ($state -ne 'Disabled') { throw "start on login should be off on a fresh install, inside the package: $state" }
 
 # 3. A loopback listener inside the package, reached from outside it.
 $portFile = Join-Path $work 'port.txt'
