@@ -94,9 +94,11 @@ describe('the Start window', () => {
 
   it('shows the real Player, with the film credit readable and the picture described', async () => {
     await draw(backend());
-    const pane = root.querySelector('.pane');
-    expect(pane?.getAttribute('role')).toBe('img');
-    expect(pane?.getAttribute('aria-label')).toBe(FILM.alt);
+    const shot = root.querySelector('.shot');
+    expect(shot?.getAttribute('role')).toBe('img');
+    expect(shot?.getAttribute('aria-label')).toBe(FILM.alt);
+    // The credit is text beside the image, not hidden inside it.
+    expect(root.querySelector('[role="img"] .credit')).toBeNull();
     expect(root.querySelector('.credit')?.textContent).toBe(FILM.credit);
     expect(root.querySelector('.credit')?.getAttribute('aria-hidden')).toBeNull();
     expect(FILM.credit).toContain('Tears of Steel (CC) Blender Foundation | mango.blender.org');
@@ -264,6 +266,10 @@ describe('the Start window', () => {
       expect(drop.classList.contains('on')).toBe(true);
       expect(drop.querySelector('.drop-title')?.textContent).toBe('Drop the video too');
       expect(drop.querySelector('.drop-note')?.textContent).toBe('A subtitle needs its video.');
+      // Said to a screen reader too.
+      expect(root.querySelector('.sr-only[role="status"]')?.textContent).toBe(
+        'Drop the video too. A subtitle needs its video.',
+      );
       vi.advanceTimersByTime(REFUSED_MS);
       expect(drop.classList.contains('on')).toBe(false);
       b.refuse('notVideo');

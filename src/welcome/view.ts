@@ -178,6 +178,8 @@ export class StartView {
     overlay: HTMLElement;
     overlayTitle: HTMLElement;
     overlayNote: HTMLElement;
+    /** Read aloud: why a drop was refused (the overlay itself is decoration). */
+    said: HTMLElement;
   };
 
   constructor(
@@ -237,15 +239,19 @@ export class StartView {
     this.root.className = 'start';
     const bar = el('div', 'titlebar');
     bar.dataset.tauriDragRegion = '';
-    this.root.append(bar, this.picture(), this.main(), this.overlay());
+    const said = el('p', 'sr-only');
+    said.setAttribute('role', 'status');
+    this.root.append(bar, this.picture(), this.main(), this.overlay(), said);
+    this.els.said = said;
     this.drawFoot();
   }
 
   private picture(): HTMLElement {
     const pane = el('div', 'pane');
-    pane.setAttribute('role', 'img');
-    pane.setAttribute('aria-label', FILM.alt);
+    // The picture is one image for a screen reader; the credit beside it is text.
     const shot = el('div', 'shot');
+    shot.setAttribute('role', 'img');
+    shot.setAttribute('aria-label', FILM.alt);
     const still = el('img', 'still');
     still.src = this.media.still;
     still.alt = '';
@@ -275,7 +281,7 @@ export class StartView {
     } else {
       shot.classList.add('rested');
     }
-    // The licence's credit: read aloud too (not hidden), since it is a fact.
+    // The licence's credit: read aloud too (not hidden, not inside the image).
     pane.append(shot, el('p', 'credit', FILM.credit));
     return pane;
   }
@@ -312,6 +318,7 @@ export class StartView {
       overlay: el('div'),
       overlayTitle: el('div'),
       overlayNote: el('div'),
+      said: el('p'),
     };
     return main;
   }
@@ -439,6 +446,7 @@ export class StartView {
     this.els.overlayTitle.textContent = why === 'subOnly' ? COPY.dropSubOnly : COPY.dropNotVideo;
     this.els.overlayNote.textContent = why === 'subOnly' ? COPY.dropSubOnlyNote : COPY.dropNotVideoNote;
     o.classList.add('on', 'refused');
+    this.els.said.textContent = `${this.els.overlayTitle.textContent}. ${this.els.overlayNote.textContent}`;
     window.clearTimeout(this.refusedTimer);
     this.refusedTimer = window.setTimeout(() => {
       o.classList.remove('on', 'refused');
