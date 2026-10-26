@@ -452,10 +452,17 @@ pub fn run() {
             // Which window was last in front: where "Open Lexpad" goes back to.
             (label, WindowEvent::Focused(true)) => app_menu::note_focus(window.app_handle(), label),
             // The Player is let go when closed too; where it was is kept.
+            // The page finishes closing it (and destroys it); if it never
+            // does, the core closes it after a moment or on a second request.
             (player_window::LABEL, WindowEvent::CloseRequested { .. }) => {
                 player_window::remember(window.app_handle());
+                player_window::close_requested(window.app_handle());
             }
-            (player_window::LABEL | welcome::LABEL, WindowEvent::Destroyed) => {
+            (player_window::LABEL, WindowEvent::Destroyed) => {
+                player_window::destroyed();
+                refresh_dock(window.app_handle(), false);
+            }
+            (welcome::LABEL, WindowEvent::Destroyed) => {
                 refresh_dock(window.app_handle(), false);
             }
             // Closing the welcome without an answer counts as Both.

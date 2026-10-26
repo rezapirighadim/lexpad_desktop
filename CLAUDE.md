@@ -212,6 +212,12 @@ page written by us (designed separately); this repository holds the engine.
 
 ## The video player's windows (branch feat/video-player, 2026-10)
 
+- **Closing the Player.** Its page listens for a close (it saves where the video was), so Tauri
+  holds every close for it and the page ends with `destroy()` (`core:window:allow-destroy` in
+  player.json). If the page never does (a hung webview), the core closes it itself
+  (`player_window::CloseGuard`): on a second close request at once, else `CLOSE_FALLBACK` (2 s)
+  after the first.
+
 The Player's page is the web app's `/player` route (lexpad_front `features/player`), bundled in
 `web/` like the rest; this repository holds its window and the app's structure around it (spec
 `uiux/specs/2026-10-25-video-player.md` §2, §13, §24).
