@@ -584,6 +584,7 @@ fn context_items<R: tauri::Runtime>(
 pub async fn player_context_menu(
     window: tauri::WebviewWindow,
     items: Vec<CtxItem>,
+    position: Option<MenuAt>,
 ) -> Result<(), String> {
     if window.label() != LABEL {
         return Err("not the Player".into());
@@ -594,7 +595,33 @@ pub async fn player_context_menu(
     let refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> =
         built.iter().map(|b| b.as_ref()).collect();
     let menu = tauri::menu::Menu::with_items(&app, &refs).map_err(|e| e.to_string())?;
-    window.popup_menu(&menu).map_err(|e| e.to_string())
+    match position.and_then(MenuAt::checked) {
+        // Opened from the keyboard (Shift+F10, the menu key): at the focused thing.
+        Some(at) => window
+            .popup_menu_at(&menu, tauri::LogicalPosition::new(at.x, at.y))
+            .map_err(|e| e.to_string()),
+        None => window.popup_menu(&menu).map_err(|e| e.to_string()),
+    }
+}
+
+/// Where a keyboard-opened menu goes: logical pixels from the window's
+/// top-left corner (the focused word or the player).
+#[derive(Debug, Clone, Copy, serde::Deserialize, PartialEq)]
+pub struct MenuAt {
+    pub x: f64,
+    pub y: f64,
+}
+
+/// The farthest a menu may be placed from the window's corner: far beyond
+/// any screen, so only nonsense is refused.
+const MENU_AT_MAX: f64 = 100_000.0;
+
+impl MenuAt {
+    /// A finite place inside a sane range, or none (the pointer is used).
+    pub fn checked(self) -> Option<MenuAt> {
+        let ok = |v: f64| v.is_finite() && (0.0..=MENU_AT_MAX).contains(&v);
+        (ok(self.x) && ok(self.y)).then_some(self)
+    }
 }
 
 /// What the Player's card needs: signed in or not, the notebooks, and the
@@ -892,6 +919,29 @@ mod context_tests {
         .unwrap();
         assert_eq!(items.len(), 3);
         assert!(check_context_menu(&items).is_ok());
+    }
+
+    #[test]
+    fn a_keyboard_menu_goes_where_the_page_says_within_reason() {
+        let at = MenuAt { x: 120.0, y: 48.5 };
+        assert_eq!(at.checked(), Some(at));
+        assert_eq!(MenuAt { x: -1.0, y: 3.0 }.checked(), None);
+        assert_eq!(
+            MenuAt {
+                x: f64::NAN,
+                y: 3.0
+            }
+            .checked(),
+            None
+        );
+        assert_eq!(
+            MenuAt {
+                x: 3.0,
+                y: f64::INFINITY
+            }
+            .checked(),
+            None
+        );
     }
 
     #[test]
