@@ -165,8 +165,9 @@ docs/windows-manual-test.md      the Windows checklist, since Windows cannot run
   in the workspace): the core's own lookup and add send `X-Lexpad-Surface` from the capture that
   opened the popup (`commands::surface_of`: the shortcut, the selection or a word typed after it,
   is `desktop.shortcut`; the Services menu `desktop.services`; the tray panel's box `desktop.tray`),
-  and only while GET /config says `activity: true` (`Api::activity_on`, kept 6 hours, a failed read
-  is off for 5 minutes). The window's app sets its own (`desktop.app.*`, `desktop.player…`) and the
+  and only while GET /config says `activity: true` (`Api::activity_now`: the cached answer only,
+  never awaited on a word's path; refreshed in the background at start, after sign-in and when 6
+  hours old, one read at a time; unknown or a failed read is off). The window's app sets its own (`desktop.app.*`, `desktop.player…`) and the
   proxy lets them through. Background calls (the inbox poll, settings) say nothing.
 - **Every call says which copy it is, in its User-Agent and nothing else** (`config::user_agent`,
   since 0.3.11): `Lexpad-Desktop/<version> (macOS)`, `(Windows; store)` for the Microsoft
