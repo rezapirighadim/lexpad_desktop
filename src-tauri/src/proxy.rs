@@ -10,7 +10,9 @@
 //! - only the methods the client uses;
 //! - only the headers the client sends: anything else, an `Authorization`
 //!   or a `Cookie` above all, is dropped, so the window cannot speak for
-//!   another session;
+//!   another session; the activity headers (`X-Lexpad-Surface`,
+//!   `X-Lexpad-Context`) only when well formed, and a surface only when it
+//!   is one of the desktop app's own (`desktop.`…), since this is that app;
 //! - none of the calls that sign in, refresh, sign out, change a password,
 //!   mint another session or approve an assistant: the core does its own
 //!   signing in and out, and the rest belongs in the browser, where the
@@ -33,6 +35,53 @@ const HEADERS: &[&str] = &[
     "last-event-id",
     "if-none-match",
 ];
+
+/// Where in the app a call comes from (reports/specs/2026-10-26-activity-tracking.md §2).
+const SURFACE: &str = "x-lexpad-surface";
+/// The short slug that goes with it (a file kind; never a name or an address).
+const CONTEXT: &str = "x-lexpad-context";
+
+/// A surface as the API takes it: `^[a-z0-9]+(\.[a-z0-9_]+){0,3}$`, at most
+/// 48 characters, and, from this window, always one of the desktop app's own.
+pub fn valid_surface(value: &str) -> bool {
+    if value.len() > 48 || !value.starts_with("desktop.") {
+        return false;
+    }
+    let mut parts = value.split('.');
+    let first = parts.next().unwrap_or("");
+    let rest: Vec<&str> = parts.collect();
+    !first.is_empty()
+        && first
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+        && rest.len() <= 3
+        && rest.iter().all(|p| {
+            !p.is_empty()
+                && p.bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+        })
+}
+
+/// A context as the API takes it: `^[a-z0-9.-]+$`, at most 64 characters.
+pub fn valid_context(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-')
+}
+
+/// Whether a header from the window may cross, by name and value.
+fn header_allowed(name: &str, value: &str) -> bool {
+    if value.chars().any(|c| c.is_control()) {
+        return false;
+    }
+    match name {
+        SURFACE => valid_surface(value),
+        CONTEXT => valid_context(value),
+        _ => HEADERS.contains(&name),
+    }
+}
 
 /// Calls under `/api/v1/auth/` the window may make: confirming an e-mail
 /// address and asking for the link again. Everything else there is signing
@@ -104,10 +153,7 @@ pub fn check(api_origin: &str, req: &Request) -> Result<Checked, Refused> {
     let headers = req
         .headers
         .iter()
-        .filter(|(name, value)| {
-            HEADERS.contains(&name.to_ascii_lowercase().as_str())
-                && !value.chars().any(|c| c.is_control())
-        })
+        .filter(|(name, value)| header_allowed(&name.to_ascii_lowercase(), value))
         .map(|(name, value)| (name.to_ascii_lowercase(), value.clone()))
         .collect();
 
@@ -273,6 +319,53 @@ mod tests {
             names,
             ["content-type", "idempotency-key", "accept", "last-event-id"]
         );
+    }
+
+    #[test]
+    fn the_activity_headers_cross_only_when_well_formed_and_the_desktops_own() {
+        let mut r = req("POST", "https://api.lexpad.app/api/v1/events");
+        r.headers = vec![
+            ("X-Lexpad-Surface".into(), "desktop.app.notebook".into()),
+            ("X-Lexpad-Context".into(), "mkv".into()),
+        ];
+        let checked = check(API, &r).unwrap();
+        assert_eq!(
+            checked.headers,
+            [
+                (
+                    "x-lexpad-surface".to_string(),
+                    "desktop.app.notebook".to_string()
+                ),
+                ("x-lexpad-context".to_string(), "mkv".to_string()),
+            ]
+        );
+        for bad in [
+            "app.notebook",
+            "ext.selection",
+            "desktop",
+            "desktop.",
+            "desktop.App",
+            "desktop.a.b.c.d",
+            "desktop.player-transcript",
+            "desktop.app.notebook
+X: y",
+            &format!("desktop.{}", "a".repeat(41)),
+        ] {
+            assert!(!valid_surface(bad), "{bad}");
+        }
+        assert!(valid_surface("desktop.player.transcript"));
+        assert!(valid_surface("desktop.app.lex_chat"));
+        for bad in ["", "My Movie.mkv", "a/b", "MKV", &"a".repeat(65)] {
+            assert!(!valid_context(bad), "{bad}");
+        }
+        r.headers = vec![
+            ("X-Lexpad-Surface".into(), "app.notebook".into()),
+            (
+                "X-Lexpad-Context".into(),
+                "/Users/me/Movies/film.mkv".into(),
+            ),
+        ];
+        assert!(check(API, &r).unwrap().headers.is_empty());
     }
 
     #[test]
