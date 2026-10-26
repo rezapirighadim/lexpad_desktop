@@ -256,7 +256,8 @@ The Player's page is the web app's `/player` route (lexpad_front `features/playe
 - **The Player's right-click menu is the system's** (`player_context_menu`): the page names the
   items and their keys (from its own key table), the core checks them (`check_context_menu`: two
   levels, `CTX_MAX_ITEMS`, short labels, commands of the form `name[:arg]`) and pops the native
-  menu at the pointer; a choice goes back as `player:menu` (ids `ctx:<command>`). The same items
+  menu at the pointer (or, opened from the keyboard, at the `position` the page names); a choice
+  goes back as `player:menu` (ids `ctx:<command>`). The same items
   on macOS and Windows. A key shown there is only drawn: a menu that is not in the menu bar
   takes no keys once it closes.
 - **Windows 11 draws no border round the Player** (`taskbar::no_border`, `DWMWA_BORDER_COLOR`
@@ -280,8 +281,9 @@ The Player's page is the web app's `/player` route (lexpad_front `features/playe
   (`tray_hint_shown`), the panel hangs from the menu-bar icon with "Lexpad is still here"
   (`panel::show_hint`, 8 s or Got it) on macOS, or one toast says where the icon is on Windows.
 - **"Lexpad Player" in the Windows Start menu**: the installer's second shortcut, the same exe
-  with `--player` and the Player's AppUserModelID (`windows/media-open-with.nsh`; the MSI and the
-  Store's MSIX do not have it yet).
+  with `--player` and the Player's AppUserModelID (`windows/media-open-with.nsh`; the MSI by the
+  WiX fragment `windows/player-shortcut.wxs`; the Store's MSIX as a second app entry with
+  `uap10:Parameters`, which Windows before 2004 ignores).
 - **Capabilities.** `player.json` grants the Player the engine, the words queue, the card's
   calls, the API proxy and its own window's controls; `main.json` keeps of the engine only what
   the Watch page and Settings → Video player read; `welcome.json` the Start window's commands
