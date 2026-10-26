@@ -842,4 +842,144 @@ mod tests {
         let api = Api::new(&base, Arc::new(Memory::default()));
         assert!(!api.activity_on().await);
     }
+
+    /// A server for the §10 gate tests: answers /config with `config` (None =
+    /// a 500), a done AI job, and a created word; records every other
+    /// request's activity headers, and how often /config was asked.
+    async fn gate_server(
+        config: Option<&'static str>,
+    ) -> (String, Arc<std::sync::Mutex<Vec<String>>>, Arc<AtomicUsize>) {
+        let seen: Arc<std::sync::Mutex<Vec<String>>> = Arc::default();
+        let configs = Arc::new(AtomicUsize::new(0));
+        let (s, c) = (seen.clone(), configs.clone());
+        let base = serve_head(move |line, head, _| {
+            if line.starts_with("POST /api/v1/auth/refresh") {
+                return (200, SESSION.into());
+            }
+            if line.starts_with("GET /api/v1/config") {
+                c.fetch_add(1, Ordering::SeqCst);
+                return match config {
+                    Some(body) => (200, body.into()),
+                    None => (500, "{}".into()),
+                };
+            }
+            let tags: Vec<&str> = head
+                .lines()
+                .filter(|l| l.starts_with("x-lexpad-"))
+                .collect();
+            s.lock().unwrap().push(format!(
+                "{} {}",
+                line.split(' ').take(2).collect::<Vec<_>>().join(" "),
+                tags.join(",")
+            ));
+            if line.starts_with("POST /api/v1/ai/cards") {
+                return (
+                    200,
+                    r#"{"id":"j1","status":"done","cards":[{"headword":"hello"}]}"#.into(),
+                );
+            }
+            (200, r#"[{"id":"w1"}]"#.into())
+        })
+        .await;
+        (base, seen, configs)
+    }
+
+    #[tokio::test]
+    async fn an_old_server_gets_no_activity_headers_on_lookup_or_add() {
+        // No flag at all, and a /config that fails: both are "off".
+        for config in [Some(r#"{"text":{"read":1,"paste":1}}"#), None] {
+            let (base, seen, _) = gate_server(config).await;
+            let api = Api::new(&base, signed_in());
+            api.lookup("n1", "hello", None, Some(Surface::Services))
+                .await
+                .unwrap();
+            api.add_word("n1", &json!({ "headword": "hello" }), Some(Surface::Tray))
+                .await
+                .unwrap();
+            assert_eq!(
+                *seen.lock().unwrap(),
+                ["POST /api/v1/ai/cards ", "POST /api/v1/notebooks/n1/words "],
+                "{config:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_new_server_gets_the_surface_on_lookup_and_add() {
+        let (base, seen, configs) = gate_server(Some(r#"{"activity":true}"#)).await;
+        let api = Api::new(&base, signed_in());
+        api.lookup("n1", "hello", None, Some(Surface::Services))
+            .await
+            .unwrap();
+        api.add_word("n1", &json!({ "headword": "hello" }), Some(Surface::Tray))
+            .await
+            .unwrap();
+        assert_eq!(
+            *seen.lock().unwrap(),
+            [
+                "POST /api/v1/ai/cards x-lexpad-surface: desktop.services",
+                "POST /api/v1/notebooks/n1/words x-lexpad-surface: desktop.tray"
+            ]
+        );
+        assert_eq!(configs.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn the_gate_belongs_to_the_server_not_the_account() {
+        // Per process, per API origin: signing out and in as someone else
+        // keeps the answer, because it says what the server takes, nothing
+        // about who is signed in. No account data is kept with it.
+        let (base, _seen, configs) = gate_server(Some(r#"{"activity":true}"#)).await;
+        let api = Api::new(&base, signed_in());
+        assert!(api.activity_on().await);
+        api.sign_out().await;
+        assert!(api.user().await.is_none());
+        assert!(api.activity_on().await);
+        assert_eq!(configs.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn the_windows_calls_are_forwarded_as_they_are_whatever_the_gate() {
+        // The proxy never asks /config: an old server just gets headers it
+        // ignores, and the window's call (here the events batch) arrives
+        // whole, body and all.
+        let configs = Arc::new(AtomicUsize::new(0));
+        let c = configs.clone();
+        let base = serve_head(move |line, head, body| {
+            if line.starts_with("POST /api/v1/auth/refresh") {
+                return (200, SESSION.into());
+            }
+            if line.starts_with("GET /api/v1/config") {
+                c.fetch_add(1, Ordering::SeqCst);
+            }
+            assert!(line.starts_with("POST /api/v1/events "));
+            assert!(head.contains("x-lexpad-surface: desktop.player"));
+            assert!(head.contains("x-lexpad-context: mkv"));
+            assert_eq!(body, r#"{"events":[{"name":"player.open"}]}"#);
+            (202, r#"{"accepted":1,"dropped":0}"#.into())
+        })
+        .await;
+        use base64::Engine as _;
+        let checked = crate::proxy::check(
+            &base,
+            &crate::proxy::Request {
+                method: "POST".into(),
+                url: format!("{base}/api/v1/events"),
+                headers: vec![
+                    ("Content-Type".into(), "application/json".into()),
+                    ("X-Lexpad-Surface".into(), "desktop.player".into()),
+                    ("X-Lexpad-Context".into(), "mkv".into()),
+                ],
+                body: Some(
+                    base64::engine::general_purpose::STANDARD
+                        .encode(br#"{"events":[{"name":"player.open"}]}"#),
+                ),
+            },
+        )
+        .unwrap();
+        let api = Api::new(&base, signed_in());
+        let res = api.forward(&checked).await.unwrap();
+        assert_eq!(res.status().as_u16(), 202);
+        assert_eq!(configs.load(Ordering::SeqCst), 0);
+    }
 }
