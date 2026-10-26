@@ -201,7 +201,11 @@ page written by us (designed separately); this repository holds the engine.
   and opens Settings > Default apps on Windows.
 - **Words saved without a session** (signed out, offline) wait in `pending-words.json`
   (`word_queue.rs`) and go to the notebook of their language after sign-in; never to a notebook
-  of another language.
+  of another language. A word saved signed out moves to the account that signs in only within 24 h
+  (`may_join`, owner 26 Oct 2026, the same limit as anonymous activity events); an older one, or
+  one dated ahead of the clock by more than five minutes, stays on this computer unsent as
+  `too_old_to_move` for the learner to discard or save again. A word saved under one account
+  never goes to another.
 
 ## The video player's windows (branch feat/video-player, 2026-10)
 

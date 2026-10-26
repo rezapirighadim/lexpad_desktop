@@ -1017,11 +1017,11 @@ mod tests {
                     .unwrap(),
             )
             .unwrap();
-        // Saved signed out: goes to whoever signs in (by design, word_queue.rs).
+        // Saved signed out a minute ago: goes to whoever signs in (word_queue.rs, within 24 h).
         queue
             .push(word("anyone", None).checked(None, 1).unwrap())
             .unwrap();
-        let (sent, waiting) = queue.flush(&api, None).await;
+        let (sent, waiting) = queue.flush_at(&api, None, 1 + 60_000).await;
         assert_eq!((sent, waiting), (2, 1));
         assert_eq!(queue.list()[0].headword, "theirs");
         let adds: Vec<String> = seen
@@ -1038,5 +1038,52 @@ mod tests {
                 "POST /api/v1/notebooks/w1/words x-lexpad-surface: desktop.player"
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn a_word_saved_signed_out_moves_only_within_24_hours_and_older_ones_stay_here() {
+        use crate::word_queue::{NewWord, WordQueue, ANONYMOUS_MAX_AGE_MS, TOO_OLD};
+        let (base, seen, _) = gate_server(Some(r#"{"activity":true}"#)).await;
+        let api = Api::new(&base, signed_in());
+        let queue = WordQueue::load(None);
+        let now: u64 = 10 * ANONYMOUS_MAX_AGE_MS;
+        let minute = 60_000;
+        let word = |headword: &str, at: u64| {
+            NewWord {
+                headword: headword.into(),
+                lang: None,
+                sentence: None,
+                memo: None,
+                from: None,
+            }
+            .checked(None, at)
+            .unwrap()
+        };
+        queue
+            .push(word("fresh", now - (ANONYMOUS_MAX_AGE_MS - minute)))
+            .unwrap(); // 23:59 ago
+        queue
+            .push(word("stale", now - (ANONYMOUS_MAX_AGE_MS + minute)))
+            .unwrap(); // 24:01 ago
+        queue.push(word("future", now + 60 * minute)).unwrap(); // the clock was put back an hour
+        let (sent, waiting) = queue.flush_at(&api, None, now).await;
+        assert_eq!((sent, waiting), (1, 2));
+        let kept = queue.list();
+        assert_eq!(
+            kept.iter()
+                .map(|p| (p.headword.as_str(), p.waiting.as_deref()))
+                .collect::<Vec<_>>(),
+            [("stale", Some(TOO_OLD)), ("future", Some(TOO_OLD))]
+        );
+        // Still never sent on a later try, and still on this computer.
+        let (sent, waiting) = queue.flush_at(&api, None, now + minute).await;
+        assert_eq!((sent, waiting), (0, 2));
+        let posts = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|l| l.starts_with("POST "))
+            .count();
+        assert_eq!(posts, 1);
     }
 }

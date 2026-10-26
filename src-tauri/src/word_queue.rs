@@ -17,6 +17,16 @@
 //! to offer making one; nothing is ever put in a notebook of another
 //! language. A word queued while signed in to one account is never sent to
 //! another.
+//!
+//! A word saved signed out goes to the account that signs in only while it
+//! is at most `ANONYMOUS_MAX_AGE_MS` old (owner, 26 Oct 2026: the same 24 h
+//! as anonymous activity events, spec §10). An older one is never moved to
+//! an account by itself: it stays on this computer, unsent, marked
+//! `too_old_to_move`, for the learner to see and discard (or save again,
+//! which is their own choice). Kept rather than dropped because it is the
+//! learner's own word; nothing about it leaves this computer. A word whose
+//! time is ahead of the clock by more than `CLOCK_SKEW_MS` (the clock was put
+//! back) has an age nobody can tell, and is kept the same way.
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -25,6 +35,43 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::api::{Api, Failure, Surface};
+
+/// How old a word saved signed out may be and still go to the account that signs in.
+pub const ANONYMOUS_MAX_AGE_MS: u64 = 24 * 60 * 60 * 1000;
+/// How far ahead of this clock a saved time may be (a clock corrected by a
+/// few minutes) and still count as just saved.
+pub const CLOCK_SKEW_MS: u64 = 5 * 60 * 1000;
+/// The reason a too-old (or undatable) signed-out word waits with.
+pub const TOO_OLD: &str = "too_old_to_move";
+
+/// Whether a queued word may go to the account `user` now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Join {
+    /// Its own account, or saved signed out within the last 24 hours.
+    Send,
+    /// Saved signed out longer ago (or at a time ahead of the clock): kept here, unsent.
+    TooOld,
+    /// Another account's: never sent under this one.
+    NotThis,
+}
+
+/// The rule for one word (see the module's head).
+pub fn may_join(p: &Pending, user: &str, now: u64) -> Join {
+    match p.account.as_deref() {
+        Some(a) if a == user => Join::Send,
+        Some(_) => Join::NotThis,
+        None if p.saved_at > now.saturating_add(CLOCK_SKEW_MS) => Join::TooOld,
+        None if now.saturating_sub(p.saved_at) <= ANONYMOUS_MAX_AGE_MS => Join::Send,
+        None => Join::TooOld,
+    }
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
+        .unwrap_or(0)
+}
 
 /// The most words kept waiting; a save beyond it is refused, never dropped
 /// silently.
@@ -272,15 +319,27 @@ impl WordQueue {
 
     /// Sends what can go now. Returns how many went and how many wait.
     pub async fn flush(&self, api: &Api, chosen: Option<&str>) -> (usize, usize) {
+        self.flush_at(api, chosen, now_ms()).await
+    }
+
+    /// `flush` with the clock given, for tests.
+    pub async fn flush_at(&self, api: &Api, chosen: Option<&str>, now: u64) -> (usize, usize) {
         let _one = self.flushing.lock().await;
         let Some(user) = api.user().await else {
             return (0, self.list().len());
         };
-        let mine: Vec<Pending> = self
-            .list()
-            .into_iter()
-            .filter(|p| p.account.as_deref().is_none_or(|a| a == user.id))
-            .collect();
+        let mut mine: Vec<Pending> = Vec::new();
+        for p in self.list() {
+            match may_join(&p, &user.id, now) {
+                Join::Send => mine.push(p),
+                Join::TooOld => {
+                    if p.waiting.as_deref() != Some(TOO_OLD) {
+                        self.set_waiting(&p.id, TOO_OLD);
+                    }
+                }
+                Join::NotThis => {}
+            }
+        }
         if mine.is_empty() {
             return (0, self.list().len());
         }
@@ -317,6 +376,47 @@ mod tests {
 
     fn nb(id: &str, lang: &str, default: bool) -> Value {
         json!({ "id": id, "title": id, "targetLang": lang, "meaningLang": "en", "isDefault": default })
+    }
+
+    fn anonymous(at: u64) -> Pending {
+        serde_json::from_value(json!({ "id": "x", "headword": "a", "savedAt": at })).unwrap()
+    }
+
+    #[test]
+    fn a_word_saved_signed_out_joins_an_account_only_within_24_hours() {
+        let now = 5 * ANONYMOUS_MAX_AGE_MS;
+        let minute = 60_000;
+        assert_eq!(
+            may_join(&anonymous(now - (ANONYMOUS_MAX_AGE_MS - minute)), "u", now),
+            Join::Send
+        );
+        assert_eq!(
+            may_join(&anonymous(now - ANONYMOUS_MAX_AGE_MS), "u", now),
+            Join::Send
+        );
+        assert_eq!(
+            may_join(&anonymous(now - (ANONYMOUS_MAX_AGE_MS + minute)), "u", now),
+            Join::TooOld
+        );
+        // A clock put back a little: still just saved. Put back more: nobody can tell, kept here.
+        assert_eq!(
+            may_join(&anonymous(now + CLOCK_SKEW_MS), "u", now),
+            Join::Send
+        );
+        assert_eq!(
+            may_join(&anonymous(now + CLOCK_SKEW_MS + 1), "u", now),
+            Join::TooOld
+        );
+        // A clock put forward past a day: too old, kept here.
+        assert_eq!(
+            may_join(&anonymous(now), "u", now + 2 * ANONYMOUS_MAX_AGE_MS),
+            Join::TooOld
+        );
+        // An account's own word goes whatever its age; another account's never.
+        let mut own = anonymous(0);
+        own.account = Some("u".into());
+        assert_eq!(may_join(&own, "u", now), Join::Send);
+        assert_eq!(may_join(&own, "v", now), Join::NotThis);
     }
 
     #[test]
