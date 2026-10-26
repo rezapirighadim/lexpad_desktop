@@ -68,6 +68,10 @@ pub enum Surface {
     Services,
     /// The menu-bar / tray panel's "Add a word" box.
     Tray,
+    /// The video player: a word picked in the subtitles on the video.
+    Player,
+    /// The video player's transcript panel.
+    PlayerTranscript,
 }
 
 impl Surface {
@@ -76,6 +80,8 @@ impl Surface {
             Surface::Shortcut => "desktop.shortcut",
             Surface::Services => "desktop.services",
             Surface::Tray => "desktop.tray",
+            Surface::Player => "desktop.player",
+            Surface::PlayerTranscript => "desktop.player.transcript",
         }
     }
 }

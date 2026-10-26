@@ -24,7 +24,7 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::api::{Api, Failure};
+use crate::api::{Api, Failure, Surface};
 
 /// The most words kept waiting; a save beyond it is refused, never dropped
 /// silently.
@@ -56,6 +56,20 @@ pub struct Pending {
     /// Why it is still waiting, after the last try.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub waiting: Option<String>,
+    /// Where in the player it was picked, for the activity reports; absent
+    /// in a file from before, which reads as the subtitles.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<PickedIn>,
+}
+
+/// Where in the player a word was picked. A fixed name, never anything about the file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PickedIn {
+    /// The subtitles on the video.
+    Subtitles,
+    /// The transcript panel.
+    Transcript,
 }
 
 /// What a window asks to save.
@@ -66,6 +80,9 @@ pub struct NewWord {
     pub lang: Option<String>,
     pub sentence: Option<String>,
     pub memo: Option<String>,
+    /// Where in the player it was picked; anything but the two names is refused.
+    #[serde(default)]
+    pub from: Option<PickedIn>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -121,11 +138,20 @@ impl NewWord {
             saved_at: now,
             account,
             waiting: None,
+            from: self.from,
         })
     }
 }
 
 impl Pending {
+    /// The activity surface it is sent with (`X-Lexpad-Surface`).
+    pub fn surface(&self) -> Surface {
+        match self.from {
+            Some(PickedIn::Transcript) => Surface::PlayerTranscript,
+            Some(PickedIn::Subtitles) | None => Surface::Player,
+        }
+    }
+
     /// The API's WordCreate for it: a word the learner chose, the line it
     /// was in as its example; the AI completes it later in the app, on the
     /// learner's request, as any word added by hand.
@@ -261,7 +287,7 @@ impl WordQueue {
                 self.set_waiting(&p.id, "no_notebook_for_language");
                 continue;
             };
-            match api.add_word(&nb, &p.body()).await {
+            match api.add_word(&nb, &p.body(), Some(p.surface())).await {
                 // Already in the notebook counts as saved.
                 Ok(_) | Err(Failure::Duplicate) => {
                     let _ = self.discard(&p.id);
@@ -314,7 +340,8 @@ mod tests {
             headword: "  ".into(),
             lang: None,
             sentence: None,
-            memo: None
+            memo: None,
+            from: None,
         }
         .checked(None, 1)
         .is_err());
@@ -323,9 +350,15 @@ mod tests {
             lang: Some("EN".into()),
             sentence: Some("I left my keys on the\nkitchen table.".into()),
             memo: Some("Seen in a video".into()),
+            from: Some(PickedIn::Transcript),
         }
         .checked(None, 1)
         .unwrap();
+        assert_eq!(p.surface(), Surface::PlayerTranscript);
+        let old: Pending =
+            serde_json::from_str(r#"{"id":"x","headword":"a","savedAt":1}"#).unwrap();
+        assert_eq!(old.surface(), Surface::Player);
+        assert!(serde_json::from_str::<NewWord>(r#"{"headword":"a","from":"file.mkv"}"#).is_err());
         assert_eq!(
             (p.headword.as_str(), p.lang.as_deref()),
             ("kitchen", Some("en"))

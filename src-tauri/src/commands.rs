@@ -916,7 +916,11 @@ pub async fn words_save(
                 pending.lang.as_deref(),
                 chosen.as_deref(),
             ) {
-                Some(nb) => match state.api.add_word(&nb, &pending.body()).await {
+                Some(nb) => match state
+                    .api
+                    .add_word(&nb, &pending.body(), Some(pending.surface()))
+                    .await
+                {
                     Ok(id) => {
                         return Ok(Saved::Added {
                             id,

@@ -326,6 +326,8 @@ export interface NewWord {
   lang?: string;
   sentence?: string;
   memo?: string;
+  /** Where in the player it was picked, for the activity reports; absent means the subtitles. */
+  from?: 'subtitles' | 'transcript';
 }
 
 export type SavedWord =
