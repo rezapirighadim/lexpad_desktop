@@ -137,24 +137,24 @@ export class Popup {
   /* ------------------------------------------------------- signed out */
 
   private showSignedOut(): void {
-    this.frame('Connect Lexpad', '');
+    this.frame('Sign in to Lexpad', '');
     this.root.append(
       el(
         'div',
         'note',
-        'Connect this app to your Lexpad account to add words. You allow it in your browser; the app never sees your password.',
+        'Sign in to add words to your notebook. It opens your browser; Lexpad never sees your password.',
       ),
     );
     const note = el('div', 'note');
     const actions = el('div', 'actions');
-    const connect = button('btn primary', 'Connect to Lexpad', () => void go());
+    const connect = button('btn primary', 'Sign in…', () => void go());
     actions.append(connect);
     this.root.append(note, actions);
     const go = async (): Promise<void> => {
       connect.disabled = true;
-      connect.textContent = 'Waiting for the browser…';
+      connect.textContent = 'Waiting for your browser…';
       note.className = 'note';
-      note.textContent = 'Allow Lexpad in the browser tab that just opened.';
+      note.textContent = 'Finish signing in in the browser tab that just opened.';
       const cancel = button('btn', 'Cancel', () => void this.backend.cancelConnect());
       actions.append(cancel);
       try {
@@ -163,17 +163,17 @@ export class Popup {
       } catch (cause) {
         const reason = failureOf(cause);
         connect.disabled = false;
-        connect.textContent = 'Connect to Lexpad';
+        connect.textContent = 'Sign in…';
         cancel.remove();
         note.className = reason === 'cancelled' ? 'note' : 'note bad';
         note.textContent =
           reason === 'cancelled'
-            ? 'Nothing was connected.'
+            ? 'Nothing was signed in.'
             : reason === 'offline'
               ? 'You seem to be offline. Try again in a moment.'
               : reason === 'timeout'
                 ? 'The browser did not answer in time. Try again.'
-                : 'Could not connect. Try again.';
+                : 'Could not sign in. Try again.';
       }
     };
     this.enter = () => {
