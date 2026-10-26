@@ -347,15 +347,25 @@ mod tests {
             "desktop.App",
             "desktop.a.b.c.d",
             "desktop.player-transcript",
-            "desktop.app.notebook
-X: y",
+            "desktop.app.notebook\r\nX: y",
+            "desktop.app\tnotebook",
+            "DESKTOP.APP.NOTEBOOK",
             &format!("desktop.{}", "a".repeat(41)),
         ] {
             assert!(!valid_surface(bad), "{bad}");
         }
         assert!(valid_surface("desktop.player.transcript"));
         assert!(valid_surface("desktop.app.lex_chat"));
-        for bad in ["", "My Movie.mkv", "a/b", "MKV", &"a".repeat(65)] {
+        for bad in [
+            "",
+            "My Movie.mkv",
+            "a/b",
+            "/users/me/movies/film.mkv",
+            "c:\\films\\a.mkv",
+            "mkv\n",
+            "MKV",
+            &"a".repeat(65),
+        ] {
             assert!(!valid_context(bad), "{bad}");
         }
         r.headers = vec![
@@ -366,6 +376,17 @@ X: y",
             ),
         ];
         assert!(check(API, &r).unwrap().headers.is_empty());
+    }
+
+    #[test]
+    fn the_events_call_passes_with_its_body() {
+        use base64::Engine as _;
+        let body = br#"{"events":[{"name":"app.open"},{"name":"player.watch","n":3}]}"#;
+        let mut r = req("POST", "https://api.lexpad.app/api/v1/events");
+        r.body = Some(base64::engine::general_purpose::STANDARD.encode(body));
+        let checked = check(API, &r).unwrap();
+        assert_eq!(checked.method, reqwest::Method::POST);
+        assert_eq!(checked.body.unwrap(), body);
     }
 
     #[test]
