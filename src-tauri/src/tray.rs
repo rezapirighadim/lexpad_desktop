@@ -106,13 +106,15 @@ pub fn still_here(app: &AppHandle) {
         }
     }
     #[cfg(not(target_os = "macos"))]
-    crate::notify::show_app_message(
-        app,
-        "lexpad-still-here",
-        "Lexpad is still running",
-        "Find it in the taskbar corner, under the ^ arrow. Click it to open Lexpad or a video again.",
-    );
+    crate::notify::show_app_message(app, "lexpad-still-here", STILL_HERE.0, STILL_HERE.1);
 }
+
+/// The Windows toast's title and body (spec §6, mock-up 11).
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+pub const STILL_HERE: (&str, &str) = (
+    "Lexpad is still running",
+    "Find it in the taskbar corner, under the ^ arrow. Click it to open Lexpad or a video again.",
+);
 
 /// Replaces the single image the tray crate makes with one that has a 1x
 /// and a 2x representation, marked as a template.
@@ -195,7 +197,16 @@ pub fn pick_size(sizes: &[u32], want: u32) -> Option<u32> {
 
 #[cfg(test)]
 mod tests {
-    use super::pick_size;
+    use super::{pick_size, STILL_HERE};
+
+    #[test]
+    fn the_windows_hint_says_what_the_spec_says() {
+        assert_eq!(STILL_HERE.0, "Lexpad is still running");
+        assert_eq!(
+            STILL_HERE.1,
+            "Find it in the taskbar corner, under the ^ arrow. Click it to open Lexpad or a video again."
+        );
+    }
 
     #[test]
     fn the_tray_uses_the_frame_for_the_display_scaling() {

@@ -355,16 +355,11 @@ fn after_window_closed(app: &AppHandle) {
                 .and_then(|w| w.is_visible().ok())
                 .unwrap_or(false)
         });
-        if open {
-            return;
-        }
-        let state = app.state::<AppState>();
-        let first = state
-            .settings
-            .lock()
-            .map(|s| !s.tray_hint_shown)
-            .unwrap_or(false);
-        if first && state.update_settings(|s| s.tray_hint_shown = true).is_ok() {
+        let mut show = false;
+        let saved = app
+            .state::<AppState>()
+            .update_settings(|s| show = settings::take_tray_hint(s, open));
+        if show && saved.is_ok() {
             tray::still_here(&app);
         }
     });

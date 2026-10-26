@@ -79,6 +79,18 @@ fn on() -> bool {
     true
 }
 
+/// Whether "Lexpad is still here" shows now (Start window spec §6): only
+/// when no Lexpad window is left open, and only the first time ever on this
+/// computer. Marks it shown in the same step, so two windows closing at once
+/// cannot show it twice.
+pub fn take_tray_hint(settings: &mut Settings, any_window_open: bool) -> bool {
+    if any_window_open || settings.tray_hint_shown {
+        return false;
+    }
+    settings.tray_hint_shown = true;
+    true
+}
+
 /// What the learner came for, as their first actions say (Start window spec §3).
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -284,6 +296,22 @@ mod tests {
         assert!(s.notifications);
         assert!(s.accessibility_granted_in.is_none());
         assert!(!s.start_seen && !s.played_video && !s.tray_hint_shown);
+    }
+
+    #[test]
+    fn lexpad_is_still_here_shows_once_and_only_with_every_window_shut() {
+        let mut s = Settings::default();
+        // A window still open: nothing, and the hint is still to come.
+        assert!(!take_tray_hint(&mut s, true));
+        assert!(!s.tray_hint_shown);
+        // The last window closed: shown, once.
+        assert!(take_tray_hint(&mut s, false));
+        assert!(s.tray_hint_shown);
+        // Every later close: never again, also after a restart (it is saved).
+        assert!(!take_tray_hint(&mut s, false));
+        let again: Settings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        let mut again = again;
+        assert!(!take_tray_hint(&mut again, false));
     }
 
     #[test]
