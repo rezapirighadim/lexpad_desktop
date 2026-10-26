@@ -376,3 +376,33 @@ kbd {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+
+/* The one-time "Lexpad is still here" (Start window spec §6, mock-up 10). */
+.still {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.still .top {
+  align-items: center;
+}
+.still-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--fg);
+}
+.still-body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--dim);
+}
+.btn.still-ok {
+  width: 100%;
+  min-height: 34px;
+  height: 34px;
+  color: var(--fg);
+  background: var(--surface2);
+  font-weight: 650;
+}

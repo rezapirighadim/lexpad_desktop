@@ -88,11 +88,13 @@ fn main() {
             "player_on_top",
             "player_buttons",
             "player_take_play",
+            "player_context_menu",
             "set_open_at",
             "open_at",
+            // The Start window (welcome.rs).
             "welcome_state",
-            "welcome_choose",
-            "welcome_finish",
+            "start_open_video",
+            "start_signed_in",
         ]),
     ))
     .expect("failed to run tauri-build");

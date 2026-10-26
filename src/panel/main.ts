@@ -28,6 +28,9 @@ new ResizeObserver(() => {
 
 const redraw = (): void => void panel.open(false);
 void listen('panel:open', () => void panel.open(true));
+void listen('panel:hint', () => {
+  panel.hint();
+});
 void listen('session:changed', redraw);
 void listen('settings:changed', redraw);
 void listen('recent:changed', redraw);

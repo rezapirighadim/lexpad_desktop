@@ -92,6 +92,28 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+/// The one-time hint after the last window closed (Start window spec §6):
+/// on macOS the panel hangs from the menu-bar icon with "Lexpad is still
+/// here"; on Windows one system message says where the icon is (Windows 11
+/// tucks it under the ^ arrow).
+pub fn still_here(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        let rect = app.tray_by_id("main").and_then(|t| t.rect().ok().flatten());
+        if let Some(rect) = rect {
+            let handle = app.clone();
+            let _ = app.run_on_main_thread(move || panel::show_hint(&handle, rect));
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    crate::notify::show_app_message(
+        app,
+        "lexpad-still-here",
+        "Lexpad is still running",
+        "Find it in the taskbar corner, under the ^ arrow. Click it to open Lexpad or a video again.",
+    );
+}
+
 /// Replaces the single image the tray crate makes with one that has a 1x
 /// and a 2x representation, marked as a template.
 #[cfg(target_os = "macos")]

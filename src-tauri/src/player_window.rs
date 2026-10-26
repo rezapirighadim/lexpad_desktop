@@ -57,12 +57,29 @@ pub enum Opened {
 }
 
 impl Opened {
-    fn query(self) -> &'static str {
+    fn from(self) -> Option<&'static str> {
         match self {
-            Opened::App => "?from=app",
-            Opened::File => "?from=file",
-            Opened::Pick => "?from=pick",
-            Opened::Launch => "",
+            Opened::App => Some("app"),
+            Opened::File => Some("file"),
+            Opened::Pick => Some("pick"),
+            Opened::Launch => None,
+        }
+    }
+
+    /// The route's query: how it was opened, and `seen=start` once the
+    /// Start window has been shown, so the Player never asks for a sign-in
+    /// of its own after it (Start window spec §7).
+    fn query(self, start_seen: bool) -> String {
+        let parts: Vec<String> = self
+            .from()
+            .map(|f| format!("from={f}"))
+            .into_iter()
+            .chain(start_seen.then(|| "seen=start".to_string()))
+            .collect();
+        if parts.is_empty() {
+            String::new()
+        } else {
+            format!("?{}", parts.join("&"))
         }
     }
 }
@@ -95,22 +112,22 @@ fn open_now(app: &AppHandle, opened: Opened) {
 
 /// The script that runs before the page: the app's configuration (as for
 /// Lexpad's window) and the Player's route, so the router starts there.
-fn init_script(device_id: &str, opened: Opened) -> String {
+fn init_script(device_id: &str, opened: Opened, start_seen: bool) -> String {
     format!(
         "{}\nif (!location.hash || location.hash === '#/') history.replaceState(null, '', '#/player{}');",
         main_window::config_script(device_id),
-        opened.query()
+        opened.query(start_seen)
     )
 }
 
 fn build(app: &AppHandle, opened: Opened) -> tauri::Result<()> {
     let state = app.state::<AppState>();
-    let (device_id, saved) = {
+    let (device_id, saved, start_seen) = {
         let s = state
             .settings
             .lock()
             .map_err(|_| tauri::Error::FailedToReceiveMessage)?;
-        (s.device_id.clone(), s.player_window)
+        (s.device_id.clone(), s.player_window, s.start_seen)
     };
     let nav = app.clone();
     let popups = app.clone();
@@ -120,7 +137,7 @@ fn build(app: &AppHandle, opened: Opened) -> tauri::Result<()> {
         .min_inner_size(MIN_SIZE.0, MIN_SIZE.1)
         .visible(false)
         .background_color(tauri::window::Color(0, 0, 0, 255))
-        .initialization_script(init_script(&device_id, opened))
+        .initialization_script(init_script(&device_id, opened, start_seen))
         .on_navigation(move |url| {
             if main_window::is_app_page(url) {
                 return true;
@@ -143,6 +160,8 @@ fn build(app: &AppHandle, opened: Opened) -> tauri::Result<()> {
     restore(app, &win, saved);
     #[cfg(windows)]
     taskbar::own_button(&win);
+    #[cfg(windows)]
+    taskbar::no_border(&win);
     win.show()?;
     win.set_focus()?;
     Ok(())
@@ -405,6 +424,179 @@ pub fn player_take_play() -> Option<String> {
     PLAY.lock().ok().and_then(|mut p| p.take())
 }
 
+/* ------------------------------------------------------------ the right-click menu */
+
+/// One item of the Player's right-click menu, as the page describes it. The
+/// page owns the words and the keys (they come from its own key table); the
+/// core draws the system's menu, so it looks native on each system and has
+/// the same items on both.
+#[derive(Debug, Clone, serde::Deserialize, PartialEq)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum CtxItem {
+    Item {
+        command: String,
+        label: String,
+        accel: Option<String>,
+        enabled: Option<bool>,
+    },
+    Check {
+        command: String,
+        label: String,
+        accel: Option<String>,
+        checked: bool,
+        enabled: Option<bool>,
+    },
+    Separator,
+    Submenu {
+        label: String,
+        items: Vec<CtxItem>,
+        enabled: Option<bool>,
+    },
+}
+
+/// The most items one menu may hold, submenus included: more than the
+/// Player's longest menu (three tracks, every speed, several audio tracks)
+/// and far less than anything that could slow the system's menu down.
+const CTX_MAX_ITEMS: usize = 100;
+/// A label's longest: a word picked from a subtitle is cut by the page well before this.
+const CTX_MAX_LABEL: usize = 80;
+/// The longest command, "speed:1.25" style.
+const CTX_MAX_COMMAND: usize = 64;
+
+/// A Player command a menu item may send: a name, and at most one short
+/// argument after a colon (`speed:1.5`, `audio:2`). Nothing else ever goes
+/// back to the page.
+pub fn context_command(command: &str) -> Option<&str> {
+    if command.is_empty() || command.len() > CTX_MAX_COMMAND {
+        return None;
+    }
+    let (name, arg) = match command.split_once(':') {
+        Some((n, a)) => (n, Some(a)),
+        None => (command, None),
+    };
+    let name_ok = name.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+        && name.chars().all(|c| c.is_ascii_alphanumeric());
+    let arg_ok = arg.is_none_or(|a| {
+        (1..=32).contains(&a.len())
+            && a.chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+    });
+    (name_ok && arg_ok).then_some(command)
+}
+
+/// Checks a menu the page sent: at most two levels, `CTX_MAX_ITEMS` items,
+/// short non-empty labels and well-formed commands.
+pub fn check_context_menu(items: &[CtxItem]) -> Result<(), &'static str> {
+    fn walk(items: &[CtxItem], depth: usize, count: &mut usize) -> Result<(), &'static str> {
+        for item in items {
+            *count += 1;
+            if *count > CTX_MAX_ITEMS {
+                return Err("too many items");
+            }
+            match item {
+                CtxItem::Item { command, label, .. } | CtxItem::Check { command, label, .. } => {
+                    if context_command(command).is_none() {
+                        return Err("not a command");
+                    }
+                    if label.trim().is_empty() || label.chars().count() > CTX_MAX_LABEL {
+                        return Err("not a label");
+                    }
+                }
+                CtxItem::Separator => {}
+                CtxItem::Submenu { label, items, .. } => {
+                    if depth >= 1 {
+                        return Err("too deep");
+                    }
+                    if label.trim().is_empty() || label.chars().count() > CTX_MAX_LABEL {
+                        return Err("not a label");
+                    }
+                    walk(items, depth + 1, count)?;
+                }
+            }
+        }
+        Ok(())
+    }
+    let mut count = 0;
+    walk(items, 0, &mut count)
+}
+
+fn context_items<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    items: &[CtxItem],
+) -> tauri::Result<Vec<Box<dyn tauri::menu::IsMenuItem<R>>>> {
+    use tauri::menu::{CheckMenuItem, MenuItem, PredefinedMenuItem, Submenu};
+    let id = |command: &str| format!("{}{command}", crate::app_menu::CONTEXT_PREFIX);
+    let mut out: Vec<Box<dyn tauri::menu::IsMenuItem<R>>> = Vec::with_capacity(items.len());
+    for item in items {
+        match item {
+            CtxItem::Item {
+                command,
+                label,
+                accel,
+                enabled,
+            } => out.push(Box::new(MenuItem::with_id(
+                app,
+                id(command),
+                label,
+                enabled.unwrap_or(true),
+                accel.as_deref(),
+            )?)),
+            CtxItem::Check {
+                command,
+                label,
+                accel,
+                checked,
+                enabled,
+            } => out.push(Box::new(CheckMenuItem::with_id(
+                app,
+                id(command),
+                label,
+                enabled.unwrap_or(true),
+                *checked,
+                accel.as_deref(),
+            )?)),
+            CtxItem::Separator => out.push(Box::new(PredefinedMenuItem::separator(app)?)),
+            CtxItem::Submenu {
+                label,
+                items,
+                enabled,
+            } => {
+                let inner = context_items(app, items)?;
+                let refs: Vec<&dyn tauri::menu::IsMenuItem<R>> =
+                    inner.iter().map(|b| b.as_ref()).collect();
+                out.push(Box::new(Submenu::with_items(
+                    app,
+                    label,
+                    enabled.unwrap_or(true),
+                    &refs,
+                )?));
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// The Player's right-click menu (owner, 26 Oct 2026: like IINA's or VLC's):
+/// the system's own menu at the pointer, built from what the page sent. A
+/// chosen item sends its command to the page as the menu bar does
+/// (`player:menu`, through `app_menu::handle`).
+#[tauri::command]
+pub async fn player_context_menu(
+    window: tauri::WebviewWindow,
+    items: Vec<CtxItem>,
+) -> Result<(), String> {
+    if window.label() != LABEL {
+        return Err("not the Player".into());
+    }
+    check_context_menu(&items)?;
+    let app = window.app_handle().clone();
+    let built = context_items(&app, &items).map_err(|e| e.to_string())?;
+    let refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> =
+        built.iter().map(|b| b.as_ref()).collect();
+    let menu = tauri::menu::Menu::with_items(&app, &refs).map_err(|e| e.to_string())?;
+    window.popup_menu(&menu).map_err(|e| e.to_string())
+}
+
 /// What the Player's card needs: signed in or not, the notebooks, and the
 /// one words go to. The same reading as the desktop card's `state`.
 #[derive(serde::Serialize)]
@@ -557,6 +749,33 @@ mod taskbar {
             let _ = store.Commit();
         }
     }
+
+    /// DWMWA_COLOR_NONE: no border colour at all (Windows 11).
+    const COLOR_NONE: u32 = 0xFFFF_FFFE;
+
+    /// Windows 11 draws a 1-pixel border round a frameless window, in the
+    /// accent colour when "Show accent colour on title bars and window
+    /// borders" is on: a faint blue line at the foot of the black Player
+    /// (owner, 26 Oct 2026), which the Mac never had. The border colour is
+    /// set to none; the shadow and the rounded corners stay. Windows 10 has
+    /// no such border and ignores the attribute.
+    pub fn no_border(win: &WebviewWindow) {
+        use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_BORDER_COLOR};
+        let Ok(handle) = win.hwnd() else {
+            return;
+        };
+        let hwnd = HWND(handle.0 as _);
+        let color = COLOR_NONE;
+        // SAFETY: our own top-level window; the value is a u32 that outlives the call.
+        unsafe {
+            let _ = DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_BORDER_COLOR,
+                (&color as *const u32).cast(),
+                std::mem::size_of::<u32>() as u32,
+            );
+        }
+    }
 }
 
 #[cfg(test)]
@@ -614,10 +833,96 @@ mod tests {
 
     #[test]
     fn the_route_script_starts_the_router_on_the_player() {
-        let s = init_script("dev", Opened::Pick);
+        let s = init_script("dev", Opened::Pick, false);
         assert!(s.contains("window.__LEXPAD_CONFIG"));
-        assert!(s.contains("#/player?from=pick"));
-        assert!(init_script("dev", Opened::Launch).ends_with("'#/player');"));
+        assert!(s.contains("#/player?from=pick'"));
+        assert!(init_script("dev", Opened::Launch, false).ends_with("'#/player');"));
+        // After the Start window, the Player is told so (no second sign-in).
+        assert!(init_script("dev", Opened::File, true).contains("#/player?from=file&seen=start'"));
+        assert!(init_script("dev", Opened::Launch, true).ends_with("'#/player?seen=start');"));
+    }
+}
+
+#[cfg(test)]
+mod context_tests {
+    use super::*;
+
+    fn item(command: &str, label: &str) -> CtxItem {
+        CtxItem::Item {
+            command: command.into(),
+            label: label.into(),
+            accel: None,
+            enabled: None,
+        }
+    }
+
+    #[test]
+    fn only_plain_commands_go_back_to_the_page() {
+        for ok in [
+            "playPause",
+            "speed:1.25",
+            "audio:2",
+            "toggleTrack1",
+            "addWord",
+        ] {
+            assert_eq!(context_command(ok), Some(ok), "{ok}");
+        }
+        for bad in [
+            "",
+            "1play",
+            "play pause",
+            "speed:",
+            "speed:1:2",
+            "open:../x",
+            "speed:<b>",
+            "a:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ] {
+            assert_eq!(context_command(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn the_page_describes_the_menu_in_json() {
+        let items: Vec<CtxItem> = serde_json::from_str(
+            r#"[{"kind":"item","command":"playPause","label":"Pause","accel":"Space"},
+                {"kind":"separator"},
+                {"kind":"submenu","label":"Speed","items":[
+                  {"kind":"check","command":"speed:1","label":"Normal","checked":true}]}]"#,
+        )
+        .unwrap();
+        assert_eq!(items.len(), 3);
+        assert!(check_context_menu(&items).is_ok());
+    }
+
+    #[test]
+    fn a_menu_too_deep_too_long_or_badly_labelled_is_refused() {
+        let deep = vec![CtxItem::Submenu {
+            label: "A".into(),
+            enabled: None,
+            items: vec![CtxItem::Submenu {
+                label: "B".into(),
+                enabled: None,
+                items: vec![item("playPause", "x")],
+            }],
+        }];
+        assert_eq!(check_context_menu(&deep), Err("too deep"));
+        let long: Vec<CtxItem> = (0..=CTX_MAX_ITEMS)
+            .map(|_| item("playPause", "x"))
+            .collect();
+        assert_eq!(check_context_menu(&long), Err("too many items"));
+        assert_eq!(
+            check_context_menu(&[item("playPause", " ")]),
+            Err("not a label")
+        );
+        let wide = "w".repeat(CTX_MAX_LABEL + 1);
+        assert_eq!(
+            check_context_menu(&[item("playPause", &wide)]),
+            Err("not a label")
+        );
+        assert_eq!(
+            check_context_menu(&[item("rm -rf", "x")]),
+            Err("not a command")
+        );
     }
 }
 

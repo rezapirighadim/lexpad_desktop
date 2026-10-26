@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "player",
-  "description": "The Lexpad Player's window (the web app's /player route): the media engine (files only by the ids the core gave for what the learner dropped or chose; the stream over the lexmedia scheme), words saved from it (to the notebook, or kept until sign-in), the add-a-word card's calls (the account's notebooks, a meaning, an add, the report form), connecting in the browser, every API call through the core as Lexpad's window has, opening Lexpad's window at an app path, and its own window: moving it by its top edge, minimising, maximising, closing, full screen, the mini player kept on top, and the Mac's window buttons. Nothing else: no file system, no shell, no other window.",
+  "description": "The Lexpad Player's window (the web app's /player route): the media engine (files only by the ids the core gave for what the learner dropped or chose; the stream over the lexmedia scheme), words saved from it (to the notebook, or kept until sign-in), the add-a-word card's calls (the account's notebooks, a meaning, an add, the report form), connecting in the browser, every API call through the core as Lexpad's window has, opening Lexpad's window at an app path, and its own window: moving it by its top edge, minimising, maximising, closing, full screen, the mini player kept on top, the Mac's window buttons, and its right-click menu (the system's menu, drawn by the core from the items the page names). Nothing else: no file system, no shell, no other window.",
   "windows": ["player"],
   "permissions": [
     "core:event:allow-listen",
@@ -57,6 +57,7 @@
     "allow-player-mini-close",
     "allow-player-on-top",
     "allow-player-buttons",
-    "allow-player-take-play"
+    "allow-player-take-play",
+    "allow-player-context-menu"
   ]
 }

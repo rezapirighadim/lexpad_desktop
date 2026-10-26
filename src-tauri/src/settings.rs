@@ -21,6 +21,12 @@ pub struct Settings {
     /// computer's old session instead of listing it twice.
     pub device_id: String,
     pub shortcut: String,
+    /// Start Lexpad when the learner logs in. Off on a new install (spec
+    /// `uiux/specs/2026-10-26-desktop-first-run.md` §6: nothing in the
+    /// background unasked, no "Background Items Added" on the first run); it
+    /// is offered in Settings → This computer. A file written by an older
+    /// version without the field keeps what it meant then: on.
+    #[serde(default = "on")]
     pub start_on_login: bool,
     /// The notebook words go to, unless the word cannot be in its language.
     pub notebook_id: Option<String>,
@@ -47,9 +53,11 @@ pub struct Settings {
     /// applies the old grant though the switch still looks on: missing
     /// after it was allowed in another version is that, not a refusal.
     pub accessibility_granted_in: Option<String>,
-    /// The first launch's answer, "What would you like to do first?"
-    /// (`welcome`): it picks where Lexpad opens and which tips show, and
-    /// locks nothing. None until answered (an install from before it).
+    /// What the learner came for, inferred from what they did first (the
+    /// Start window, `welcome`): a video opened is `watch`, a sign-in from
+    /// the Start window `learn`, both in turn `both`. It only changes tips
+    /// and is sent with the onboarding answers; it locks nothing. None until
+    /// known.
     pub focus: Option<Focus>,
     /// The window that was last in front: where "Open Lexpad" goes back to.
     pub last_place: Place,
@@ -57,9 +65,21 @@ pub struct Settings {
     pub open_at: OpenAt,
     /// Where the Player's window was when it last closed.
     pub player_window: Option<WindowPlace>,
+    /// The Start window has been shown on this computer: the Player then
+    /// never asks for a sign-in of its own (`seen=start`, spec §7).
+    pub start_seen: bool,
+    /// A video has been opened on this computer: a later signed-out launch
+    /// opens the Player rather than the Start window (spec §2, state E).
+    pub played_video: bool,
+    /// "Lexpad is still here" was shown once, when the last window closed (§6).
+    pub tray_hint_shown: bool,
 }
 
-/// What the learner said they would like to do first (spec §24.2).
+fn on() -> bool {
+    true
+}
+
+/// What the learner came for, as their first actions say (Start window spec §3).
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum Focus {
@@ -138,7 +158,7 @@ impl Default for Settings {
         Self {
             device_id: uuid::Uuid::new_v4().to_string(),
             shortcut: DEFAULT_SHORTCUT.into(),
-            start_on_login: !crate::config::PLAYER_TEST,
+            start_on_login: false,
             notebook_id: None,
             recent: Vec::new(),
             open_on_launch: false,
@@ -151,6 +171,9 @@ impl Default for Settings {
             last_place: Place::Learn,
             open_at: OpenAt::LeftOff,
             player_window: None,
+            start_seen: false,
+            played_video: false,
+            tray_hint_shown: false,
         }
     }
 }
@@ -208,7 +231,9 @@ mod tests {
         let file = SettingsFile::new(&dir);
         let (first, is_first) = file.load();
         assert!(is_first);
-        assert!(first.start_on_login);
+        // Nothing starts at login until the learner asks (Start window spec §6).
+        assert!(!first.start_on_login);
+        assert!(!first.start_seen && !first.played_video && !first.tray_hint_shown);
         assert_eq!(first.shortcut, DEFAULT_SHORTCUT);
         file.save(&first).unwrap();
         let (again, is_first) = file.load();
@@ -258,6 +283,17 @@ mod tests {
         assert!(s.main_window.is_none());
         assert!(s.notifications);
         assert!(s.accessibility_granted_in.is_none());
+        assert!(!s.start_seen && !s.played_video && !s.tray_hint_shown);
+    }
+
+    #[test]
+    fn an_install_that_had_start_on_login_keeps_its_choice() {
+        let on: Settings = serde_json::from_str(r#"{"startOnLogin":true}"#).unwrap();
+        assert!(on.start_on_login);
+        let off: Settings = serde_json::from_str(r#"{"startOnLogin":false}"#).unwrap();
+        assert!(!off.start_on_login);
+        let new = Settings::default();
+        assert!(!new.start_on_login);
     }
 
     #[test]

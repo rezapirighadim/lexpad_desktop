@@ -167,6 +167,16 @@ pub fn toggle(app: &AppHandle, icon: tauri::Rect) {
 }
 
 pub(crate) fn show(app: &AppHandle, icon: tauri::Rect) {
+    show_with(app, icon, "panel:open");
+}
+
+/// The panel as the one-time "Lexpad is still here" hint (Start window spec
+/// §6): placed from the icon like the panel, the page draws the hint.
+pub fn show_hint(app: &AppHandle, icon: tauri::Rect) {
+    show_with(app, icon, "panel:hint");
+}
+
+fn show_with(app: &AppHandle, icon: tauri::Rect, event: &str) {
     let Some(win) = app.get_webview_window(LABEL) else {
         return;
     };
@@ -215,7 +225,7 @@ pub(crate) fn show(app: &AppHandle, icon: tauri::Rect) {
     }
     let _ = win.show();
     let _ = win.set_focus();
-    let _ = win.emit("panel:open", ());
+    let _ = win.emit(event, ());
 }
 
 /// The panel's rectangle for an icon on a screen (placement units), cut to

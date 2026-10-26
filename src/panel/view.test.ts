@@ -135,7 +135,7 @@ describe('the panel, signed out', () => {
     const backend = fake({ connected: false, user: null, notebooks: [] });
     await draw(backend);
     expect(root.querySelector('.add')).toBeNull();
-    expect(root.querySelector('.account')?.textContent).toBe('Not connected');
+    expect(root.querySelector('.account')?.textContent).toBe('Not signed in');
     root.querySelector<HTMLButtonElement>('.connect .btn')!.click();
     expect(backend.connect).toHaveBeenCalled();
   });
@@ -178,5 +178,43 @@ describe('the panel, always', () => {
     await draw(backend);
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(backend.hidePanel).toHaveBeenCalled();
+  });
+});
+
+describe('the one-time hint after the last window closed', () => {
+  it('says where Lexpad went, Got it puts it away, and it goes by itself after a while', async () => {
+    vi.useFakeTimers();
+    try {
+      const backend = fake();
+      const panel = new Panel(root, backend, () => NOW, true);
+      panel.hint();
+      expect(root.querySelector('.still-title')?.textContent).toBe('Lexpad is still here');
+      expect(root.querySelector('.still-body')?.textContent).toBe(
+        'Click this icon to open Lexpad or a video again.',
+      );
+      const ok = root.querySelector<HTMLButtonElement>('.still-ok');
+      expect(document.activeElement).toBe(ok);
+      ok?.click();
+      expect(backend.hidePanel).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(8000);
+      expect(backend.hidePanel).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('opening the panel as itself ends the hint, and its timer then does nothing', async () => {
+    vi.useFakeTimers();
+    try {
+      const backend = fake();
+      const panel = new Panel(root, backend, () => NOW, true);
+      panel.hint();
+      await panel.open();
+      expect(root.querySelector('.still')).toBeNull();
+      vi.advanceTimersByTime(8000);
+      expect(backend.hidePanel).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
