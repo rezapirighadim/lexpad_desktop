@@ -123,6 +123,62 @@ struct Inner {
     access: Option<(String, Instant)>,
 }
 
+/// The longest a /config read for the activity answer may take; it runs
+/// in the background, so this only bounds a hung one.
+const ACTIVITY_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// The server's answer on the activity headers (`activity` in GET /config,
+/// reports/specs/2026-10-26-activity-tracking.md §2.1). Per process and per
+/// API origin: it says what the server takes, nothing about who is signed
+/// in, so it outlives a sign-out.
+struct Gate {
+    http: reqwest::Client,
+    url: String,
+    /// The last answer and until when it holds; None until one arrives.
+    cache: std::sync::Mutex<Option<(bool, Instant)>>,
+    /// One read at a time; a caller that waited on it finds the answer fresh.
+    flight: Mutex<()>,
+    /// A background refresh has been started and not finished.
+    kicked: std::sync::atomic::AtomicBool,
+}
+
+impl Gate {
+    fn mark_stale(&self) {
+        if let Some((_, until)) = self.cache.lock().expect("activity lock").as_mut() {
+            *until = Instant::now();
+        }
+    }
+
+    fn fresh(&self) -> Option<bool> {
+        match *self.cache.lock().expect("activity lock") {
+            Some((on, until)) if Instant::now() < until => Some(on),
+            _ => None,
+        }
+    }
+
+    async fn refresh(&self) -> bool {
+        let _one = self.flight.lock().await;
+        if let Some(on) = self.fresh() {
+            return on;
+        }
+        let answer = async {
+            let res = self.http.get(&self.url).send().await.ok()?;
+            if !res.status().is_success() {
+                return None;
+            }
+            let body: Value = res.json().await.ok()?;
+            Some(body.get("activity").and_then(Value::as_bool) == Some(true))
+        }
+        .await;
+        let kept = match answer {
+            Some(on) => (on, Instant::now() + ACTIVITY_KEEP),
+            None => (false, Instant::now() + ACTIVITY_RETRY),
+        };
+        *self.cache.lock().expect("activity lock") = Some(kept);
+        kept.0
+    }
+}
+
 pub struct Api {
     http: reqwest::Client,
     /// For the main window's calls (`forward`): no limit on the whole
@@ -132,8 +188,8 @@ pub struct Api {
     base: String,
     store: Arc<dyn SessionStore>,
     inner: Mutex<Inner>,
-    /// The server's last answer on the activity headers, and until when it holds.
-    activity: std::sync::Mutex<Option<(bool, Instant)>>,
+    /// The server's last answer on the activity headers (see `Gate`).
+    activity: Arc<Gate>,
 }
 
 impl Api {
@@ -158,7 +214,17 @@ impl Api {
                 saved: None,
                 access: None,
             }),
-            activity: std::sync::Mutex::new(None),
+            activity: Arc::new(Gate {
+                http: reqwest::Client::builder()
+                    .timeout(ACTIVITY_TIMEOUT)
+                    .user_agent(crate::config::user_agent())
+                    .build()
+                    .expect("HTTP client"),
+                url: format!("{}/api/v1/config", api_origin.trim_end_matches('/')),
+                cache: std::sync::Mutex::new(None),
+                flight: Mutex::new(()),
+                kicked: std::sync::atomic::AtomicBool::new(false),
+            }),
         }
     }
 
@@ -214,6 +280,11 @@ impl Api {
             Instant::now() + Duration::from_secs(session.expires_in),
         ));
         inner.saved = Some(Some(saved.clone()));
+        drop(inner);
+        // A new sign-in: ask the server again, in the background; the last
+        // answer stands until then.
+        self.activity.mark_stale();
+        self.kick_activity();
         Ok(saved.user)
     }
 
@@ -304,36 +375,46 @@ impl Api {
         Ok(next.access_token)
     }
 
-    /// Whether the server takes the activity headers now (`activity: true`
-    /// in GET /config). Read once and kept for `ACTIVITY_KEEP`; a failed or
-    /// absent answer is "no", asked again after `ACTIVITY_RETRY`. Not a CORS
-    /// matter here, but the same one switch as every other client.
-    pub async fn activity_on(&self) -> bool {
-        if let Some((on, until)) = *self.activity.lock().expect("activity lock") {
-            if Instant::now() < until {
-                return on;
+    /// Whether the server takes the activity headers, from the last answer
+    /// only: never waits for the network, so a lookup or an add is never
+    /// slowed by /config. Unknown is "no". A missing or stale answer starts a
+    /// refresh in the background (`kick_activity`) for the calls after.
+    pub fn activity_now(&self) -> bool {
+        let cached = *self.activity.cache.lock().expect("activity lock");
+        match cached {
+            Some((on, until)) if Instant::now() < until => on,
+            Some((on, _)) => {
+                self.kick_activity();
+                on
+            }
+            None => {
+                self.kick_activity();
+                false
             }
         }
-        let answer = async {
-            let res = self
-                .http
-                .get(format!("{}/config", self.base))
-                .send()
-                .await
-                .ok()?;
-            if !res.status().is_success() {
-                return None;
-            }
-            let body: Value = res.json().await.ok()?;
-            Some(body.get("activity").and_then(Value::as_bool) == Some(true))
+    }
+
+    /// Starts a refresh of the activity answer without waiting for it: at
+    /// start, after signing in, and when the answer is stale. At most one is
+    /// started at a time.
+    pub fn kick_activity(&self) {
+        use std::sync::atomic::Ordering;
+        if self.activity.kicked.swap(true, Ordering::SeqCst) {
+            return;
         }
-        .await;
-        let kept = match answer {
-            Some(on) => (on, Instant::now() + ACTIVITY_KEEP),
-            None => (false, Instant::now() + ACTIVITY_RETRY),
-        };
-        *self.activity.lock().expect("activity lock") = Some(kept);
-        kept.0
+        let gate = self.activity.clone();
+        tauri::async_runtime::spawn(async move {
+            gate.refresh().await;
+            gate.kicked.store(false, Ordering::SeqCst);
+        });
+    }
+
+    /// Asks GET /config now and keeps the answer; single-flight, so callers
+    /// that arrive together share one request. The app only kicks it
+    /// (`kick_activity`); tests await it to know the answer has landed.
+    #[cfg(test)]
+    pub async fn refresh_activity(&self) -> bool {
+        self.activity.refresh().await
     }
 
     /// One request with the bearer token, refreshed once on a 401.
@@ -349,7 +430,7 @@ impl Api {
     }
 
     /// The same, saying where in the app the person asked for it, while the
-    /// server takes that (`activity_on`).
+    /// server takes that (`activity_now`, never awaited).
     pub(crate) async fn request_from(
         &self,
         method: reqwest::Method,
@@ -359,7 +440,7 @@ impl Api {
         surface: Option<Surface>,
     ) -> Result<Value, Failure> {
         let surface = match surface {
-            Some(s) if self.activity_on().await => Some(s),
+            Some(s) if self.activity_now() => Some(s),
             _ => None,
         };
         let mut token = self.token().await?;
@@ -571,6 +652,18 @@ mod tests {
     where
         F: Fn(&str, &str, &str) -> (u16, String) + Send + Sync + 'static,
     {
+        serve_slow(move |line, head, body| {
+            let (status, out) = handle(line, head, body);
+            (status, out, 0)
+        })
+        .await
+    }
+
+    /// The same, answering after the given milliseconds (a slow or hung server).
+    async fn serve_slow<F>(handle: F) -> String
+    where
+        F: Fn(&str, &str, &str) -> (u16, String, u64) + Send + Sync + 'static,
+    {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let handle = Arc::new(handle);
@@ -603,7 +696,10 @@ mod tests {
                                 let head = &text[..end];
                                 let line = head.lines().next().unwrap_or_default();
                                 let body = &text[end + 4..end + 4 + len];
-                                let (status, out) = handle(line, head, body);
+                                let (status, out, delay) = handle(line, head, body);
+                                if delay > 0 {
+                                    tokio::time::sleep(Duration::from_millis(delay)).await;
+                                }
                                 let resp = format!("HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{out}", out.len());
                                 let _ = s.write_all(resp.as_bytes()).await;
                                 return;
@@ -814,6 +910,8 @@ mod tests {
             })
             .await;
             let api = Api::new(&base, signed_in());
+            // As at start: the answer is read once, before any word.
+            api.refresh_activity().await;
             let word = json!({ "headword": "hello" });
             assert_eq!(
                 api.add_word("n1", &word, Some(Surface::Shortcut))
@@ -840,7 +938,8 @@ mod tests {
     async fn a_config_that_cannot_be_read_is_off() {
         let base = serve(|_, _, _| (503, "{}".into())).await;
         let api = Api::new(&base, Arc::new(Memory::default()));
-        assert!(!api.activity_on().await);
+        assert!(!api.refresh_activity().await);
+        assert!(!api.activity_now());
     }
 
     /// A server for the §10 gate tests: answers /config with `config` (None =
@@ -890,6 +989,7 @@ mod tests {
         for config in [Some(r#"{"text":{"read":1,"paste":1}}"#), None] {
             let (base, seen, _) = gate_server(config).await;
             let api = Api::new(&base, signed_in());
+            api.refresh_activity().await;
             api.lookup("n1", "hello", None, Some(Surface::Services))
                 .await
                 .unwrap();
@@ -908,6 +1008,7 @@ mod tests {
     async fn a_new_server_gets_the_surface_on_lookup_and_add() {
         let (base, seen, configs) = gate_server(Some(r#"{"activity":true}"#)).await;
         let api = Api::new(&base, signed_in());
+        api.refresh_activity().await;
         api.lookup("n1", "hello", None, Some(Surface::Services))
             .await
             .unwrap();
@@ -931,10 +1032,10 @@ mod tests {
         // about who is signed in. No account data is kept with it.
         let (base, _seen, configs) = gate_server(Some(r#"{"activity":true}"#)).await;
         let api = Api::new(&base, signed_in());
-        assert!(api.activity_on().await);
+        assert!(api.refresh_activity().await);
         api.sign_out().await;
         assert!(api.user().await.is_none());
-        assert!(api.activity_on().await);
+        assert!(api.activity_now());
         assert_eq!(configs.load(Ordering::SeqCst), 1);
     }
 
@@ -981,5 +1082,109 @@ mod tests {
         let res = api.forward(&checked).await.unwrap();
         assert_eq!(res.status().as_u16(), 202);
         assert_eq!(configs.load(Ordering::SeqCst), 0);
+    }
+
+    /// A server whose /config answers `{"activity":true}` after `delay_ms`;
+    /// records the other requests' surface headers and the /config count.
+    async fn slow_config(
+        delay_ms: u64,
+    ) -> (
+        String,
+        Arc<std::sync::Mutex<Vec<Option<String>>>>,
+        Arc<AtomicUsize>,
+    ) {
+        let seen: Arc<std::sync::Mutex<Vec<Option<String>>>> = Arc::default();
+        let configs = Arc::new(AtomicUsize::new(0));
+        let (s, c) = (seen.clone(), configs.clone());
+        let base = serve_slow(move |line, head, _| {
+            if line.starts_with("POST /api/v1/auth/refresh") {
+                return (200, SESSION.into(), 0);
+            }
+            if line.starts_with("GET /api/v1/config") {
+                c.fetch_add(1, Ordering::SeqCst);
+                return (200, r#"{"activity":true}"#.into(), delay_ms);
+            }
+            let surface = head
+                .lines()
+                .find_map(|l| l.strip_prefix("x-lexpad-surface: "))
+                .map(str::to_owned);
+            s.lock().unwrap().push(surface);
+            if line.starts_with("POST /api/v1/ai/cards") {
+                return (
+                    200,
+                    r#"{"id":"j1","status":"done","cards":[{"headword":"hello"}]}"#.into(),
+                    0,
+                );
+            }
+            (200, r#"[{"id":"w1"}]"#.into(), 0)
+        })
+        .await;
+        (base, seen, configs)
+    }
+
+    #[tokio::test]
+    async fn a_hung_config_never_delays_a_lookup_or_an_add() {
+        let (base, seen, configs) = slow_config(60_000).await;
+        let api = Api::new(&base, signed_in());
+        let started = Instant::now();
+        api.lookup("n1", "hello", None, Some(Surface::Shortcut))
+            .await
+            .unwrap();
+        api.add_word(
+            "n1",
+            &json!({ "headword": "hello" }),
+            Some(Surface::Shortcut),
+        )
+        .await
+        .unwrap();
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "{:?}",
+            started.elapsed()
+        );
+        // Unknown is "no": both went without the header.
+        assert_eq!(*seen.lock().unwrap(), [None, None]);
+        // The read was started in the background, once.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(configs.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn a_slow_config_tags_the_calls_after_its_answer() {
+        let (base, seen, configs) = slow_config(300).await;
+        let api = Api::new(&base, signed_in());
+        let word = json!({ "headword": "hello" });
+        api.add_word("n1", &word, Some(Surface::Tray))
+            .await
+            .unwrap();
+        // Joins the read the first call started rather than asking again.
+        assert!(api.refresh_activity().await);
+        api.add_word("n1", &word, Some(Surface::Tray))
+            .await
+            .unwrap();
+        assert_eq!(
+            *seen.lock().unwrap(),
+            [None, Some("desktop.tray".to_string())]
+        );
+        assert_eq!(configs.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn many_callers_share_one_config_read() {
+        let (base, _seen, configs) = slow_config(100).await;
+        let api = Arc::new(Api::new(&base, signed_in()));
+        let calls: Vec<_> = (0..8)
+            .map(|_| {
+                let a = api.clone();
+                tokio::spawn(async move {
+                    let _ = a.activity_now();
+                    a.refresh_activity().await
+                })
+            })
+            .collect();
+        for c in calls {
+            assert!(c.await.unwrap());
+        }
+        assert_eq!(configs.load(Ordering::SeqCst), 1);
     }
 }
