@@ -317,6 +317,60 @@ impl WordQueue {
         }
     }
 
+    /// Sends one waiting word now, on the learner's tap: to the signed-in
+    /// account, whatever its age (the 24-hour rule is about moving words by
+    /// themselves; a tap is the learner choosing), with its own surface.
+    /// Refused for a word another account saved, and for an id not here.
+    /// What could not go stays, with the reason, as `words_save` answers.
+    pub async fn send_one(
+        &self,
+        api: &Api,
+        id: &str,
+        chosen: Option<&str>,
+    ) -> Result<Saved, String> {
+        let _one = self.flushing.lock().await;
+        let p = self
+            .list()
+            .into_iter()
+            .find(|p| p.id == id)
+            .ok_or("not_found")?;
+        let queued = |reason: &str| -> Result<Saved, String> {
+            self.set_waiting(&p.id, reason);
+            Ok(Saved::Queued {
+                pending: self.list().len(),
+                reason: reason.to_owned(),
+            })
+        };
+        let Some(user) = api.user().await else {
+            return queued(Failure::SignedOut.as_str());
+        };
+        if p.account.as_deref().is_some_and(|a| a != user.id) {
+            return Err("not_this_account".into());
+        }
+        let notebooks = match api.notebooks().await {
+            Ok(n) => n,
+            Err(f) => return queued(f.as_str()),
+        };
+        let Some(nb) = pick_notebook(&notebooks, p.lang.as_deref(), chosen) else {
+            return queued("no_notebook_for_language");
+        };
+        match api.add_word(&nb, &p.body(), Some(p.surface())).await {
+            Ok(word_id) => {
+                self.discard(&p.id)?;
+                Ok(Saved::Added {
+                    id: word_id,
+                    notebook_id: nb,
+                })
+            }
+            // Already in the notebook: nothing left to send, and the card says so.
+            Err(Failure::Duplicate) => {
+                self.discard(&p.id)?;
+                Err(Failure::Duplicate.as_str().into())
+            }
+            Err(f) => queued(f.as_str()),
+        }
+    }
+
     /// Sends what can go now. Returns how many went and how many wait.
     pub async fn flush(&self, api: &Api, chosen: Option<&str>) -> (usize, usize) {
         self.flush_at(api, chosen, now_ms()).await

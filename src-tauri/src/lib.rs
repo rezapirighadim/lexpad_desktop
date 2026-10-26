@@ -537,6 +537,7 @@ pub fn run() {
             commands::words_pending,
             commands::words_flush,
             commands::words_discard,
+            commands::words_send_one,
             player_window::open_lexpad,
             player_window::open_player,
             player_window::player_account,

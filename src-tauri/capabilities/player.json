@@ -46,6 +46,7 @@
     "allow-words-pending",
     "allow-words-flush",
     "allow-words-discard",
+    "allow-words-send-one",
     "allow-open-lexpad",
     "allow-open-window",
     "allow-player-account",

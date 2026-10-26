@@ -398,6 +398,12 @@ export const words = {
   pending: (): Promise<PendingWord[]> => invoke('words_pending'),
   flush: (): Promise<number> => invoke('words_flush'),
   discard: (id: string): Promise<number> => invoke('words_discard', { id }),
+  /**
+   * Sends one waiting word now, on the learner's tap, whatever its age
+   * (e.g. `waiting: 'too_old_to_move'`). Refused ('not_this_account') for a
+   * word another account saved; 'duplicate' when it is already there.
+   */
+  sendOne: (id: string): Promise<SavedWord> => invoke('words_send_one', { id }),
   onPending: (handler: (waiting: number) => void): Promise<UnlistenFn> =>
     listen<number>('words:pending', (e) => handler(e.payload)),
 };

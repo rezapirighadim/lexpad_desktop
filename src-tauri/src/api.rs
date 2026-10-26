@@ -1292,4 +1292,78 @@ mod tests {
         }
         assert_eq!(configs.load(Ordering::SeqCst), 1);
     }
+
+    #[tokio::test]
+    async fn one_word_sent_on_a_tap_whatever_its_age_never_to_another_account() {
+        use crate::word_queue::{NewWord, PickedIn, Saved, WordQueue, TOO_OLD};
+        let (base, seen, _) = gate_server(Some(r#"{"activity":true}"#)).await;
+        let api = Api::new(&base, signed_in()); // signed in as "u"
+        api.refresh_activity().await;
+        let queue = WordQueue::load(None);
+        let word = |headword: &str, lang: Option<&str>, account: Option<&str>| {
+            NewWord {
+                headword: headword.into(),
+                lang: lang.map(str::to_owned),
+                sentence: None,
+                memo: None,
+                from: Some(PickedIn::Transcript),
+            }
+            .checked(account.map(str::to_owned), 1) // saved at the dawn of time
+            .unwrap()
+        };
+        let old = word("old", None, None);
+        let theirs = word("theirs", None, Some("other"));
+        let german = word("haus", Some("de"), None);
+        for p in [&old, &theirs, &german] {
+            queue.push(p.clone()).unwrap();
+        }
+        // The flush keeps the old anonymous ones here, marked too old.
+        assert_eq!(queue.flush(&api, None).await, (0, 3));
+        assert_eq!(queue.list()[0].waiting.as_deref(), Some(TOO_OLD));
+
+        // A tap sends it anyway, with its own surface.
+        match queue.send_one(&api, &old.id, None).await.unwrap() {
+            Saved::Added { id, notebook_id } => {
+                assert_eq!((id.as_str(), notebook_id.as_str()), ("w1", "w1"))
+            }
+            other => panic!("{other:?}"),
+        }
+        // Another account's word: refused, and it stays.
+        assert_eq!(
+            queue.send_one(&api, &theirs.id, None).await.unwrap_err(),
+            "not_this_account"
+        );
+        // No notebook in its language: stays, with that reason.
+        match queue.send_one(&api, &german.id, None).await.unwrap() {
+            Saved::Queued { pending, reason } => {
+                assert_eq!((pending, reason.as_str()), (2, "no_notebook_for_language"))
+            }
+            other => panic!("{other:?}"),
+        }
+        let kept = queue.list();
+        assert_eq!(
+            kept.iter()
+                .map(|p| (p.headword.as_str(), p.waiting.as_deref()))
+                .collect::<Vec<_>>(),
+            [("theirs", None), ("haus", Some("no_notebook_for_language"))]
+        );
+        // words_pending's shape carries the reason for the Player to show.
+        let shown = serde_json::to_value(&kept[1]).unwrap();
+        assert_eq!(shown["waiting"], "no_notebook_for_language");
+        assert_eq!(
+            queue.send_one(&api, "nope", None).await.unwrap_err(),
+            "not_found"
+        );
+        let posts: Vec<String> = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|l| l.starts_with("POST "))
+            .cloned()
+            .collect();
+        assert_eq!(
+            posts,
+            ["POST /api/v1/notebooks/w1/words x-lexpad-surface: desktop.player.transcript"]
+        );
+    }
 }

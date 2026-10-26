@@ -1014,6 +1014,28 @@ pub async fn words_flush(
     Ok(queue.flush(&state.api, chosen.as_deref()).await.1)
 }
 
+/// Sends one waiting word now, on the learner's tap (the Player's list of
+/// words kept on this computer, e.g. one marked `too_old_to_move`): to the
+/// signed-in account whatever its age, refused if another account saved it.
+/// Answers as `words_save`: added, or still queued and why.
+#[tauri::command]
+pub async fn words_send_one(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    queue: State<'_, WordQueue>,
+    id: String,
+) -> Result<Saved, String> {
+    let chosen = state
+        .settings
+        .lock()
+        .map_err(|_| "lock")?
+        .notebook_id
+        .clone();
+    let out = queue.send_one(&state.api, &id, chosen.as_deref()).await;
+    let _ = app.emit("words:pending", queue.list().len());
+    out
+}
+
 /// The learner drops a waiting word.
 #[tauri::command]
 pub fn words_discard(queue: State<'_, WordQueue>, id: String) -> Result<usize, String> {
