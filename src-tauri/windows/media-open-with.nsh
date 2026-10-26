@@ -8,6 +8,42 @@
 ; The Microsoft Store's MSIX declares the same types in its manifest
 ; (msix/AppxManifest.xml), which Windows treats the same way.
 ; Hooked in by tauri.conf.json, bundle.windows.nsis.installerHooks.
+;
+; It also adds the second Start menu entry, "Lexpad Player": the same
+; Lexpad.exe started with --player, which opens straight into the Player
+; (owner, 26 Oct 2026: one app, two ways in). The shortcut carries the
+; Player's own AppUserModelID (Lexpad.Player, as its window does:
+; player_window.rs, taskbar::own_button), so it groups with the Player's
+; taskbar button and not with Lexpad's.
+
+!define LEXPAD_PLAYER_LNK "Lexpad Player.lnk"
+!define LEXPAD_PLAYER_AUMID "Lexpad.Player"
+
+; The template's SetLnkAppUserModelId, with an id of our own.
+!macro LexpadSetLnkAumid shortcut id
+  !insertmacro ComHlpr_CreateInProcInstance ${CLSID_ShellLink} ${IID_IShellLink} r0 ""
+  ${If} $0 P<> 0
+    ${IUnknown::QueryInterface} $0 '("${IID_IPersistFile}",.r1)'
+    ${If} $1 P<> 0
+      ${IPersistFile::Load} $1 '("${shortcut}", ${STGM_READWRITE})'
+      ${IUnknown::QueryInterface} $0 '("${IID_IPropertyStore}",.r2)'
+      ${If} $2 P<> 0
+        System::Call 'Oleaut32::SysAllocString(w "${id}") i.r3'
+        System::Call '*${SYSSTRUCT_PROPERTYKEY}(${PKEY_AppUserModel_ID})p.r4'
+        System::Call '*${SYSSTRUCT_PROPVARIANT}(${VT_BSTR},,&i4 $3)p.r5'
+        ${IPropertyStore::SetValue} $2 '($4,$5)'
+        System::Call 'Oleaut32::SysFreeString($3)'
+        System::Free $4
+        System::Free $5
+        ${IPropertyStore::Commit} $2 ""
+        ${IUnknown::Release} $2 ""
+        ${IPersistFile::Save} $1 '("${shortcut}",1)'
+      ${EndIf}
+      ${IUnknown::Release} $1 ""
+    ${EndIf}
+    ${IUnknown::Release} $0 ""
+  ${EndIf}
+!macroend
 
 !define LEXPAD_PROGID "Lexpad.Media"
 !macro LexpadOpenWith EXT
@@ -60,6 +96,11 @@
   !insertmacro LexpadOpenWith "webvtt"
   !insertmacro LexpadOpenWith "ass"
   !insertmacro LexpadOpenWith "ssa"
+  ; "Lexpad Player" in the Start menu, beside "Lexpad" (not with /NS).
+  ${If} $NoShortcutMode <> 1
+    CreateShortcut "$SMPROGRAMS\${LEXPAD_PLAYER_LNK}" "$INSTDIR\${MAINBINARYNAME}.exe" "--player" "$INSTDIR\${MAINBINARYNAME}.exe" 0
+    !insertmacro LexpadSetLnkAumid "$SMPROGRAMS\${LEXPAD_PLAYER_LNK}" "${LEXPAD_PLAYER_AUMID}"
+  ${EndIf}
   ; SHCNE_ASSOCCHANGED: Explorer reads the new "Open with" entries now.
   System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
 !macroend
@@ -97,5 +138,9 @@
   DeleteRegValue SHCTX "Software\RegisteredApplications" "Lexpad"
   DeleteRegKey SHCTX "Software\Lexpad\Capabilities"
   DeleteRegKey SHCTX "Software\Classes\Applications\${MAINBINARYNAME}.exe"
+  ; The Player's Start menu entry, unless this is an update (it comes back).
+  ${If} $UpdateMode <> 1
+    Delete "$SMPROGRAMS\${LEXPAD_PLAYER_LNK}"
+  ${EndIf}
   System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
 !macroend
