@@ -1345,11 +1345,12 @@ mod tests {
             kept.iter()
                 .map(|p| (p.headword.as_str(), p.waiting.as_deref()))
                 .collect::<Vec<_>>(),
-            [("theirs", None), ("haus", Some("no_notebook_for_language"))]
+            // Too old before the tap, too old after: the answer above said why it did not go.
+            [("theirs", None), ("haus", Some(TOO_OLD))]
         );
-        // words_pending's shape carries the reason for the Player to show.
+        // words_pending's shape carries the mark for the Player to show.
         let shown = serde_json::to_value(&kept[1]).unwrap();
-        assert_eq!(shown["waiting"], "no_notebook_for_language");
+        assert_eq!(shown["waiting"], TOO_OLD);
         assert_eq!(
             queue.send_one(&api, "nope", None).await.unwrap_err(),
             "not_found"
@@ -1365,5 +1366,54 @@ mod tests {
             posts,
             ["POST /api/v1/notebooks/w1/words x-lexpad-surface: desktop.player.transcript"]
         );
+    }
+
+    #[tokio::test]
+    async fn a_too_old_word_stays_too_old_when_a_tap_cannot_send_it() {
+        use crate::word_queue::{NewWord, Saved, WordQueue, TOO_OLD};
+        let word = |headword: &str, lang: Option<&str>| {
+            NewWord {
+                headword: headword.into(),
+                lang: lang.map(str::to_owned),
+                sentence: None,
+                memo: None,
+                from: None,
+            }
+            .checked(None, 1)
+            .unwrap()
+        };
+        let reason = |answer: Result<Saved, String>| match answer.unwrap() {
+            Saved::Queued { reason, .. } => reason,
+            other => panic!("{other:?}"),
+        };
+
+        // No notebook in its language.
+        let (base, _seen, _) = gate_server(Some(r#"{"activity":true}"#)).await;
+        let api = Api::new(&base, signed_in());
+        let queue = WordQueue::load(None);
+        let haus = word("haus", Some("de"));
+        queue.push(haus.clone()).unwrap();
+        queue.flush(&api, None).await;
+        assert_eq!(queue.list()[0].waiting.as_deref(), Some(TOO_OLD));
+        assert_eq!(
+            reason(queue.send_one(&api, &haus.id, None).await),
+            "no_notebook_for_language"
+        );
+        assert_eq!(queue.list()[0].waiting.as_deref(), Some(TOO_OLD));
+        // And a later flush leaves the mark alone.
+        queue.flush(&api, None).await;
+        assert_eq!(queue.list()[0].waiting.as_deref(), Some(TOO_OLD));
+
+        // Offline: nothing answers at all.
+        let offline = Api::new("http://127.0.0.1:9", signed_in());
+        let queue = WordQueue::load(None);
+        let mut old = word("old", None);
+        old.waiting = Some(TOO_OLD.into());
+        queue.push(old.clone()).unwrap();
+        assert_eq!(
+            reason(queue.send_one(&offline, &old.id, None).await),
+            "offline"
+        );
+        assert_eq!(queue.list()[0].waiting.as_deref(), Some(TOO_OLD));
     }
 }

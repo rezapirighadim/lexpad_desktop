@@ -334,8 +334,13 @@ impl WordQueue {
             .into_iter()
             .find(|p| p.id == id)
             .ok_or("not_found")?;
+        // A word kept as too old stays marked so, whatever this try met: the
+        // learner sees it in the same list, and the answer says why it did
+        // not go this time.
         let queued = |reason: &str| -> Result<Saved, String> {
-            self.set_waiting(&p.id, reason);
+            if p.waiting.as_deref() != Some(TOO_OLD) {
+                self.set_waiting(&p.id, reason);
+            }
             Ok(Saved::Queued {
                 pending: self.list().len(),
                 reason: reason.to_owned(),
