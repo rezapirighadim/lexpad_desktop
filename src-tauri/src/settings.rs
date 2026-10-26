@@ -79,16 +79,25 @@ fn on() -> bool {
     true
 }
 
-/// Whether "Lexpad is still here" shows now (Start window spec §6): only
-/// when no Lexpad window is left open, and only the first time ever on this
-/// computer. Marks it shown in the same step, so two windows closing at once
-/// cannot show it twice.
-pub fn take_tray_hint(settings: &mut Settings, any_window_open: bool) -> bool {
-    if any_window_open || settings.tray_hint_shown {
-        return false;
+/// Whether "Lexpad is still here" is due now (Start window spec §6): only
+/// when no Lexpad window is left open, and only until it has once been shown
+/// on this computer (`tray_hint_shown`, set once it really showed).
+pub fn tray_hint_due(settings: &Settings, any_window_open: bool, quitting: bool) -> bool {
+    !quitting && !any_window_open && !settings.tray_hint_shown
+}
+
+/// What a start does to the login item: register it when the learner turned
+/// it on (again each start, so it carries `--login` after an update), remove
+/// one an old install left behind when a new settings file says off, and
+/// otherwise leave the system alone.
+pub fn login_item_action(start_on_login: bool, first_run: bool) -> Option<bool> {
+    if start_on_login {
+        Some(true)
+    } else if first_run {
+        Some(false)
+    } else {
+        None
     }
-    settings.tray_hint_shown = true;
-    true
 }
 
 /// What the learner came for, as their first actions say (Start window spec §3).
@@ -301,17 +310,27 @@ mod tests {
     #[test]
     fn lexpad_is_still_here_shows_once_and_only_with_every_window_shut() {
         let mut s = Settings::default();
-        // A window still open: nothing, and the hint is still to come.
-        assert!(!take_tray_hint(&mut s, true));
-        assert!(!s.tray_hint_shown);
-        // The last window closed: shown, once.
-        assert!(take_tray_hint(&mut s, false));
-        assert!(s.tray_hint_shown);
-        // Every later close: never again, also after a restart (it is saved).
-        assert!(!take_tray_hint(&mut s, false));
+        // A window still open: not yet.
+        assert!(!tray_hint_due(&s, true, false));
+        // Quitting closes every window: never then.
+        assert!(!tray_hint_due(&s, false, true));
+        // The last window closed: due.
+        assert!(tray_hint_due(&s, false, false));
+        // Once it showed it is marked, and never due again, also after a restart.
+        s.tray_hint_shown = true;
+        assert!(!tray_hint_due(&s, false, false));
         let again: Settings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
-        let mut again = again;
-        assert!(!take_tray_hint(&mut again, false));
+        assert!(!tray_hint_due(&again, false, false));
+    }
+
+    #[test]
+    fn the_login_item_is_only_touched_when_asked_or_left_behind() {
+        assert_eq!(login_item_action(true, false), Some(true));
+        assert_eq!(login_item_action(true, true), Some(true));
+        // A first run over an old install's login item takes it away.
+        assert_eq!(login_item_action(false, true), Some(false));
+        // Otherwise the system is left alone.
+        assert_eq!(login_item_action(false, false), None);
     }
 
     #[test]

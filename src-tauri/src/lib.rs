@@ -297,20 +297,25 @@ fn open_first(app: &AppHandle, first: welcome::FirstWindow) {
 
 /// Lexpad opened again while running (the Dock icon, a second launch, the
 /// Start menu): the same table as a launch, as it stands now.
+/// The facts are read off the main thread (the session read may wait on a
+/// token refresh); the window is opened from there as usual.
 pub fn open_again(app: &AppHandle) {
-    let facts = launch_facts(
-        app,
-        Started {
-            at_login: false,
-            player_flag: false,
-        },
-    );
-    // A video opened earlier in this run does not keep Lexpad shut now.
-    let facts = welcome::Launch {
-        opened_file: false,
-        ..facts
-    };
-    open_first(app, welcome::first_window(facts));
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let facts = launch_facts(
+            &app,
+            Started {
+                at_login: false,
+                player_flag: false,
+            },
+        );
+        // A video opened earlier in this run does not keep Lexpad shut now.
+        let facts = welcome::Launch {
+            opened_file: false,
+            ..facts
+        };
+        open_first(&app, welcome::first_window(facts));
+    });
 }
 
 /// The first window, once the app is ready and the system has had
@@ -325,14 +330,35 @@ fn decide_first_window(app: &AppHandle) {
     std::thread::spawn(move || {
         std::thread::sleep(welcome::FIRST_WINDOW_GRACE);
         let facts = launch_facts(&app, started);
-        open_first(&app, welcome::first_window(facts));
+        let first = welcome::first_window(facts);
+        // Asked again on the main thread, where a late `RunEvent::Opened`
+        // is handled: a video that arrived meanwhile is the only window.
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            if !MEDIA_OPENED.load(std::sync::atomic::Ordering::SeqCst) {
+                open_first(&handle, first);
+            }
+        });
     });
 }
+
+/// Files the system handed over before the app had set up (macOS can send
+/// `RunEvent::Opened` that early); `setup` plays them.
+static EARLY_FILES: Mutex<Vec<std::path::PathBuf>> = Mutex::new(Vec::new());
+
+/// Lexpad is quitting: no hint, no window, from here on.
+static EXITING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// One hint at a time: two windows closing together never show it twice.
+static HINT_IN_FLIGHT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// The first time the last of Lexpad's windows closes, once per install:
 /// where Lexpad went (Start window spec §6). A moment later, so a window
 /// that replaces another (the Start window giving way to the Player) counts.
 fn after_window_closed(app: &AppHandle) {
+    if EXITING.load(std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
     let shown = app
         .try_state::<AppState>()
         .and_then(|s| s.settings.lock().ok().map(|s| s.tray_hint_shown))
@@ -355,13 +381,25 @@ fn after_window_closed(app: &AppHandle) {
                 .and_then(|w| w.is_visible().ok())
                 .unwrap_or(false)
         });
-        let mut show = false;
-        let saved = app
-            .state::<AppState>()
-            .update_settings(|s| show = settings::take_tray_hint(s, open));
-        if show && saved.is_ok() {
-            tray::still_here(&app);
+        if EXITING.load(std::sync::atomic::Ordering::SeqCst)
+            || HINT_IN_FLIGHT.swap(true, std::sync::atomic::Ordering::SeqCst)
+        {
+            return;
         }
+        let state = app.state::<AppState>();
+        let due = state
+            .settings
+            .lock()
+            .map(|s| {
+                settings::tray_hint_due(&s, open, EXITING.load(std::sync::atomic::Ordering::SeqCst))
+            })
+            .unwrap_or(false);
+        // Marked shown only once it really showed (no tray icon yet, or
+        // notifications off on Windows: it waits for the next close).
+        if due && tray::still_here(&app) {
+            let _ = state.update_settings(|s| s.tray_hint_shown = true);
+        }
+        HINT_IN_FLIGHT.store(false, std::sync::atomic::Ordering::SeqCst);
     });
 }
 
@@ -487,6 +525,7 @@ pub fn run() {
                 file.save(&settings)
                     .map_err(Box::<dyn std::error::Error>::from)?;
             }
+            let first_run_here = first_run && !smoke;
             let store = session_store(smoke);
             let shortcut = settings.shortcut.clone();
             let start_on_login = settings.start_on_login;
@@ -527,8 +566,10 @@ pub fn run() {
             // Only when the learner turned it on (never on a first run: no
             // "Background Items Added" before they did anything, §6). Applied
             // again each start, so the item carries --login after an update.
-            if start_on_login {
-                apply_start_on_login(&handle, true);
+            // Only when the learner asked, or to take away a login item an
+            // old install left behind (settings::login_item_action).
+            if let Some(on) = settings::login_item_action(start_on_login, first_run_here) {
+                apply_start_on_login(&handle, on);
             }
             #[cfg(target_os = "macos")]
             services_macos::register(&handle);
@@ -537,12 +578,17 @@ pub fn run() {
             // Words saved while signed out or offline, sent when signed in.
             commands::flush_words(&handle);
 
-            // Started by "Open with Lexpad" (Windows passes the file here):
-            // straight into the Player, and nothing else (§2, state B).
-            let opened = open_media(
-                &handle,
-                &media::files_in_args(&std::env::args().collect::<Vec<_>>()),
+            // Started by "Open with Lexpad" (Windows passes the file here, a
+            // Mac may have handed it over before setup): straight into the
+            // Player, and nothing else (§2, state B).
+            let mut files = media::files_in_args(&std::env::args().collect::<Vec<_>>());
+            files.extend(
+                EARLY_FILES
+                    .lock()
+                    .map(|mut f| std::mem::take(&mut *f))
+                    .unwrap_or_default(),
             );
+            let opened = open_media(&handle, &files);
             // "Lexpad Player" in the Start menu or a pinned Player's taskbar
             // button (Windows) starts Lexpad with --player (state G).
             let player_flag = std::env::args().any(|a| a == player_window::PLAYER_FLAG);
@@ -719,6 +765,7 @@ pub fn run() {
                 if code.is_none() {
                     api.prevent_exit();
                 } else {
+                    EXITING.store(true, std::sync::atomic::Ordering::SeqCst);
                     main_window::remember(app);
                     player_window::remember(app);
                 }
@@ -733,6 +780,13 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             tauri::RunEvent::Opened { urls } => {
                 let paths: Vec<_> = urls.iter().filter_map(|u| u.to_file_path().ok()).collect();
+                // Before setup there is no engine yet: setup plays them.
+                if app.try_state::<AppState>().is_none() {
+                    if let Ok(mut early) = EARLY_FILES.lock() {
+                        early.extend(paths);
+                    }
+                    return;
+                }
                 open_media(app, &paths);
             }
             _ => {}

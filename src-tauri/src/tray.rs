@@ -96,17 +96,21 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
 /// on macOS the panel hangs from the menu-bar icon with "Lexpad is still
 /// here"; on Windows one system message says where the icon is (Windows 11
 /// tucks it under the ^ arrow).
-pub fn still_here(app: &AppHandle) {
+/// Says whether it was shown (no icon to hang from, or notifications off on
+/// this computer: not shown, and it stays due).
+pub fn still_here(app: &AppHandle) -> bool {
     #[cfg(target_os = "macos")]
     {
         let rect = app.tray_by_id("main").and_then(|t| t.rect().ok().flatten());
-        if let Some(rect) = rect {
-            let handle = app.clone();
-            let _ = app.run_on_main_thread(move || panel::show_hint(&handle, rect));
-        }
+        let Some(rect) = rect else {
+            return false;
+        };
+        let handle = app.clone();
+        app.run_on_main_thread(move || panel::show_hint(&handle, rect))
+            .is_ok()
     }
     #[cfg(not(target_os = "macos"))]
-    crate::notify::show_app_message(app, "lexpad-still-here", STILL_HERE.0, STILL_HERE.1);
+    crate::notify::show_app_message(app, "lexpad-still-here", STILL_HERE.0, STILL_HERE.1)
 }
 
 /// The Windows toast's title and body (spec §6, mock-up 11).

@@ -342,7 +342,7 @@ pub fn replace_reminders(plan: &[Planned]) {
 /// Shows one message of the app's own now (not from the inbox), unless
 /// notifications on this computer are off.
 #[cfg_attr(target_os = "macos", allow(dead_code))]
-pub fn show_app_message(app: &AppHandle, key: &str, title: &str, body: &str) {
+pub fn show_app_message(app: &AppHandle, key: &str, title: &str, body: &str) -> bool {
     let on = app
         .try_state::<crate::state::AppState>()
         .and_then(|s| s.settings.lock().ok().map(|s| s.notifications))
@@ -350,6 +350,7 @@ pub fn show_app_message(app: &AppHandle, key: &str, title: &str, body: &str) {
     if on {
         show_now(key, title, body);
     }
+    on
 }
 
 /// Shows one message now.

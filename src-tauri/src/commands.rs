@@ -264,6 +264,7 @@ pub fn set_notebook(
 #[tauri::command]
 pub async fn connect(
     app: AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     provider: Option<String>,
 ) -> Result<User, String> {
@@ -320,6 +321,15 @@ pub async fn connect(
     let _ = app.emit("session:changed", ());
     // Words saved before signing in go to the account now.
     flush_words(&app);
+    // Signed in from the Start window, which was closed while the browser was
+    // still open: the sign-in still counts and Lexpad's window opens, as the
+    // page would have asked (`welcome::start_signed_in`).
+    if crate::welcome::finish_for_closed_start(
+        window.label(),
+        app.get_webview_window(crate::welcome::LABEL).is_some(),
+    ) {
+        let _ = crate::welcome::start_signed_in(app.clone());
+    }
     Ok(user)
 }
 

@@ -296,6 +296,13 @@ pub async fn start_open_video(app: AppHandle) -> Result<String, String> {
     Ok(kind.word().into())
 }
 
+/// Whether a sign-in that just finished must open Lexpad's window itself:
+/// it was started from the Start window, which the learner closed while the
+/// browser was still open (the page is gone and cannot ask).
+pub fn finish_for_closed_start(caller: &str, start_open: bool) -> bool {
+    caller == LABEL && !start_open
+}
+
 /// Sign-in from the Start window finished (§4): `focus` learns of it, the
 /// learning window opens (its onboarding or Today), and the Start window goes.
 #[tauri::command]
@@ -408,6 +415,15 @@ mod tests {
             };
             assert_eq!(first_window(l), FirstWindow::Player);
         }
+    }
+
+    #[test]
+    fn a_sign_in_from_a_closed_start_window_still_opens_lexpad() {
+        assert!(finish_for_closed_start(LABEL, false));
+        // The page is still there: it asks itself.
+        assert!(!finish_for_closed_start(LABEL, true));
+        // Signed in from elsewhere (Settings, the card): nothing more.
+        assert!(!finish_for_closed_start("settings", false));
     }
 
     #[test]
