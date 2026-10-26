@@ -266,8 +266,9 @@ The Player's page is the web app's `/player` route (lexpad_front `features/playe
   in the workspace): the core's own lookup and add send `X-Lexpad-Surface` from the capture that
   opened the popup (`commands::surface_of`: the shortcut, the selection or a word typed after it,
   is `desktop.shortcut`; the Services menu `desktop.services`; the tray panel's box `desktop.tray`;
-  a word the video player saves through `words_save`, sent now or from the queue,
-  `desktop.player` or `desktop.player.transcript`, from its `from`),
+  a word the video player saves through `words_save` (sent now or from the queue), or looks up and
+  adds through `lookup` / `add_word`, `desktop.player` or `desktop.player.transcript`, from its
+  `from`, which wins over the popup's capture and refuses any other value),
   and only while GET /config says `activity: true` (`Api::activity_on`, kept 6 hours, a failed read
   is off for 5 minutes). The window's app sets its own (`desktop.app.*`) and the
   proxy lets them through. Background calls (the inbox poll, settings) say nothing.
