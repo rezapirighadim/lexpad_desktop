@@ -124,7 +124,7 @@ export class SettingsView {
         connect.disabled = true;
         connect.textContent = 'Waiting for your browser…';
         note.className = 'note';
-        note.textContent = 'Finish signing in in the browser tab that just opened.';
+        note.textContent = 'Finish in the browser tab that just opened.';
         const cancel = button('btn', 'Cancel', () => void this.backend.cancelConnect());
         row.append(cancel);
         try {

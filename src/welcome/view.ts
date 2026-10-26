@@ -45,7 +45,7 @@ export const COPY = {
   fine: 'Opens your browser. Lexpad never sees your password.',
   other: 'Other ways to sign in',
   waiting: 'Waiting for your browser…',
-  waitingNote: 'Finish signing in in the browser tab that just opened.',
+  waitingNote: 'Finish in the browser tab that just opened.',
   cancel: 'Cancel',
   offline: 'You seem to be offline. Videos still play; try signing in again in a moment.',
   timeout: 'The browser did not answer in time. Try again.',
@@ -53,8 +53,10 @@ export const COPY = {
   cancelled: 'Nothing was signed in.',
   dropTitle: 'Drop to play',
   dropNote: 'Subtitle files with the same name are added too.',
-  dropSubOnly: 'Drop the video too. A subtitle needs its video.',
-  dropNotVideo: "Lexpad plays video files. This one isn't a video.",
+  dropSubOnly: 'Drop the video too',
+  dropSubOnlyNote: 'A subtitle needs its video.',
+  dropNotVideo: "This isn't a video",
+  dropNotVideoNote: 'Lexpad plays video files.',
 } as const;
 
 /**
@@ -435,7 +437,7 @@ export class StartView {
   private refused(why: 'subOnly' | 'notVideo'): void {
     const o = this.els.overlay;
     this.els.overlayTitle.textContent = why === 'subOnly' ? COPY.dropSubOnly : COPY.dropNotVideo;
-    this.els.overlayNote.textContent = '';
+    this.els.overlayNote.textContent = why === 'subOnly' ? COPY.dropSubOnlyNote : COPY.dropNotVideoNote;
     o.classList.add('on', 'refused');
     window.clearTimeout(this.refusedTimer);
     this.refusedTimer = window.setTimeout(() => {

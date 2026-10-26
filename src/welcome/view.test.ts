@@ -262,11 +262,13 @@ describe('the Start window', () => {
       b.drag('drop');
       b.refuse('subOnly');
       expect(drop.classList.contains('on')).toBe(true);
-      expect(drop.textContent).toContain(COPY.dropSubOnly);
+      expect(drop.querySelector('.drop-title')?.textContent).toBe('Drop the video too');
+      expect(drop.querySelector('.drop-note')?.textContent).toBe('A subtitle needs its video.');
       vi.advanceTimersByTime(REFUSED_MS);
       expect(drop.classList.contains('on')).toBe(false);
       b.refuse('notVideo');
-      expect(drop.textContent).toContain(COPY.dropNotVideo);
+      expect(drop.querySelector('.drop-title')?.textContent).toBe("This isn't a video");
+      expect(drop.querySelector('.drop-note')?.textContent).toBe('Lexpad plays video files.');
     } finally {
       vi.useRealTimers();
     }

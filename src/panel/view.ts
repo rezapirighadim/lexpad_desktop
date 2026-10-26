@@ -267,7 +267,7 @@ export class Panel {
       connect.disabled = true;
       connect.textContent = 'Waiting for your browser…';
       note.className = 'note';
-      note.textContent = 'Finish signing in in the browser tab that just opened.';
+      note.textContent = 'Finish in the browser tab that just opened.';
       try {
         await this.backend.connect();
         await this.open();
