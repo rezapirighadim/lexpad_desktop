@@ -284,8 +284,9 @@ The Player's page is the web app's `/player` route (lexpad_front `features/playe
   (`panel::show_hint`, 8 s or Got it) on macOS, or one toast says where the icon is on Windows.
 - **"Lexpad Player" in the Windows Start menu**: the installer's second shortcut, the same exe
   with `--player` and the Player's AppUserModelID (`windows/media-open-with.nsh`; the MSI by the
-  WiX fragment `windows/player-shortcut.wxs`; the Store's MSIX as a second app entry with
-  `uap10:Parameters`, which Windows before 2004 ignores).
+  WiX fragment `windows/player-shortcut.wxs`). Not in the Store's MSIX: the Store refuses a
+  package with more than one app entry (WACK "Application count", 27 Oct 2026), so it has one,
+  and `scripts/msix-smoke.ps1` requires exactly one.
 - **Capabilities.** `player.json` grants the Player the engine, the words queue, the card's
   calls, the API proxy and its own window's controls; `main.json` keeps of the engine only what
   the Player page and Settings → Video player read; `welcome.json` the Start window's commands

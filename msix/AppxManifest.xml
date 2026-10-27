@@ -18,19 +18,18 @@
   - internetClient: it talks to api.lexpad.app.
   - windows.startupTask: "Start Lexpad when I log in" (src-tauri/src/msix.rs).
     Off until the learner turns it on; they can turn it off in Windows.
-  - A second app entry, "Lexpad Player" (owner, 26 Oct 2026: one app, two
-    ways in): the same Lexpad.exe started with dash-dash-player
-    (uap10:Parameters, Windows 10 2004 and later; an older Windows ignores
-    the parameter and opens Lexpad as usual). A second start hands over to
-    the running Lexpad, which opens the Player.
+  - One app entry only: the Microsoft Store does not take a package that
+    defines more than one (WACK "Application count", 27 Oct 2026). So the
+    Store's Lexpad has no "Lexpad Player" tile of its own, as the installer
+    and the MSI have; the Player opens from inside Lexpad (the rail's
+    Player, Ctrl+2, a video file).
 -->
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
-  xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap uap5 uap10 rescap">
+  IgnorableNamespaces="uap uap5 rescap">
 
   <Identity
     Name="RezaPirighadim.Lexpad"
@@ -116,20 +115,6 @@
           </uap:FileTypeAssociation>
         </uap:Extension>
       </Extensions>
-    </Application>
-    <Application Id="LexpadPlayer" Executable="Lexpad.exe" EntryPoint="Windows.FullTrustApplication" uap10:Parameters="--player">
-      <uap:VisualElements
-        DisplayName="Lexpad Player"
-        Description="Watch videos with subtitles and keep the words you click."
-        BackgroundColor="transparent"
-        Square150x150Logo="Assets\Square150x150Logo.png"
-        Square44x44Logo="Assets\Square44x44Logo.png">
-        <uap:DefaultTile
-          Wide310x150Logo="Assets\Wide310x150Logo.png"
-          Square71x71Logo="Assets\SmallTile.png"
-          Square310x310Logo="Assets\LargeTile.png"
-          ShortName="Lexpad Player" />
-      </uap:VisualElements>
     </Application>
   </Applications>
 
