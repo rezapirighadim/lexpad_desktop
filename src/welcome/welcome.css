@@ -378,6 +378,8 @@ h1 {
 /* A refused drop: the same layout as "Drop to play", in the warning colours. */
 .drop.refused {
   border-color: var(--bad);
+  /* One colour family: a soft red ground, never red dashes on mint (round 2, p2). */
+  background: color-mix(in srgb, var(--bad-soft) 60%, var(--bg));
 }
 .drop.refused .tile {
   background: var(--bad-soft);
