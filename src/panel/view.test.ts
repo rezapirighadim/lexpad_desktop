@@ -187,7 +187,9 @@ describe('the one-time hint after the last window closed', () => {
     try {
       const backend = fake();
       const panel = new Panel(root, backend, () => NOW, true);
-      panel.hint();
+      panel.hint(172);
+      expect(document.documentElement.dataset.hint).toBe('');
+      expect(document.documentElement.style.getPropertyValue('--caret-x')).toBe('172px');
       expect(root.querySelector('.still-title')?.textContent).toBe('Lexpad is still here');
       expect(root.querySelector('.still-body')?.textContent).toBe(
         'Click this icon to open Lexpad or a video again.',
@@ -211,6 +213,8 @@ describe('the one-time hint after the last window closed', () => {
       panel.hint();
       await panel.open();
       expect(root.querySelector('.still')).toBeNull();
+      // The caret goes with the hint.
+      expect(document.documentElement.dataset.hint).toBeUndefined();
       vi.advanceTimersByTime(8000);
       expect(backend.hidePanel).not.toHaveBeenCalled();
     } finally {

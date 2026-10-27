@@ -406,3 +406,27 @@ kbd {
   background: var(--surface2);
   font-weight: 650;
 }
+
+/* The hint's caret, pointing up at the menu-bar icon (round 2, p4). The
+   window grows by its height; the panel's box starts under it. */
+:root[data-hint] #root {
+  position: relative;
+  margin-top: 8px;
+  overflow: visible;
+}
+:root[data-hint] #root::before,
+:root[data-hint] #root::after {
+  content: '';
+  position: absolute;
+  left: calc(var(--caret-x, 50%) - 8px);
+  border: 8px solid transparent;
+  border-top: 0;
+}
+:root[data-hint] #root::before {
+  top: -9px;
+  border-bottom-color: var(--line);
+}
+:root[data-hint] #root::after {
+  top: -8px;
+  border-bottom-color: var(--surface);
+}

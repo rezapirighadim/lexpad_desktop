@@ -71,6 +71,7 @@ export class Panel {
   async open(focus = true): Promise<void> {
     const generation = ++this.generation;
     this.hinting = false;
+    delete document.documentElement.dataset.hint;
     let state: State;
     let recent: RecentWord[] = [];
     try {
@@ -110,9 +111,16 @@ export class Panel {
    * Got it, Esc, a click elsewhere or `HINT_MS` put it away; never shown again
    * (the core remembers).
    */
-  hint(): void {
+  hint(caretX?: number): void {
     ++this.generation;
     this.hinting = true;
+    // A caret over the panel points at the menu-bar icon (round 2, p4): the
+    // core says where, in this page's pixels from the panel's left edge.
+    const html = document.documentElement;
+    html.dataset.hint = '';
+    if (caretX !== undefined && Number.isFinite(caretX)) {
+      html.style.setProperty('--caret-x', `${String(Math.round(caretX))}px`);
+    }
     const box = el('section', 'still');
     box.setAttribute('role', 'status');
     const head = el('header', 'top');
