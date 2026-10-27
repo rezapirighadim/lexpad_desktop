@@ -60,6 +60,20 @@ fn task() -> windows::core::Result<StartupTask> {
     StartupTask::GetAsync(&HSTRING::from(STARTUP_TASK))?.get()
 }
 
+/// Whether Windows started this packaged copy by its startup task (at
+/// login), which passes no arguments: the installed copy is told by
+/// `--login` instead (`crate::LOGIN_FLAG`).
+pub fn started_at_login() -> bool {
+    if !is_packaged() {
+        return false;
+    }
+    on_mta(|| {
+        let args = windows::ApplicationModel::AppInstance::GetActivatedEventArgs()?;
+        Ok(args.Kind()? == windows::ApplicationModel::Activation::ActivationKind::StartupTask)
+    })
+    .unwrap_or(false)
+}
+
 /// Whether the package's startup task is on.
 pub fn startup_enabled() -> Result<bool, String> {
     on_mta(|| Ok(is_on(task()?.State()?)))

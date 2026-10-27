@@ -167,6 +167,25 @@ pub fn toggle(app: &AppHandle, icon: tauri::Rect) {
 }
 
 pub(crate) fn show(app: &AppHandle, icon: tauri::Rect) {
+    show_with(app, icon, "panel:open");
+}
+
+/// The panel as the one-time "Lexpad is still here" hint (Start window spec
+/// §6): placed from the icon like the panel, the page draws the hint.
+// Windows says it with a toast instead (tray::still_here).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn show_hint(app: &AppHandle, icon: tauri::Rect) {
+    show_with(app, icon, "panel:hint");
+}
+
+/// How far from the panel's left edge, in the page's pixels, the hint's
+/// caret points: at the icon's centre, kept off the rounded corners.
+pub fn caret_x(panel: Area, icon: Area, unit: f64) -> f64 {
+    const CORNER: f64 = 18.0;
+    ((icon.centre().0 - panel.x) / unit).clamp(CORNER, WIDTH - CORNER)
+}
+
+fn show_with(app: &AppHandle, icon: tauri::Rect, event: &str) {
     let Some(win) = app.get_webview_window(LABEL) else {
         return;
     };
@@ -195,8 +214,10 @@ pub(crate) fn show(app: &AppHandle, icon: tauri::Rect) {
         })
         .collect();
     let height = SHOWN.lock().map(|s| s.height).unwrap_or(420.0);
+    let mut caret = WIDTH / 2.0;
     if let Some((_, screen, icon_units)) = screen_for(&screens, icon, placement::LOGICAL) {
         let rect = rect_for(&screen, icon_units, height, placement::LOGICAL);
+        caret = caret_x(rect, icon_units, screen.unit(placement::LOGICAL));
         let _ = placement::apply(&win, rect);
         if let Ok(mut s) = SHOWN.lock() {
             s.icon = Some(capture::Rect {
@@ -215,7 +236,8 @@ pub(crate) fn show(app: &AppHandle, icon: tauri::Rect) {
     }
     let _ = win.show();
     let _ = win.set_focus();
-    let _ = win.emit("panel:open", ());
+    // The hint points at the icon; the panel itself needs nothing.
+    let _ = win.emit(event, caret);
 }
 
 /// The panel's rectangle for an icon on a screen (placement units), cut to
@@ -277,6 +299,20 @@ pub fn fit(app: &AppHandle, height: f64) -> tauri::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_hints_caret_points_at_the_icon_and_stays_off_the_corners() {
+        let panel = Area::new(1000.0, 30.0, WIDTH, 120.0);
+        let icon = Area::new(1150.0, 0.0, 40.0, 24.0);
+        assert_eq!(caret_x(panel, icon, 1.0), 170.0);
+        // An icon past the panel's end (the panel slid inside the screen).
+        let far = Area::new(1400.0, 0.0, 40.0, 24.0);
+        assert_eq!(caret_x(panel, far, 1.0), WIDTH - 18.0);
+        // Windows works in pixels: the page's pixels are those over the scale.
+        let px = Area::new(2000.0, 0.0, WIDTH * 2.0, 240.0);
+        let icon_px = Area::new(2300.0, 0.0, 80.0, 48.0);
+        assert_eq!(caret_x(px, icon_px, 2.0), 170.0);
+    }
 
     fn area(x: f64, y: f64, w: f64, h: f64) -> Area {
         Area { x, y, w, h }

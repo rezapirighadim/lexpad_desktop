@@ -15,27 +15,14 @@ use crate::player_window::{self, Opened};
 use crate::settings::{OpenAt, Place};
 use crate::state::AppState;
 
-/// Where launching Lexpad goes (the Dock, a second launch, the tray's "Open
-/// Lexpad"): Settings' "When I open Lexpad" when it names a place, else the
-/// window last in front (§24.3).
+/// Where launching Lexpad goes while signed in (the Dock, a second launch;
+/// `welcome::first_window`): Settings' "When I open Lexpad" when it names a
+/// place, else the window last in front (§24.3).
 pub fn launch_place(open_at: OpenAt, last: Place) -> Place {
     match open_at {
         OpenAt::Today => Place::Learn,
         OpenAt::Player => Place::Player,
         OpenAt::LeftOff => last,
-    }
-}
-
-/// Opens Lexpad where the learner left off. "Open Lexpad in my browser
-/// instead" still sends the learning side to the browser, as before.
-pub fn open_where_left_off(app: &AppHandle) {
-    let (open_at, last) = app
-        .try_state::<AppState>()
-        .and_then(|s| s.settings.lock().ok().map(|s| (s.open_at, s.last_place)))
-        .unwrap_or((OpenAt::LeftOff, Place::Learn));
-    match launch_place(open_at, last) {
-        Place::Player => player_window::open(app, Opened::Launch),
-        Place::Learn => crate::open_web(app, None),
     }
 }
 
@@ -108,7 +95,7 @@ fn to_player(app: &AppHandle, command: &str) {
 const PLAYER_ITEMS: &[(&str, &str, &str, Option<&str>)] = &[
     // id, title, Player command, accelerator (⌘ ones only: a bare key in a
     // menu would be taken from every text field)
-    ("m.open", "Open a Video…", "open", Some("CmdOrCtrl+O")),
+    ("m.open", "Open Video…", "open", Some("CmdOrCtrl+O")),
     ("m.play", "Play or Pause", "playPause", None),
     ("m.back", "Back 5 Seconds", "back5", None),
     ("m.forward", "Forward 5 Seconds", "forward5", None),
@@ -136,9 +123,21 @@ const PLAYER_ITEMS: &[(&str, &str, &str, Option<&str>)] = &[
     ("m.shortcuts", "Keyboard Shortcuts", "shortcuts", None),
 ];
 
-/// Handles the app menu's own items (ids starting "m."); everything else
-/// (the tray's menu) is left to its own handler.
+/// The Player's right-click menu tags its items' ids with this, followed by
+/// the Player command the item sends (`player_window::player_context_menu`).
+pub const CONTEXT_PREFIX: &str = "ctx:";
+
+/// Handles the app menu's own items (ids starting "m.") and the Player's
+/// right-click menu ("ctx:"); everything else (the tray's menu) is left to
+/// its own handler.
 pub fn handle(app: &AppHandle, id: &str) {
+    if let Some(command) = id
+        .strip_prefix(CONTEXT_PREFIX)
+        .and_then(player_window::context_command)
+    {
+        let _ = app.emit_to(player_window::LABEL, "player:menu", command);
+        return;
+    }
     match id {
         "m.lexpad" => main_window::open(app, None),
         "m.player" => player_window::open(app, Opened::App),
@@ -161,8 +160,8 @@ pub fn handle(app: &AppHandle, id: &str) {
     }
 }
 
-/// The macOS menu bar: Lexpad, Edit (so text fields copy and paste),
-/// Playback, Subtitles, Window (Lexpad ⌘1, Lexpad Player ⌘2) and Help.
+/// The macOS menu bar: Lexpad, File (Open Video… ⌘O), Edit (so text fields
+/// copy and paste), Playback, Subtitles and Window (Lexpad ⌘1, Lexpad Player ⌘2).
 #[cfg(target_os = "macos")]
 pub fn build(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
     use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
@@ -181,7 +180,18 @@ pub fn build(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
         "Lexpad",
         true,
         &[
-            &PredefinedMenuItem::about(app, Some("About Lexpad"), Some(AboutMetadata::default()))?,
+            &PredefinedMenuItem::about(
+                app,
+                Some("About Lexpad"),
+                Some(AboutMetadata {
+                    // The Start window's film: CC BY 3.0 asks for the credit.
+                    credits: Some(
+                        "Start window picture: Tears of Steel (CC) Blender Foundation | mango.blender.org, CC BY 3.0."
+                            .into(),
+                    ),
+                    ..AboutMetadata::default()
+                }),
+            )?,
             &PredefinedMenuItem::separator(app)?,
             &item("m.settings", "Settings…", Some("CmdOrCtrl+,"))?,
             &PredefinedMenuItem::separator(app)?,
@@ -192,6 +202,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
             &PredefinedMenuItem::quit(app, Some("Quit Lexpad"))?,
         ],
     )?;
+    let file = Submenu::with_items(app, "File", true, &[&player_item("m.open")?])?;
     let edit = Submenu::with_items(
         app,
         "Edit",
@@ -211,8 +222,6 @@ pub fn build(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
         "Playback",
         true,
         &[
-            &player_item("m.open")?,
-            &PredefinedMenuItem::separator(app)?,
             &player_item("m.play")?,
             &player_item("m.back")?,
             &player_item("m.forward")?,
@@ -261,7 +270,10 @@ pub fn build(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
             &PredefinedMenuItem::close_window(app, None)?,
         ],
     )?;
-    Menu::with_items(app, &[&lexpad, &edit, &playback, &subtitles, &window])
+    Menu::with_items(
+        app,
+        &[&lexpad, &file, &edit, &playback, &subtitles, &window],
+    )
 }
 
 /// Windows has no menu bar: Ctrl+1 and Ctrl+2 are answered by each window's

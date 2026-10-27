@@ -10,3 +10,5 @@ docs/e2e/*.log
 docs/e2e/*.txt
 icons-src
 web
+# WiX fragments are XML (Prettier reads .wxs as WeChat script)
+*.wxs

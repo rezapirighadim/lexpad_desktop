@@ -327,3 +327,10 @@ fn from_clipboard() -> Option<String> {
     restore(&pb, saved);
     text.and_then(|t| tidy(&t))
 }
+
+/// Puts plain text on the general pasteboard, replacing what was there.
+pub fn write_text(text: &str) -> bool {
+    let pb = NSPasteboard::generalPasteboard();
+    pb.clearContents();
+    pb.setString_forType(&NSString::from_str(text), unsafe { NSPasteboardTypeString })
+}

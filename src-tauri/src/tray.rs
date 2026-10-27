@@ -92,6 +92,34 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+/// The one-time hint after the last window closed (Start window spec §6):
+/// on macOS the panel hangs from the menu-bar icon with "Lexpad is still
+/// here"; on Windows one system message says where the icon is (Windows 11
+/// tucks it under the ^ arrow).
+/// Says whether it was shown (no icon to hang from, or notifications off on
+/// this computer: not shown, and it stays due).
+pub fn still_here(app: &AppHandle) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        let rect = app.tray_by_id("main").and_then(|t| t.rect().ok().flatten());
+        let Some(rect) = rect else {
+            return false;
+        };
+        let handle = app.clone();
+        app.run_on_main_thread(move || panel::show_hint(&handle, rect))
+            .is_ok()
+    }
+    #[cfg(not(target_os = "macos"))]
+    crate::notify::show_app_message(app, "lexpad-still-here", STILL_HERE.0, STILL_HERE.1)
+}
+
+/// The Windows toast's title and body (spec §6, mock-up 11).
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+pub const STILL_HERE: (&str, &str) = (
+    "Lexpad is still running",
+    "Find it in the taskbar corner, under the ^ arrow. Click it to open Lexpad or a video again.",
+);
+
 /// Replaces the single image the tray crate makes with one that has a 1x
 /// and a 2x representation, marked as a template.
 #[cfg(target_os = "macos")]
@@ -173,7 +201,16 @@ pub fn pick_size(sizes: &[u32], want: u32) -> Option<u32> {
 
 #[cfg(test)]
 mod tests {
-    use super::pick_size;
+    use super::{pick_size, STILL_HERE};
+
+    #[test]
+    fn the_windows_hint_says_what_the_spec_says() {
+        assert_eq!(STILL_HERE.0, "Lexpad is still running");
+        assert_eq!(
+            STILL_HERE.1,
+            "Find it in the taskbar corner, under the ^ arrow. Click it to open Lexpad or a video again."
+        );
+    }
 
     #[test]
     fn the_tray_uses_the_frame_for_the_display_scaling() {

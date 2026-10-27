@@ -139,6 +139,18 @@ foreach ($lnk in $links) {
   if ($iconFile -and $iconFile -ne $exeFull) { Fail "$lnk takes its icon from $iconFile" }
 }
 
+# The second Start menu entry, "Lexpad Player": the same exe with --player
+# (src-tauri/windows/media-open-with.nsh).
+$player = Get-ChildItem (Join-Path ([Environment]::GetFolderPath('Programs')) '*') -Recurse -Filter 'Lexpad Player.lnk' | Select-Object -First 1
+if (-not $player) { Fail 'no "Lexpad Player" shortcut in the Start menu' }
+else {
+  $p = $shell.CreateShortcut($player.FullName)
+  Write-Host "Shortcut $($player.FullName)"
+  Write-Host "  target $($p.TargetPath) $($p.Arguments)"
+  if ($p.TargetPath -ne $exeFull) { Fail "Lexpad Player points at $($p.TargetPath), not $exeFull" }
+  if ($p.Arguments -ne '--player') { Fail "Lexpad Player starts with '$($p.Arguments)', not --player" }
+}
+
 # 3. What Explorer draws.
 $out = Join-Path (Get-Location) 'icon-check'
 New-Item -ItemType Directory -Force $out | Out-Null

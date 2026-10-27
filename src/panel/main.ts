@@ -19,7 +19,8 @@ const panel = new Panel(root, tauriBackend);
 
 let last = 0;
 new ResizeObserver(() => {
-  const height = Math.ceil(root.getBoundingClientRect().height);
+  // To the panel's bottom edge: the hint's caret sits above the panel's box.
+  const height = Math.ceil(root.getBoundingClientRect().bottom);
   if (height !== last) {
     last = height;
     void tauriBackend.fitPanel(height);
@@ -28,6 +29,9 @@ new ResizeObserver(() => {
 
 const redraw = (): void => void panel.open(false);
 void listen('panel:open', () => void panel.open(true));
+void listen<number>('panel:hint', (e) => {
+  panel.hint(typeof e.payload === 'number' ? e.payload : undefined);
+});
 void listen('session:changed', redraw);
 void listen('settings:changed', redraw);
 void listen('recent:changed', redraw);

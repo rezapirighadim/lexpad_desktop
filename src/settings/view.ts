@@ -8,6 +8,7 @@ import { PERMISSION_POLL_MS, PERMISSION_STALE } from '../lib/accessibility.js';
 import { failureOf } from '../lib/backend.js';
 import { acceleratorOf, isMac, prettyShortcut } from '../lib/shortcut.js';
 import type { AppInfo, Settings, State } from '../lib/types.js';
+import { FILM } from '../welcome/view.js';
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -114,16 +115,16 @@ export class SettingsView {
       };
     } else {
       row.append(
-        el('div', 'grow', 'Not connected. You allow this app in your browser; it never sees your password.'),
+        el('div', 'grow', 'Not signed in. Signing in opens your browser; Lexpad never sees your password.'),
       );
-      const connect = button('btn primary', 'Connect to Lexpad', () => void go());
+      const connect = button('btn primary', 'Sign in…', () => void go());
       row.append(connect);
       s.append(row, note);
       const go = async (): Promise<void> => {
         connect.disabled = true;
-        connect.textContent = 'Waiting for the browser…';
+        connect.textContent = 'Waiting for your browser…';
         note.className = 'note';
-        note.textContent = 'Allow Lexpad in the browser tab that just opened.';
+        note.textContent = 'Finish in the browser tab that just opened.';
         const cancel = button('btn', 'Cancel', () => void this.backend.cancelConnect());
         row.append(cancel);
         try {
@@ -132,15 +133,15 @@ export class SettingsView {
         } catch (cause) {
           const reason = failureOf(cause);
           connect.disabled = false;
-          connect.textContent = 'Connect to Lexpad';
+          connect.textContent = 'Sign in…';
           cancel.remove();
           note.className = reason === 'cancelled' ? 'note' : 'note bad';
           note.textContent =
             reason === 'cancelled'
-              ? 'Nothing was connected.'
+              ? 'Nothing was signed in.'
               : reason === 'timeout'
                 ? 'The browser did not answer in time. Try again.'
-                : 'Could not connect. Try again.';
+                : 'Could not sign in. Try again.';
         }
       };
     }
@@ -262,7 +263,7 @@ export class SettingsView {
   private notebook(state: State): HTMLElement {
     const s = section('Notebook');
     if (!state.connected) {
-      s.append(el('p', 'dim', 'Connect to choose the notebook new words go to.'));
+      s.append(el('p', 'dim', 'Sign in to choose the notebook new words go to.'));
       return s;
     }
     if (state.notebooks.length === 0) {
@@ -360,6 +361,8 @@ export class SettingsView {
   private about(info: AppInfo): HTMLElement {
     const s = section('About');
     s.append(el('p', 'dim', `Lexpad for ${this.mac ? 'macOS' : 'Windows'}, version ${info.version}`));
+    // The Start window's film (CC BY 3.0 asks for the credit wherever it is used).
+    s.append(el('p', 'dim small', `Start window picture: ${FILM.credit.replace(/^Film: /, '')}, CC BY 3.0.`));
     return s;
   }
 }

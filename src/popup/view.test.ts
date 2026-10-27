@@ -300,7 +300,7 @@ describe('Popup', () => {
       return { id: 'u', email: 'e', displayName: 'E' };
     });
     await new Popup(root, backend).open();
-    expect(root.querySelector('.word')?.textContent).toBe('Connect Lexpad');
+    expect(root.querySelector('.word')?.textContent).toBe('Sign in to Lexpad');
     expect(root.textContent).toContain('never sees your password');
     root.querySelector<HTMLButtonElement>('.btn.primary')!.click();
     await flush();

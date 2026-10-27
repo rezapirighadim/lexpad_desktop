@@ -4,11 +4,13 @@ Use the installer from the latest `build` run on GitHub (Actions → build → a
 `lexpad-desktop-Windows`). It is unsigned, so SmartScreen warns: More info → Run anyway.
 
 1. **Install.** Run `Lexpad_<version>_x64-setup.exe`. It installs for this user only (no admin
-   prompt). Lexpad's icon appears in the system tray (it may sit under the ^ arrow). The Settings
-   window opens on first run.
+   prompt). Lexpad's icon appears in the system tray (it may sit under the ^ arrow). The Start
+   window opens on first run (the Player's loop, Open a video…, Continue with Google / Apple),
+   and nothing is added to Settings → Apps → Startup. The Start menu has "Lexpad" and
+   "Lexpad Player"; "Lexpad Player" opens straight into the Player.
 2. **Single instance.** Start Lexpad again from the Start menu. No second tray icon appears; the
-   Settings window comes forward.
-3. **Connect.** In Settings, Connect to Lexpad. The browser opens app.lexpad.app/connect-desktop.
+   Start window comes forward (signed out) or the window last in front (signed in).
+3. **Sign in.** In Settings, Sign in…. The browser opens app.lexpad.app/connect-desktop.
    Sign in there if needed, press Allow. The tab says "Lexpad is connected"; Settings shows your
    e-mail. In the web app, Settings → Account → Signed-in devices lists "Desktop app · Windows".
 4. **Credential Manager.** Control Panel → Credential Manager → Windows Credentials lists
@@ -101,5 +103,17 @@ Use the installer from the latest `build` run on GitHub (Actions → build → a
       player, and a second file opens in the same Lexpad. Uninstalling removes the entries.
     - The MSIX copy: "Open with" lists Lexpad too, and ffmpeg.exe and ffprobe.exe are in the
       package (the player works).
+
+24. **First run and the Player's window (0.3.19).**
+    - Fresh profile, double-click a video with "Open with Lexpad": only the Player opens and
+      plays; no Start window, no Settings window.
+    - The Start window: Ctrl+O opens the file dialog; dropping a .srt alone says "Drop the video
+      too"; Esc does nothing; Ctrl+W closes it. Closing the last window once shows the toast
+      "Lexpad is still running"; never again after that.
+    - The Player: drag on the picture moves the window, a click still pauses, a double-click is
+      full screen; no blue line at the window's foot (accent colour on title bars and borders
+      switched on in Settings → Personalisation → Colours); right-click shows the system menu
+      with the same items as on the Mac; two subtitles sit where they do on the Mac at 100, 125
+      and 150% scaling.
 
 Report anything that differs, with a screenshot, in the to-do list.

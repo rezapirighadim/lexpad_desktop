@@ -127,10 +127,10 @@ describe('Settings', () => {
     expect(root.querySelector('.keys')?.textContent).toBe('⌘⇧L');
   });
 
-  it('offers to connect when signed out', async () => {
+  it('offers to sign in when signed out', async () => {
     const b = backend({ connected: false, user: null, notebooks: [] });
     await new SettingsView(root, b, false).render();
-    expect(root.textContent).toContain('it never sees your password');
+    expect(root.textContent).toContain('Lexpad never sees your password');
     expect(root.querySelector('.keys')?.textContent).toBe('Ctrl+Shift+L');
   });
 });

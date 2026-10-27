@@ -1,6 +1,6 @@
 [package]
 name = "lexpad-desktop"
-version = "0.3.18"
+version = "0.3.19"
 description = "Lexpad for macOS and Windows: add a word from any app"
 authors = ["Lexpad"]
 license-file = "../LICENSE"
@@ -97,6 +97,8 @@ windows = { version = "0.61", features = [
   "Foundation_Collections",
   "UI_Notifications",
   "ApplicationModel",
+  "ApplicationModel_Activation",
+  "Win32_Graphics_Dwm",
 ] }
 
 [profile.release]

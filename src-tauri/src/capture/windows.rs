@@ -337,3 +337,33 @@ fn from_clipboard() -> Option<String> {
     restore(saved);
     text.and_then(|t| tidy(&t))
 }
+
+/// Puts plain text on the clipboard (CF_UNICODETEXT), replacing what was there.
+pub fn write_text(text: &str) -> bool {
+    let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+    if !open_clipboard() {
+        return false;
+    }
+    // SAFETY: the clipboard is open by this thread; the memory is ours until
+    // SetClipboardData takes it.
+    let ok = unsafe {
+        let _ = EmptyClipboard();
+        match GlobalAlloc(GMEM_MOVEABLE, wide.len() * 2) {
+            Ok(global) => {
+                let p = GlobalLock(global) as *mut u16;
+                if p.is_null() {
+                    false
+                } else {
+                    std::ptr::copy_nonoverlapping(wide.as_ptr(), p, wide.len());
+                    let _ = GlobalUnlock(global);
+                    SetClipboardData(CF_UNICODETEXT, Some(HANDLE(global.0))).is_ok()
+                }
+            }
+            Err(_) => false,
+        }
+    };
+    unsafe {
+        let _ = CloseClipboard();
+    }
+    ok
+}

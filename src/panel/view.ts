@@ -39,8 +39,13 @@ function button(className: string, text: string, onClick: () => void): HTMLButto
   return b;
 }
 
+/** How long the one-time "Lexpad is still here" hint stays (Start window spec §6). */
+export const HINT_MS = 8000;
+
 export class Panel {
   private state: State | undefined;
+  /** The one-time hint is on show (`hint`), until the panel opens as itself. */
+  private hinting = false;
   /** Bumped on every render, so an answer for an older one is dropped. */
   private generation = 0;
 
@@ -65,6 +70,8 @@ export class Panel {
    */
   async open(focus = true): Promise<void> {
     const generation = ++this.generation;
+    this.hinting = false;
+    delete document.documentElement.dataset.hint;
     let state: State;
     let recent: RecentWord[] = [];
     try {
@@ -98,6 +105,38 @@ export class Panel {
     else if (activeId !== '') document.getElementById(activeId)?.focus();
   }
 
+  /**
+   * The one-time hint after the last window closed (Start window spec §6,
+   * mock-up 10): hanging from the menu-bar icon, it says where Lexpad went.
+   * Got it, Esc, a click elsewhere or `HINT_MS` put it away; never shown again
+   * (the core remembers).
+   */
+  hint(caretX?: number): void {
+    ++this.generation;
+    this.hinting = true;
+    // A caret over the panel points at the menu-bar icon (round 2, p4): the
+    // core says where, in this page's pixels from the panel's left edge.
+    const html = document.documentElement;
+    html.dataset.hint = '';
+    if (caretX !== undefined && Number.isFinite(caretX)) {
+      html.style.setProperty('--caret-x', `${String(Math.round(caretX))}px`);
+    }
+    const box = el('section', 'still');
+    box.setAttribute('role', 'status');
+    const head = el('header', 'top');
+    const mark = el('div', 'logo');
+    mark.innerHTML = MARK;
+    head.append(mark, el('h1', 'still-title', 'Lexpad is still here'));
+    const ok = button('btn still-ok', 'Got it', () => void this.backend.hidePanel());
+    box.append(head, el('p', 'still-body', 'Click this icon to open Lexpad or a video again.'), ok);
+    // No focus moved here: a ring on Got it would look like a keyboard was in
+    // use (Esc, a click elsewhere or Tab still reach it).
+    this.root.replaceChildren(box);
+    window.setTimeout(() => {
+      if (this.hinting) void this.backend.hidePanel();
+    }, HINT_MS);
+  }
+
   /* ---------------------------------------------------------- parts */
 
   private header(state: State | null): HTMLElement {
@@ -107,7 +146,7 @@ export class Panel {
     const who = el('div', 'who');
     who.append(el('div', 'name', 'Lexpad'));
     const user = state?.user;
-    const account = el('div', 'account', user ? user.email : state ? 'Not connected' : '');
+    const account = el('div', 'account', user ? user.email : state ? 'Not signed in' : '');
     if (user?.displayName) account.title = user.displayName;
     who.append(account);
     head.append(mark, who);
@@ -227,33 +266,33 @@ export class Panel {
       el(
         'p',
         '',
-        'Connect this app to your Lexpad account to add words from any app. You allow it in your browser; the app never sees your password.',
+        'Sign in to add words from any app. It opens your browser; Lexpad never sees your password.',
       ),
     );
     const note = el('p', 'note');
-    const connect = button('btn primary', 'Connect to Lexpad', () => void go());
+    const connect = button('btn primary', 'Sign in…', () => void go());
     box.append(connect, note);
     const go = async (): Promise<void> => {
       connect.disabled = true;
-      connect.textContent = 'Waiting for the browser…';
+      connect.textContent = 'Waiting for your browser…';
       note.className = 'note';
-      note.textContent = 'Allow Lexpad in the browser tab that just opened.';
+      note.textContent = 'Finish in the browser tab that just opened.';
       try {
         await this.backend.connect();
         await this.open();
       } catch (cause) {
         const reason = failureOf(cause);
         connect.disabled = false;
-        connect.textContent = 'Connect to Lexpad';
+        connect.textContent = 'Sign in…';
         note.className = reason === 'cancelled' ? 'note' : 'note bad';
         note.textContent =
           reason === 'cancelled'
-            ? 'Nothing was connected.'
+            ? 'Nothing was signed in.'
             : reason === 'offline'
               ? 'You seem to be offline. Try again in a moment.'
               : reason === 'timeout'
                 ? 'The browser did not answer in time. Try again.'
-                : 'Could not connect. Try again.';
+                : 'Could not sign in. Try again.';
       }
     };
     return [this.header(this.state ?? null), box];
