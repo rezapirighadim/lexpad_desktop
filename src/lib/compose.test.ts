@@ -77,3 +77,10 @@ describe('plan', () => {
     expect(pick(words, 0, 4)).toBeUndefined();
   });
 });
+
+describe('the note the web app reads back', () => {
+  it('starts with the same words as lexpad_front lib/seenIn.ts', async () => {
+    const { SEEN_IN } = await import('./compose.js');
+    expect(SEEN_IN).toBe('Seen in ');
+  });
+});

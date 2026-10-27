@@ -12,6 +12,13 @@
 import { asHeadword, MAX_WORDS, sentenceAround } from './text.js';
 import type { Capture, Card, Source } from './types.js';
 
+/**
+ * The note's first words. The web app reads them back to say where a word came
+ * from (lexpad_front `apps/web/src/lib/seenIn.ts`, `SEEN_IN`): change both or
+ * neither. A `source` field on the server would be the lasting fix.
+ */
+export const SEEN_IN = 'Seen in ';
+
 /** The most a private note may hold, as the API allows. */
 const MAX_MEMO = 500;
 
@@ -36,7 +43,7 @@ export function compose(headword: string, source: Source, card: Card | undefined
     out.meanings = kept.map((m) => (m.meaning.trim() === '' ? { ...m, meaning: '—' } : m));
   }
   const app = seenIn(source.app);
-  if (app !== '') out.memo = `Seen in ${app}`.slice(0, MAX_MEMO);
+  if (app !== '') out.memo = `${SEEN_IN}${app}`.slice(0, MAX_MEMO);
   return out;
 }
 
