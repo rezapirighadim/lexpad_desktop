@@ -404,6 +404,10 @@ The Player's page is the web app's `/player` route (lexpad_front `features/playe
 - After any change in `lexpad_front` that the window should carry: commit it there, run
   `scripts/build-web.sh <front checkout>` here and commit `web/` with the front commit in the
   message. The script refuses a dirty front.
+- **`web/` holds no source map** (owner, 27 Oct 2026): this repository and its installers are
+  public, and a map is the whole readable source of `lexpad_front`. The front's native build
+  makes none; `build-web.sh` refuses a `web/` with a `.map` or a `sourceMappingURL`, and
+  `src/webBundle.test.ts` (in `pnpm check` and CI) fails on one.
 - Rust comes from the official rustup installer into the user's home (`~/.cargo`), no sudo.
 - **Microsoft Store**: the tag's CI run also makes `Lexpad_<version>_x64.msix` (artifact
   `lexpad-desktop-msix`, unsigned; the Store signs it). Each release is a new Partner Center

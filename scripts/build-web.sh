@@ -37,6 +37,15 @@ version=$(sed -n 's/.*"version": "\(.*\)".*/\1/p' "$here/package.json" | head -n
 )
 rm -rf "$here/web"
 cp -R "$web/dist-native" "$here/web"
+# No source maps leave in this public repository (owner, 27 Oct 2026): the
+# native build makes none; refuse anything that slipped in.
+maps=$(find "$here/web" -name '*.map' | wc -l | tr -d ' ')
+pointers=$(grep -rl 'sourceMappingURL=' "$here/web" --include='*.js' --include='*.css' | wc -l | tr -d ' ')
+if [ "$maps" != "0" ] || [ "$pointers" != "0" ]; then
+  echo "build-web: web/ has $maps source maps and $pointers files pointing at one; the native build must make none" >&2
+  rm -rf "$here/web"
+  exit 1
+fi
 cat > "$here/web/PROVENANCE.txt" <<INFO
 The Lexpad web app, built for the desktop app's main window by scripts/build-web.sh.
 Do not edit; build again.
