@@ -1,0 +1,2 @@
+function e(e,t){return t===void 0?{lexAsk:e}:{lexAsk:e,lexNotebookId:t}}function t(e){if(typeof e!=`object`||!e||!(`lexAsk`in e))return;let t=e.lexAsk;if(typeof t!=`string`||t.trim()===``)return;let n=`lexNotebookId`in e?e.lexNotebookId:void 0;return typeof n==`string`&&n!==``?{question:t,notebookId:n}:{question:t}}export{e as n,t};
+//# sourceMappingURL=handoff-LDZlwQB4.js.map
