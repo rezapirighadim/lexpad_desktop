@@ -106,6 +106,20 @@ pub fn capture() -> Capture {
     return Capture::empty(Permission::NotNeeded, None);
 }
 
+/// Puts plain text on the system clipboard (the Player's "Copy Line", a
+/// learner's own command). Says whether it was written.
+pub fn write_text(text: &str) -> bool {
+    #[cfg(target_os = "macos")]
+    return macos::write_text(text);
+    #[cfg(windows)]
+    return windows::write_text(text);
+    #[cfg(not(any(target_os = "macos", windows)))]
+    {
+        let _ = text;
+        false
+    }
+}
+
 /// Whether reading selections is allowed, without asking.
 pub fn permission() -> Permission {
     #[cfg(target_os = "macos")]

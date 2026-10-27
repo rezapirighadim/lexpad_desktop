@@ -750,6 +750,7 @@ pub fn run() {
             player_window::player_buttons,
             player_window::player_take_play,
             player_window::player_context_menu,
+            player_window::player_copy_text,
             welcome::welcome_state,
             welcome::start_open_video,
             welcome::start_signed_in,

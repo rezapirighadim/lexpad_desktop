@@ -89,6 +89,7 @@ fn main() {
             "player_buttons",
             "player_take_play",
             "player_context_menu",
+            "player_copy_text",
             "set_open_at",
             "open_at",
             // The Start window (welcome.rs).

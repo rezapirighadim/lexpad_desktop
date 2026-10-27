@@ -624,6 +624,33 @@ impl MenuAt {
     }
 }
 
+/// The longest text "Copy Line" may put on the clipboard: several subtitle
+/// lines at once, far more than one cue ever holds.
+const COPY_MAX_CHARS: usize = 4000;
+
+/// Whether a text may go on the clipboard: not empty, not longer than
+/// `COPY_MAX_CHARS`, and no control characters but line breaks and tabs.
+pub fn copyable(text: &str) -> bool {
+    !text.trim().is_empty()
+        && text.chars().count() <= COPY_MAX_CHARS
+        && text
+            .chars()
+            .all(|c| !c.is_control() || c == '\n' || c == '\t')
+}
+
+/// "Copy Line" (the Player's right-click menu): the subtitle line on screen,
+/// onto the system clipboard. Only the Player may ask, and only plain text.
+#[tauri::command]
+pub fn player_copy_text(window: tauri::WebviewWindow, text: String) -> Result<bool, String> {
+    if window.label() != LABEL {
+        return Err("not the Player".into());
+    }
+    if !copyable(&text) {
+        return Err("not a line".into());
+    }
+    Ok(crate::capture::write_text(&text))
+}
+
 /// What the Player's card needs: signed in or not, the notebooks, and the
 /// one words go to. The same reading as the desktop card's `state`.
 #[derive(serde::Serialize)]
@@ -919,6 +946,15 @@ mod context_tests {
         .unwrap();
         assert_eq!(items.len(), 3);
         assert!(check_context_menu(&items).is_ok());
+    }
+
+    #[test]
+    fn only_plain_lines_go_on_the_clipboard() {
+        assert!(copyable("Look Celia, we have to follow our passions;"));
+        assert!(copyable("two\nlines"));
+        assert!(!copyable("   "));
+        assert!(!copyable("bell\u{7}"));
+        assert!(!copyable(&"x".repeat(COPY_MAX_CHARS + 1)));
     }
 
     #[test]
