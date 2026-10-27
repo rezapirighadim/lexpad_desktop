@@ -1,2 +1,1 @@
 var e=`data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3e%3crect%20width='32'%20height='32'%20fill='%232E7B4E'/%3e%3crect%20x='10'%20y='8'%20width='12'%20height='16'%20rx='2'%20fill='none'%20stroke='%23fff'%20stroke-width='2'/%3e%3cpath%20d='M14%208v16M17%2012h2M17%2015h2'%20stroke='%23fff'%20stroke-width='2'%20stroke-linecap='round'/%3e%3c/svg%3e`;export{e as t};
-//# sourceMappingURL=lexpad-mark-v1-BS0SssEa.js.map

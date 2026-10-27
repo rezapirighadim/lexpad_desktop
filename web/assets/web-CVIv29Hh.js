@@ -1,2 +1,1 @@
 import{o as e}from"./dist-CNYTm8nA.js";var t=class extends e{async show(e){}async hide(e){}};export{t as SplashScreenWeb};
-//# sourceMappingURL=web-CVIv29Hh.js.map

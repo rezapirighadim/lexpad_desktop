@@ -1,3 +1,2 @@
 const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./web-CVIv29Hh.js","./dist-CNYTm8nA.js","./rolldown-runtime-hePW80VL.js"])))=>i.map(i=>d[i]);
 import{v as e}from"./react--nwWWpNE.js";import{l as t}from"./dist-CNYTm8nA.js";var n=t(`SplashScreen`,{web:()=>e(()=>import(`./web-CVIv29Hh.js`).then(e=>new e.SplashScreenWeb),__vite__mapDeps([0,1,2]),import.meta.url)});export{n as SplashScreen};
-//# sourceMappingURL=esm-VkZA3mBu.js.map
