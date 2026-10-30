@@ -208,6 +208,71 @@ pub async fn output(program: &Path, args: &[&str], timeout: Duration) -> Result<
     Ok(out.stdout)
 }
 
+/// The seconds in one line of FFmpeg's `-progress` output (`out_time_us=`;
+/// "N/A" before the first packet).
+pub fn progress_seconds(line: &str) -> Option<f64> {
+    let v = line.trim().strip_prefix("out_time_us=")?;
+    let us: i64 = v.parse().ok()?;
+    (us >= 0).then(|| us as f64 / 1_000_000.0)
+}
+
+/// Runs FFmpeg with `-progress pipe:1` among `args` to its end, calling
+/// `on_time` with each position it reports. It is stopped when it says
+/// nothing for `stall` (a drive that stopped answering) or runs past
+/// `limit`; a slow drive that still moves is waited for. The error is the
+/// last line FFmpeg wrote, or `timeout`.
+pub async fn run_with_progress(
+    program: &Path,
+    args: &[&str],
+    stall: Duration,
+    limit: Duration,
+    on_time: &(dyn Fn(f64) + Send + Sync),
+) -> Result<(), String> {
+    use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+    let mut c = command(program);
+    c.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = c
+        .spawn()
+        .map_err(|e| format!("could not run {}: {e}", program.display()))?;
+    let stdout = child.stdout.take().ok_or("stdout")?;
+    let mut stderr = child.stderr.take().ok_or("stderr")?;
+    // Read alongside, so a chatty error log can never fill its pipe and stop FFmpeg.
+    let errors = tokio::spawn(async move {
+        let mut buf = Vec::new();
+        let _ = stderr.read_to_end(&mut buf).await;
+        String::from_utf8_lossy(&buf).into_owned()
+    });
+    let deadline = tokio::time::Instant::now() + limit;
+    let mut lines = BufReader::new(stdout).lines();
+    loop {
+        let wait = stall.min(deadline.saturating_duration_since(tokio::time::Instant::now()));
+        match tokio::time::timeout(wait, lines.next_line()).await {
+            Ok(Ok(Some(line))) => {
+                if let Some(t) = progress_seconds(&line) {
+                    on_time(t);
+                }
+            }
+            Ok(Ok(None)) | Ok(Err(_)) => break,
+            Err(_) => {
+                let _ = child.kill().await;
+                errors.abort();
+                return Err("timeout".into());
+            }
+        }
+    }
+    let status = tokio::time::timeout(stall, child.wait()).await;
+    let log = errors.await.unwrap_or_default();
+    match status {
+        Ok(Ok(st)) if st.success() => Ok(()),
+        Ok(Ok(_)) => Err(log.lines().last().unwrap_or("failed").trim().to_owned()),
+        Ok(Err(e)) => Err(e.to_string()),
+        Err(_) => {
+            let _ = child.kill().await;
+            Err("timeout".into())
+        }
+    }
+}
+
 /// ffprobe's JSON for a file.
 pub async fn probe_json(tools: &Tools, path: &Path) -> Result<serde_json::Value, String> {
     let path = path.to_str().ok_or("path")?;
@@ -331,4 +396,18 @@ pub async fn version(tools: &Tools) -> Option<String> {
         .lines()
         .next()
         .map(|l| l.trim().to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_ffmpeg_progress_lines() {
+        assert_eq!(progress_seconds("out_time_us=2991557000"), Some(2991.557));
+        assert_eq!(progress_seconds("out_time_us=N/A"), None);
+        assert_eq!(progress_seconds("out_time_us=-5"), None);
+        assert_eq!(progress_seconds("out_time_ms=2991557000"), None);
+        assert_eq!(progress_seconds("progress=end"), None);
+    }
 }

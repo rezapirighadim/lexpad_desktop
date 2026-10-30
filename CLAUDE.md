@@ -195,6 +195,17 @@ page written by us (designed separately); this repository holds the engine.
   Persian. The language comes from the text (whatlang plus a letter check for fa/ar/ur), the
   file name and the container's tag, with a confidence. Picture subtitles (PGS, VobSub) are
   reported as unsupported.
+- **Soft subs** (`media/extract.rs`): the first ask for an embedded track reads every text track
+  of the file in one FFmpeg pass (`-discard` on the picture and the sound, `-map 0:<index>` per
+  track, each to its own file in a temporary folder), kept in memory by path, size and modified
+  time (`extract::Cache`, at most 64 tracks), one pass per file at a time. A slow drive is
+  waited for while FFmpeg still reports (`-progress`): stopped after `EXTRACT_STALL` of silence
+  or `EXTRACT_LIMIT`; the page hears `media:subtitle-progress`. If the pass fails, the asked
+  track alone, keeping what it gave. A track flagged forced that is the only one of its language
+  with `FULL_TRACK_EVENTS`+ events (mkvmerge's statistics) is reported as not forced (`probe.rs`):
+  releases flag their one full subtitle forced so every player shows it. The fixture film is
+  `src-tauri/tests/fixtures/media/soft-subs.mkv` (`make-soft-subs.sh`); a real one is checked with
+  `LEXPAD_SOFTSUB_FILE=<film> cargo test --lib soft_subs_of_a_real_film -- --ignored --nocapture`.
 - **Opening files**: drag and drop on a player window, the open dialog, "Open with Lexpad"
   (macOS `RunEvent::Opened`; Windows argv and the single-instance hand-over). Lexpad never
   becomes the default by itself (macOS rank Alternate; Windows OpenWithProgids only); "Use

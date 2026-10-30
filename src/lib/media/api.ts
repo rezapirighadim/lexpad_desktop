@@ -90,8 +90,19 @@ export interface SubtitleStream {
   languageTag: string | null;
   title: string | null;
   default: boolean;
+  /** Signs only. A full track the file flags forced (its only one in that language, hundreds of lines) comes as false. */
   forced: boolean;
   hearingImpaired: boolean;
+  /** How many lines the container says the track holds (Matroska's statistics), when it says. */
+  events?: number;
+}
+
+/** `media:subtitle-progress`: an embedded track being read out of a big file or one on a slow drive. */
+export interface SubtitleProgress {
+  fileId: string;
+  stream: number;
+  /** 0..1 of the film's length. */
+  fraction: number;
 }
 
 export interface Chapter {
@@ -390,6 +401,9 @@ export const media = {
   },
   onFiles: (handler: (d: Dropped) => void): Promise<UnlistenFn> =>
     listen<Dropped>('media:files', (e) => handler(e.payload)),
+  /** How far an embedded subtitle track is being read (only while it takes a while). */
+  onSubtitleProgress: (handler: (p: SubtitleProgress) => void): Promise<UnlistenFn> =>
+    listen<SubtitleProgress>('media:subtitle-progress', (e) => handler(e.payload)),
 };
 
 /** Words saved from the player: to the notebook now, or kept on this computer until signed in or online. */
