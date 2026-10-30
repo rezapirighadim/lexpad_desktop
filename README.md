@@ -369,7 +369,10 @@ CI builds no macOS (see above), so the workflow has no Apple secrets and needs n
    that the app is signed with the stable identity ("macOS signing"), runs the placement smoke
    test, and prints the `.dmg`'s SHA-256. The Mac must be awake and unlocked (the smoke test
    opens windows).
-4. Put both on the landing's downloads page (`lexpad_landing`) with their SHA-256s, and the
+4. Make the GitHub Release (below in CLAUDE.md, "GitHub Release") first: since 0.3.20 the landing serves the
+   installers from it (they are 61 to 119 MB with the Player's FFmpeg, over Cloudflare's 25 MiB per file). In
+   `lexpad_landing`, write the release's asset URLs, bytes and SHA-256s into `scripts/desktop-downloads.json`, the
+   redirect lines in `site/_redirects` and `site/downloads/lexpad-desktop.sha256` (landing CLAUDE.md), and the
    release in the changelog. Set `DESKTOP_VERSIONS` there (the platform whose file moved) and run
    `scripts/features.py`: it also writes the desktop section of `site/version.json`, which every
    copy of the app reads about once a day to say on Today that a newer version is ready. So push

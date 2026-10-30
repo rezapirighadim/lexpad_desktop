@@ -243,8 +243,10 @@ The Player's page is the web app's `/player` route (lexpad_front `features/playe
   The mini player is the same window made 448×252 and kept on top, in the screen's corner, and
   back again (one decoder, one stream). Full screen is the system's (macOS space, Windows
   borderless).
-- **Each opens the other.** "Watch" in the learning window's rail and its Watch page open the
-  Player (`open_player`, with `pick` for the file dialog or a Continue watching `file_id`);
+- **Each opens the other.** The learning window's Player page (its rail's "Player", second
+  under Today since 0.3.20; the route is still `/watch`) and Today's "Learn from what you
+  watch" card open the Player (`open_player`, with `pick` for the file dialog or a Continue
+  watching `file_id`; Ctrl+O on Windows, the menu's ⌘O on macOS);
   the Player's "Lexpad" button and "See it in your notebook" open the learning window at a
   checked app path (`open_lexpad`). ⌘1 / ⌘2 are the Window menu's items on macOS; on Windows
   each page answers Ctrl+1 / Ctrl+2 (`open_window`). Files opened from the system and drops on
@@ -293,11 +295,12 @@ The Player's page is the web app's `/player` route (lexpad_front `features/playe
   (`panel::show_hint`, 8 s or Got it) on macOS, or one toast says where the icon is on Windows.
 - **"Lexpad Player" in the Windows Start menu**: the installer's second shortcut, the same exe
   with `--player` and the Player's AppUserModelID (`windows/media-open-with.nsh`; the MSI by the
-  WiX fragment `windows/player-shortcut.wxs`; the Store's MSIX as a second app entry with
-  `uap10:Parameters`, which Windows before 2004 ignores).
+  WiX fragment `windows/player-shortcut.wxs`). Not in the Store's MSIX: the Store refuses a
+  package with more than one app entry (WACK "Application count", 27 Oct 2026), so it has one,
+  and `scripts/msix-smoke.ps1` requires exactly one.
 - **Capabilities.** `player.json` grants the Player the engine, the words queue, the card's
   calls, the API proxy and its own window's controls; `main.json` keeps of the engine only what
-  the Watch page and Settings → Video player read; `welcome.json` the Start window's commands
+  the Player page and Settings → Video player read; `welcome.json` the Start window's commands
   and moving and closing its own window.
 - **Engine requests** go in `NOTES-player-ui.md`, never as edits to `src-tauri/src/media/`.
 
@@ -413,6 +416,10 @@ The Player's page is the web app's `/player` route (lexpad_front `features/playe
 - After any change in `lexpad_front` that the window should carry: commit it there, run
   `scripts/build-web.sh <front checkout>` here and commit `web/` with the front commit in the
   message. The script refuses a dirty front.
+- **`web/` holds no source map** (owner, 27 Oct 2026): this repository and its installers are
+  public, and a map is the whole readable source of `lexpad_front`. The front's native build
+  makes none; `build-web.sh` refuses a `web/` with a `.map` or a `sourceMappingURL`, and
+  `src/webBundle.test.ts` (in `pnpm check` and CI) fails on one.
 - Rust comes from the official rustup installer into the user's home (`~/.cargo`), no sudo.
 - **Microsoft Store**: the tag's CI run also makes `Lexpad_<version>_x64.msix` (artifact
   `lexpad-desktop-msix`, unsigned; the Store signs it). Each release is a new Partner Center

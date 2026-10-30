@@ -4,6 +4,10 @@
 # test, and prints the .dmg's SHA-256 for the landing's downloads page.
 #
 #   scripts/release-mac.sh
+#   LEXPAD_SKIP_SMOKE=1 scripts/release-mac.sh    everything but the placement
+#     smoke test, which opens windows on this Mac's screen: for a build made
+#     while somebody else is using the Mac. The release notes then say the
+#     smoke test is still to run (CI runs it on Windows for every build).
 #   LEXPAD_PLAYER_TEST=1 scripts/release-mac.sh   the player test build: "Lexpad
 #     Player Test.app" (app.lexpad.desktop.playertest, feature player-test,
 #     src-tauri/tauri.playertest.conf.json), installed beside Lexpad and never
@@ -210,19 +214,25 @@ fi
 
 # After the .dmg is made: this build writes the arm64 binary of the same
 # target folder, which the universal app was assembled from.
-echo "release-mac: placement smoke test"
-host=$(uname -m)
-[ "$host" = arm64 ] && smoke_target=aarch64-apple-darwin || smoke_target=x86_64-apple-darwin
-pnpm tauri build --no-bundle --features "smoke-test$features" --target "$smoke_target"
-smoke_out=$(mktemp)
-set +e
-"src-tauri/target/$smoke_target/release/lexpad-desktop" --smoke-test >"$smoke_out" 2>&1
-code=$?
-set -e
-tail -n 5 "$smoke_out"
-if [ "$code" -ne 0 ] || ! grep -q '^SMOKE failures 0' "$smoke_out"; then
-  echo "release-mac: smoke test failed (exit $code); full output in $smoke_out" >&2
-  exit 1
+smoke=ran
+if [ "${LEXPAD_SKIP_SMOKE:-}" = 1 ]; then
+  smoke=skipped
+  echo "release-mac: placement smoke test SKIPPED (LEXPAD_SKIP_SMOKE=1): it opens windows on this screen"
+else
+  echo "release-mac: placement smoke test"
+  host=$(uname -m)
+  [ "$host" = arm64 ] && smoke_target=aarch64-apple-darwin || smoke_target=x86_64-apple-darwin
+  pnpm tauri build --no-bundle --features "smoke-test$features" --target "$smoke_target"
+  smoke_out=$(mktemp)
+  set +e
+  "src-tauri/target/$smoke_target/release/lexpad-desktop" --smoke-test >"$smoke_out" 2>&1
+  code=$?
+  set -e
+  tail -n 5 "$smoke_out"
+  if [ "$code" -ne 0 ] || ! grep -q '^SMOKE failures 0' "$smoke_out"; then
+    echo "release-mac: smoke test failed (exit $code); full output in $smoke_out" >&2
+    exit 1
+  fi
 fi
 
 # The smoke build replaced the arm64 half the universal app was built from;
@@ -236,6 +246,7 @@ echo "  version $version ($commit)"
 echo "  bytes   $size"
 echo "  sha256  $sha"
 echo "  signed  $APPLE_SIGNING_IDENTITY ($requirement)"
+echo "  smoke   $smoke"
 if [ "$notarize" = 1 ]; then
   echo "  notarized and stapled"
 else

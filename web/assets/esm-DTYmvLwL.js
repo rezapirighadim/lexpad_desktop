@@ -1,3 +1,2 @@
 const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./web-DA_aUysJ.js","./dist-CNYTm8nA.js","./rolldown-runtime-hePW80VL.js"])))=>i.map(i=>d[i]);
 import{v as e}from"./react--nwWWpNE.js";import{l as t}from"./dist-CNYTm8nA.js";var n;(function(e){e[e.Flush=0]=`Flush`,e[e.Add=1]=`Add`})(n||={});var r=t(`TextToSpeech`,{web:()=>e(()=>import(`./web-DA_aUysJ.js`).then(e=>new e.TextToSpeechWeb),__vite__mapDeps([0,1,2]),import.meta.url)});`speechSynthesis`in window&&window.speechSynthesis;export{r as TextToSpeech};
-//# sourceMappingURL=esm-DTYmvLwL.js.map

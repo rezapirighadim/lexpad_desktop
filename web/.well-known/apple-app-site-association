@@ -2,38 +2,176 @@
   "applinks": {
     "details": [
       {
-        "appIDs": ["6Z95MR26LZ.app.lexpad.ios"],
+        "appIDs": [
+          "6Z95MR26LZ.app.lexpad.ios"
+        ],
         "components": [
-          { "/": "/promo", "exclude": true, "comment": "promotion codes stay in the browser: Apple allows no code of ours to unlock Pro" },
-          { "/": "/promo/*", "exclude": true },
-          { "/": "/" },
-          { "/": "/s/?*" },
-          { "/": "/verify" },
-          { "/": "/verify/*" },
-          { "/": "/reset-password" },
-          { "/": "/reset-password/*" },
-          { "/": "/forgot" },
-          { "/": "/forgot/*" },
-          { "/": "/words/?*" },
-          { "/": "/notebook" },
-          { "/": "/notebook/*" },
-          { "/": "/progress" },
-          { "/": "/progress/*" },
-          { "/": "/settings" },
-          { "/": "/settings/*" },
-          { "/": "/decks" },
-          { "/": "/decks/*" },
-          { "/": "/games" },
-          { "/": "/games/*" },
-          { "/": "/read" },
-          { "/": "/read/*" },
-          { "/": "/session" },
-          { "/": "/session/*" }
+          {
+            "/": "//*",
+            "exclude": true,
+            "comment": "an address with a doubled slash is not one Lexpad sends; it stays in Safari rather than slip past the excludes below"
+          },
+          {
+            "/": "/*//*",
+            "exclude": true
+          },
+          {
+            "/": "/promo",
+            "exclude": true,
+            "comment": "promotion codes stay in Safari: Apple allows no code of ours to unlock Pro (Guideline 3.1.1)",
+            "caseSensitive": false
+          },
+          {
+            "/": "/promo/*",
+            "exclude": true,
+            "caseSensitive": false
+          },
+          {
+            "/": "/settings/plan",
+            "exclude": true,
+            "comment": "purchase links (an e-mail's web offer, Paddle checkout) stay in Safari; never an in-app web checkout (3.1.1)",
+            "caseSensitive": false
+          },
+          {
+            "/": "/settings/plan/*",
+            "exclude": true,
+            "caseSensitive": false
+          },
+          {
+            "/": "/auth",
+            "exclude": true,
+            "comment": "sign-in and Google's callback return to the browser that asked"
+          },
+          {
+            "/": "/auth/*",
+            "exclude": true
+          },
+          {
+            "/": "/connect",
+            "exclude": true,
+            "comment": "assistants, the desktop app and the extension are approved in the browser that started them"
+          },
+          {
+            "/": "/connect/*",
+            "exclude": true
+          },
+          {
+            "/": "/connect-desktop",
+            "exclude": true
+          },
+          {
+            "/": "/connect-desktop/*",
+            "exclude": true
+          },
+          {
+            "/": "/connect-extension",
+            "exclude": true
+          },
+          {
+            "/": "/connect-extension/*",
+            "exclude": true
+          },
+          {
+            "/": "/unsubscribe",
+            "exclude": true,
+            "comment": "an e-mail's one-click stop works in any browser, signed out"
+          },
+          {
+            "/": "/unsubscribe/*",
+            "exclude": true
+          },
+          {
+            "/": "/report-ai",
+            "exclude": true
+          },
+          {
+            "/": "/admin",
+            "exclude": true
+          },
+          {
+            "/": "/admin/*",
+            "exclude": true
+          },
+          {
+            "/": "/download*",
+            "exclude": true
+          },
+          {
+            "/": "/"
+          },
+          {
+            "/": "/s/?*"
+          },
+          {
+            "/": "/verify"
+          },
+          {
+            "/": "/verify/*"
+          },
+          {
+            "/": "/reset-password"
+          },
+          {
+            "/": "/reset-password/*"
+          },
+          {
+            "/": "/forgot"
+          },
+          {
+            "/": "/forgot/*"
+          },
+          {
+            "/": "/words/?*"
+          },
+          {
+            "/": "/notebook"
+          },
+          {
+            "/": "/notebook/*"
+          },
+          {
+            "/": "/progress"
+          },
+          {
+            "/": "/progress/*"
+          },
+          {
+            "/": "/settings"
+          },
+          {
+            "/": "/settings/*"
+          },
+          {
+            "/": "/decks"
+          },
+          {
+            "/": "/decks/*"
+          },
+          {
+            "/": "/games"
+          },
+          {
+            "/": "/games/*"
+          },
+          {
+            "/": "/read"
+          },
+          {
+            "/": "/read/*"
+          },
+          {
+            "/": "/session"
+          },
+          {
+            "/": "/session/*"
+          }
         ]
       }
     ]
   },
   "webcredentials": {
-    "apps": ["6Z95MR26LZ.app.lexpad.ios"]
+    "apps": [
+      "6Z95MR26LZ.app.lexpad.ios"
+    ]
   }
 }

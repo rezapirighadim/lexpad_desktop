@@ -28,12 +28,27 @@ $signtool = Join-Path $bin.FullName 'x64\signtool.exe'
 
 [xml]$manifest = Get-Content (Join-Path $root 'msix/AppxManifest.xml')
 $identity = $manifest.Package.Identity
-# The main app (the package also has "Lexpad Player", the same exe with --player).
-$mainApp = @($manifest.Package.Applications.Application)[0]
+# Exactly one app: the Microsoft Store refuses a package that defines more
+# (WACK "Application count"). Checked in the source and in the built package.
+$apps = @($manifest.Package.Applications.Application)
+if ($apps.Count -ne 1) { throw "msix/AppxManifest.xml defines $($apps.Count) apps; the Store takes exactly one" }
+$unpacked = Join-Path $env:RUNNER_TEMP 'lexpad-msix-manifest'
+Remove-Item $unpacked -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Path $unpacked | Out-Null
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$zip = [System.IO.Compression.ZipFile]::OpenRead($Msix)
+try {
+  $entry = $zip.Entries | Where-Object { $_.FullName -eq 'AppxManifest.xml' }
+  if (-not $entry) { throw 'the package has no AppxManifest.xml' }
+  [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, (Join-Path $unpacked 'AppxManifest.xml'))
+} finally { $zip.Dispose() }
+[xml]$packed = Get-Content (Join-Path $unpacked 'AppxManifest.xml')
+$packedApps = @($packed.Package.Applications.Application)
+if ($packedApps.Count -ne 1) { throw "the built package defines $($packedApps.Count) apps; the Store takes exactly one" }
+Write-Host "One app in the package: $($packedApps[0].Id)"
+$mainApp = $apps[0]
 $appId = $mainApp.Id
 $taskId = $mainApp.Extensions.Extension.StartupTask.TaskId
-$playerApp = @($manifest.Package.Applications.Application) | Where-Object { $_.Id -eq 'LexpadPlayer' }
-if (-not $playerApp) { throw 'the package has no "Lexpad Player" app entry' }
 
 # A test certificate for this runner only.
 $cert = New-SelfSignedCertificate -Type Custom -Subject $identity.Publisher -KeyUsage DigitalSignature `

@@ -1,2 +1,1 @@
 var e=[`push`,`bell`,`email`];function t(t){let n=t.get(`from`),r=e.find(e=>e===n);return{asked:t.get(`offer`)===`1`,surface:r??`plan`}}function n(e){let t=new URLSearchParams(e);return t.delete(`offer`),t.delete(`from`),t}function r(e){let[n,r=``]=e.split(`?`);return n===`/settings/plan`&&t(new URLSearchParams(r.split(`#`)[0])).asked}export{t as n,n as r,r as t};
-//# sourceMappingURL=offerLink-BTyl7ir3.js.map
