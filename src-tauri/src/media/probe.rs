@@ -102,9 +102,23 @@ pub struct SubtitleStream {
     pub language_tag: Option<String>,
     pub title: Option<String>,
     pub default: bool,
+    /// "Forced" (only the lines in another language, signs). A track the
+    /// container calls forced but that is the only one in its language and
+    /// has a full film's lines is taken as a full track (see `FULL_TRACK_EVENTS`).
     pub forced: bool,
     pub hearing_impaired: bool,
+    /// How many subtitle events the track holds, when the container says
+    /// (Matroska's statistics tags, written by mkvmerge).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub events: Option<u64>,
 }
+
+/// A forced track holds a few lines (signs, a foreign scene); a full one
+/// holds hundreds. Releases often flag their only subtitle as forced and
+/// default so every player shows it (as VLC does); from this many events,
+/// a forced flag on the only track of its language is that, not a signs
+/// track. A named constant: it is a property of subtitles, not a setting.
+pub const FULL_TRACK_EVENTS: u64 = 150;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -146,6 +160,42 @@ fn tag(stream: &Value, name: &str) -> Option<String> {
     tags.iter()
         .find(|(k, _)| k.eq_ignore_ascii_case(name))
         .and_then(|(_, v)| s(v))
+}
+
+/// Matroska's `NUMBER_OF_FRAMES` statistics tag (also written with a
+/// language suffix, `NUMBER_OF_FRAMES-eng`).
+fn events(stream: &Value) -> Option<u64> {
+    let tags = stream.get("tags")?.as_object()?;
+    tags.iter()
+        .find(|(k, _)| {
+            let k = k.to_ascii_uppercase();
+            k == "NUMBER_OF_FRAMES" || k.starts_with("NUMBER_OF_FRAMES-")
+        })
+        .and_then(|(_, v)| u(v))
+}
+
+/// Clears the forced flag of a track that is plainly a full one: the only
+/// text track of its language (or the only text track, when untagged), with
+/// at least `FULL_TRACK_EVENTS` events.
+fn unforce_full_tracks(subs: &mut [SubtitleStream]) {
+    let text_lang = |s: &SubtitleStream| {
+        (s.kind == SubtitleKind::Text)
+            .then(|| s.language.map(str::to_owned).or(s.language_tag.clone()))
+    };
+    let langs: Vec<Option<Option<String>>> = subs.iter().map(text_lang).collect();
+    for (i, st) in subs.iter_mut().enumerate() {
+        let Some(own) = &langs[i] else { continue };
+        if !st.forced || st.events.unwrap_or(0) < FULL_TRACK_EVENTS {
+            continue;
+        }
+        let alone = langs
+            .iter()
+            .enumerate()
+            .all(|(j, l)| j == i || l.as_ref() != Some(own));
+        if alone {
+            st.forced = false;
+        }
+    }
 }
 
 fn disposition(stream: &Value, name: &str) -> bool {
@@ -310,12 +360,14 @@ pub fn parse(json: &Value) -> Option<MediaInfo> {
                     default: disposition(st, "default"),
                     forced: disposition(st, "forced"),
                     hearing_impaired: disposition(st, "hearing_impaired"),
+                    events: events(st),
                     codec,
                 });
             }
             _ => {}
         }
     }
+    unforce_full_tracks(&mut info.subtitles);
     // The player's length is the picture's: a file whose subtitles or audio
     // run on after the video ends would otherwise seek into nothing.
     if let Some(vd) = info.video.first().and_then(|v| v.duration) {
@@ -378,5 +430,77 @@ mod tests {
         assert_eq!(info.subtitles[1].kind, SubtitleKind::Image);
         assert_eq!(info.subtitles[1].language_tag.as_deref(), Some("xx1"));
         assert_eq!(info.chapters[0].title.as_deref(), Some("Opening"));
+    }
+
+    #[test]
+    fn a_full_track_flagged_forced_is_not_taken_for_signs() {
+        // As the ValaMovie / PSA releases ship them: the only subtitle,
+        // default and forced, 760 events (mkvmerge's statistics).
+        let sub = |index: u64, lang: &str, forced: u64, events: Option<&str>| {
+            let mut tags = json!({"language": lang, "title": "ValaMovie.Com"});
+            if let Some(e) = events {
+                tags["NUMBER_OF_FRAMES"] = json!(e);
+            }
+            json!({"index": index, "codec_type": "subtitle", "codec_name": "subrip",
+                   "tags": tags, "disposition": {"default": 1, "forced": forced}})
+        };
+        let one = |streams: Vec<Value>| {
+            parse(&json!({"format": {"format_name": "matroska,webm"}, "streams": streams})).unwrap()
+        };
+        let i = one(vec![sub(2, "per", 1, Some("760"))]);
+        let s = &i.subtitles[0];
+        assert_eq!(
+            (s.language, s.default, s.forced, s.events),
+            (Some("fa"), true, false, Some(760))
+        );
+        assert_eq!(s.title.as_deref(), Some("ValaMovie.Com"));
+        // A real signs track: few events.
+        assert!(one(vec![sub(2, "per", 1, Some("40"))]).subtitles[0].forced);
+        // No statistics: the flag stands.
+        assert!(one(vec![sub(2, "per", 1, None)]).subtitles[0].forced);
+        // A forced track beside a full one of its language stays forced, even a long one.
+        let two = one(vec![
+            sub(2, "eng", 1, Some("600")),
+            sub(3, "eng", 0, Some("1400")),
+        ]);
+        assert!(two.subtitles[0].forced && !two.subtitles[1].forced);
+        // Another language beside it does not count; the suffixed tag name is read too.
+        let mut s3 = sub(2, "fas", 1, None);
+        s3["tags"]["NUMBER_OF_FRAMES-eng"] = json!("500");
+        let mixed = one(vec![s3, sub(3, "eng", 0, Some("900"))]);
+        assert!(!mixed.subtitles[0].forced);
+        assert_eq!(mixed.subtitles[0].events, Some(500));
+    }
+
+    #[test]
+    fn no_subtitles_and_unknown_tags() {
+        let i = parse(&json!({
+            "format": {"format_name": "mov,mp4,m4a,3gp,3g2,mj2"},
+            "streams": [
+                {"index": 0, "codec_type": "video", "codec_name": "h264", "width": 1, "height": 1},
+                {"index": 1, "codec_type": "subtitle", "codec_name": "mov_text", "tags": {"language": "und"}},
+                {"index": 2, "codec_type": "subtitle", "codec_name": "dvd_subtitle", "tags": {"language": "ger"}},
+                {"index": 3, "codec_type": "subtitle", "tags": {"language": "qaa"}}
+            ]
+        }))
+        .unwrap();
+        let s = &i.subtitles;
+        assert_eq!(
+            (s[0].kind, s[0].extract_as, s[0].language),
+            (SubtitleKind::Text, Some(Format::Srt), None)
+        );
+        assert_eq!(s[0].language_tag.as_deref(), Some("und"));
+        assert_eq!(
+            (s[1].kind, s[1].language),
+            (SubtitleKind::Image, Some("de"))
+        );
+        assert_eq!(
+            (s[2].codec.as_str(), s[2].kind),
+            ("unknown", SubtitleKind::Unknown)
+        );
+        assert_eq!(s[2].language_tag.as_deref(), Some("qaa"));
+        let none =
+            parse(&json!({"format": {"format_name": "matroska,webm"}, "streams": []})).unwrap();
+        assert!(none.subtitles.is_empty());
     }
 }

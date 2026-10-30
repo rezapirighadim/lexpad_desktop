@@ -5,7 +5,8 @@
 //! page maps to its own text: `unknown_file`, `ffmpeg_missing`,
 //! `unreadable`, `no_video`, `no_encoder`, `unsupported_subtitle`,
 //! `unreadable_subtitle`, `empty_subtitle`, `too_big`, `file_gone`,
-//! `no_session`, `timeout`.
+//! `no_session`, `timeout`. Events: `media:progress` (a run's buffer) and
+//! `media:subtitle-progress` (an embedded track being read).
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -392,10 +393,27 @@ pub async fn media_subtitles(media: Media<'_>, file_id: String) -> Result<Subtit
     Ok(SubtitlesDto { embedded, external })
 }
 
+/// The event a player window gets while an embedded track is read out of
+/// a big file or one on a slow drive: `{ fileId, stream, fraction }`.
+pub const SUBTITLE_PROGRESS_EVENT: &str = "media:subtitle-progress";
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SubtitleProgressDto {
+    file_id: String,
+    stream: usize,
+    /// 0..1 of the film's length.
+    fraction: f64,
+}
+
 /// Loads a subtitle: an embedded track (`stream` of the video `fileId`) or
 /// a subtitle file (`fileId` alone). Decoded, parsed, its language found.
+/// An embedded track is read in the background of the page (the command is
+/// async); how far it is comes as `media:subtitle-progress`, at most a few
+/// times a second.
 #[tauri::command]
-pub async fn media_subtitle_load(
+pub async fn media_subtitle_load<R: Runtime>(
+    app: AppHandle<R>,
     media: Media<'_>,
     file_id: String,
     stream: Option<usize>,
@@ -412,7 +430,25 @@ pub async fn media_subtitle_load(
             if st.kind != SubtitleKind::Text {
                 return Err("unsupported_subtitle".into());
             }
-            let bytes = media.extract(&file_id, &path, st).await?;
+            let last = std::sync::Mutex::new((std::time::Instant::now(), -1.0_f64));
+            let id = file_id.clone();
+            let progress = move |fraction: f64| {
+                let Ok(mut l) = last.lock() else { return };
+                // A whole percent more, and not more often than every 250 ms.
+                if fraction - l.1 < 0.01 || l.0.elapsed() < std::time::Duration::from_millis(250) {
+                    return;
+                }
+                *l = (std::time::Instant::now(), fraction);
+                let _ = app.emit(
+                    SUBTITLE_PROGRESS_EVENT,
+                    SubtitleProgressDto {
+                        file_id: id.clone(),
+                        stream: index,
+                        fraction,
+                    },
+                );
+            };
+            let bytes = media.extract(&path, &info, st, &progress).await?;
             load_track(
                 format!("embedded:{index}"),
                 &bytes,

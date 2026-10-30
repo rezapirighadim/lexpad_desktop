@@ -139,7 +139,7 @@ async fn streams_extracts_and_seeks_with_the_real_ffmpeg() {
     // The embedded subtitle: raw bytes, decoded, Persian, letters fixed.
     let st = &info.subtitles[0];
     let state = super::MediaState::new(None);
-    let raw = state.extract("f", &mkv, st).await.unwrap();
+    let raw = state.extract(&mkv, &info, st, &|_| {}).await.unwrap();
     let track = load_track("embedded:2".into(), &raw, st.extract_as, None, st.language).unwrap();
     assert_eq!(track.encoding.encoding, "windows-1256");
     assert_eq!(track.parsed.format, Format::Srt);
@@ -341,7 +341,7 @@ async fn real_media_report() {
         let state = super::MediaState::new(None);
         for st in info.subtitles.iter() {
             let t = Instant::now();
-            match state.extract(&name, &p, st).await {
+            match state.extract(&p, &info, st, &|_| {}).await {
                 Ok(raw) => {
                     let tr = load_track(
                         format!("embedded:{}", st.index),
@@ -402,5 +402,171 @@ async fn real_media_report() {
             v.file_name().unwrap().to_string_lossy(),
             matched
         );
+    }
+}
+
+/// The committed film with three embedded text tracks
+/// (tests/fixtures/media/make-soft-subs.sh).
+fn soft_subs_fixture() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/media/soft-subs.mkv")
+}
+
+/// Soft subtitles, as VLC shows them: every text track of an MKV found,
+/// named by its tag, extracted in one pass without decoding the picture,
+/// each in its own format and encoding, Persian found and right to left.
+#[tokio::test(flavor = "multi_thread")]
+async fn embedded_srt_and_ass_tracks_are_read_out_of_an_mkv() {
+    let Some(tools) = tools_or_skip() else {
+        return;
+    };
+    let mkv = soft_subs_fixture();
+    let json = tools::probe_json(&tools, &mkv).await.unwrap();
+    let info = probe::parse(&json).unwrap();
+    let subs = &info.subtitles;
+    assert_eq!(subs.len(), 3);
+    assert_eq!(
+        subs.iter()
+            .map(|s| (s.index, s.codec.as_str(), s.language))
+            .collect::<Vec<_>>(),
+        vec![
+            (2, "subrip", Some("fa")),
+            (3, "ass", Some("en")),
+            (4, "subrip", Some("fa")),
+        ]
+    );
+    assert_eq!(subs[0].title.as_deref(), Some("ValaMovie.Com"));
+    // Two Persian tracks: the forced flag of #2 stands (no statistics, and not alone).
+    assert!(subs[0].default && subs[0].forced);
+    assert!(subs[1].hearing_impaired);
+
+    let state = super::MediaState::new(None);
+    let seen = std::sync::Mutex::new(Vec::<f64>::new());
+    let progress = |f: f64| seen.lock().unwrap().push(f);
+    let fa = state
+        .extract(&mkv, &info, &subs[0], &progress)
+        .await
+        .unwrap();
+    // One pass extracted all three: the others come from memory now.
+    assert_eq!(state.extracted.lock().unwrap().len(), 3);
+    assert!(seen.lock().unwrap().iter().all(|f| (0.0..=1.0).contains(f)));
+
+    let fa = load_track(
+        "embedded:2".into(),
+        &fa,
+        subs[0].extract_as,
+        None,
+        subs[0].language,
+    )
+    .unwrap();
+    assert_eq!(fa.parsed.format, Format::Srt);
+    assert_eq!(fa.encoding.encoding, "UTF-8");
+    assert_eq!(fa.language.best.as_ref().unwrap().code, "fa");
+    assert_eq!(fa.parsed.cues.len(), 5);
+    assert_eq!(fa.parsed.cues[0].text, "سلام، حالت چطوره؟");
+    assert_eq!((fa.parsed.cues[0].start, fa.parsed.cues[0].end), (100, 900));
+
+    let en = state.extract(&mkv, &info, &subs[1], &|_| {}).await.unwrap();
+    let en = load_track(
+        "embedded:3".into(),
+        &en,
+        subs[1].extract_as,
+        None,
+        subs[1].language,
+    )
+    .unwrap();
+    assert_eq!(en.parsed.format, Format::Ass);
+    assert_eq!(en.language.best.as_ref().unwrap().code, "en");
+    assert_eq!(en.parsed.cues.len(), 5);
+    assert_eq!(en.parsed.cues[1].text, "I'm outside, buddy.");
+
+    let old = state.extract(&mkv, &info, &subs[2], &|_| {}).await.unwrap();
+    let old = load_track(
+        "embedded:4".into(),
+        &old,
+        subs[2].extract_as,
+        None,
+        subs[2].language,
+    )
+    .unwrap();
+    assert_eq!(old.encoding.encoding, "windows-1256");
+    assert!(old.persian_letters_fixed);
+    assert_eq!(old.parsed.cues[0].text, "کلیدهایم را روی میز گذاشتم.");
+
+    // A file that went away between the probe and the extraction.
+    let gone = std::env::temp_dir().join("lexpad-no-such-film.mkv");
+    assert_eq!(
+        state
+            .extract(&gone, &info, &subs[0], &|_| {})
+            .await
+            .unwrap_err(),
+        "file_gone"
+    );
+}
+
+/// A real film with soft subtitles (`LEXPAD_SOFTSUB_FILE`): its tracks,
+/// how long reading them took, and the first five cues of each.
+///
+///   LEXPAD_SOFTSUB_FILE=<film.mkv> cargo test --lib soft_subs_of_a_real_film -- --ignored --nocapture
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs LEXPAD_SOFTSUB_FILE, a real film"]
+async fn soft_subs_of_a_real_film() {
+    use std::time::Instant;
+    let Ok(file) = std::env::var("LEXPAD_SOFTSUB_FILE") else {
+        return;
+    };
+    let file = PathBuf::from(file);
+    let tools = Tools::locate().expect("ffmpeg");
+    let json = tools::probe_json(&tools, &file).await.unwrap();
+    let info = probe::parse(&json).unwrap();
+    let state = super::MediaState::new(None);
+    for st in &info.subtitles {
+        println!(
+            "#{} {} {:?} tag {:?} title {:?} default {} forced {} events {:?}",
+            st.index,
+            st.codec,
+            st.kind,
+            st.language.or(st.language_tag.as_deref().map(|_| "?")),
+            st.title,
+            st.default,
+            st.forced,
+            st.events
+        );
+        let t = Instant::now();
+        let last = std::sync::Mutex::new(0.0);
+        let raw = match state
+            .extract(&file, &info, st, &|f| *last.lock().unwrap() = f)
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                println!("   not read: {e}");
+                continue;
+            }
+        };
+        let tr = load_track(
+            format!("embedded:{}", st.index),
+            &raw,
+            st.extract_as,
+            None,
+            st.language,
+        )
+        .unwrap();
+        println!(
+            "   {} bytes in {} ms (last progress {:.2}), {} cues, {}, language {:?}",
+            raw.len(),
+            t.elapsed().as_millis(),
+            *last.lock().unwrap(),
+            tr.parsed.cues.len(),
+            tr.encoding.encoding,
+            tr.language.best.as_ref().map(|g| (g.code, g.confidence))
+        );
+        for c in tr.parsed.cues.iter().take(5) {
+            println!(
+                "   {:>8} → {:>8}  {}",
+                c.start,
+                c.end,
+                c.text.replace('\n', " / ")
+            );
+        }
     }
 }

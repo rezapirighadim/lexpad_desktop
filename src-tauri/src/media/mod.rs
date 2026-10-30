@@ -15,6 +15,7 @@
 
 pub mod commands;
 pub mod default_player;
+pub mod extract;
 pub mod files;
 pub mod plan;
 pub mod prefs;
@@ -45,16 +46,16 @@ use tools::Tools;
 /// The event a player window gets when files are dropped on it or opened
 /// with Lexpad, with a `Dropped`.
 pub const FILES_EVENT: &str = "media:files";
-/// How long extracting one embedded subtitle track may take (FFmpeg reads
-/// the whole file for it).
-const EXTRACT_TIMEOUT: Duration = Duration::from_secs(120);
+/// Extracting embedded subtitles walks the whole file: on a slow or
+/// sleeping drive that can take minutes, so it is stopped only when FFmpeg
+/// says nothing for this long (it reports twice a second while it reads)...
+const EXTRACT_STALL: Duration = Duration::from_secs(60);
+/// ...or runs past this, whatever the drive.
+const EXTRACT_LIMIT: Duration = Duration::from_secs(30 * 60);
 /// The biggest subtitle file read: real ones are well under 1 MB.
 const MAX_SUBTITLE_BYTES: u64 = 20 * 1024 * 1024;
 /// At most this many sessions at once (one per player; a few for overlap).
 const MAX_SESSIONS: usize = 4;
-
-/// An embedded track: (file id, stream index).
-type ExtractKey = (String, usize);
 
 pub struct MediaState {
     pub files: Files,
@@ -66,8 +67,10 @@ pub struct MediaState {
     sessions: Mutex<Vec<Arc<Session>>>,
     /// Files opened before a player page was listening.
     pending: Mutex<Option<Dropped>>,
-    /// Embedded tracks already extracted: (file id, stream index) → bytes.
-    extracted: Mutex<HashMap<ExtractKey, Arc<Vec<u8>>>>,
+    /// Embedded tracks already extracted, by file contents and stream.
+    extracted: Mutex<extract::Cache>,
+    /// One extraction at a time per file: a second ask waits for it.
+    extracting: Mutex<HashMap<extract::FileKey, Arc<tokio::sync::Mutex<()>>>>,
 }
 
 impl MediaState {
@@ -82,7 +85,8 @@ impl MediaState {
             probes: Mutex::new(HashMap::new()),
             sessions: Mutex::new(Vec::new()),
             pending: Mutex::new(None),
-            extracted: Mutex::new(HashMap::new()),
+            extracted: Mutex::new(extract::Cache::default()),
+            extracting: Mutex::new(HashMap::new()),
         }
     }
 
@@ -146,54 +150,113 @@ impl MediaState {
     /// The bytes of an embedded text track, as the container holds them
     /// (copied, so an old encoding reaches the detector untouched), or
     /// converted to SubRip for codecs that are not a file format of their
-    /// own (mov_text).
+    /// own (mov_text). The first ask for a file extracts all its text
+    /// tracks in one pass (`extract`), reporting how far it is (0..1) to
+    /// `on_progress`; later asks are answered from memory.
     pub async fn extract(
         &self,
-        file_id: &str,
         path: &Path,
+        info: &MediaInfo,
         stream: &probe::SubtitleStream,
+        on_progress: &(dyn Fn(f64) + Send + Sync),
     ) -> Result<Arc<Vec<u8>>, String> {
-        let key = (file_id.to_owned(), stream.index);
-        if let Some(b) = self.extracted.lock().map_err(|_| "lock")?.get(&key) {
-            return Ok(b.clone());
+        if extract::output_for(stream).is_none() {
+            return Err("unsupported_subtitle".into());
         }
-        let tools = self.tools()?;
-        let (codec, fmt) = match (stream.codec.as_str(), stream.extract_as) {
-            ("subrip" | "srt", _) => ("copy", "srt"),
-            ("ass" | "ssa", _) => ("copy", "ass"),
-            ("webvtt", _) => ("copy", "webvtt"),
-            (_, Some(Format::Srt)) => ("srt", "srt"),
-            _ => return Err("unsupported_subtitle".into()),
-        };
-        let path_s = path.to_str().ok_or("path")?;
-        let map = format!("0:{}", stream.index);
-        let out = tools::output(
-            &tools.ffmpeg,
-            &[
-                "-hide_banner",
-                "-nostdin",
-                "-loglevel",
-                "error",
-                "-i",
-                path_s,
-                "-map",
-                &map,
-                "-c:s",
-                codec,
-                "-f",
-                fmt,
-                "pipe:1",
-            ],
-            EXTRACT_TIMEOUT,
-        )
-        .await?;
-        let out = Arc::new(out);
-        self.extracted
+        let key = extract::FileKey::of(path)?;
+        if let Some(b) = self.cached(&key, stream.index)? {
+            return Ok(b);
+        }
+        let job = self
+            .extracting
             .lock()
             .map_err(|_| "lock")?
-            .insert(key, out.clone());
-        Ok(out)
+            .entry(key.clone())
+            .or_default()
+            .clone();
+        let _one_at_a_time = job.lock().await;
+        // Another ask may have extracted it while this one waited.
+        if let Some(b) = self.cached(&key, stream.index)? {
+            return Ok(b);
+        }
+        let tools = self.tools()?;
+        let input = path.to_str().ok_or("path")?;
+        let report = |t: f64| {
+            if let Some(f) = extract::fraction(t, info.duration) {
+                on_progress(f);
+            }
+        };
+        // Every text track in one walk of the file.
+        let all = extract::text_tracks(info);
+        let scratch = extract::Scratch::new()?;
+        let pass = tools::run_with_progress(
+            &tools.ffmpeg,
+            &as_strs(&extract::args(input, info, &all, &scratch.0)),
+            EXTRACT_STALL,
+            EXTRACT_LIMIT,
+            &report,
+        )
+        .await;
+        if pass.is_ok() {
+            for st in &all {
+                if let Some(bytes) =
+                    extract::out_path(&scratch.0, st).and_then(|p| read_extracted(&p))
+                {
+                    self.extracted
+                        .lock()
+                        .map_err(|_| "lock")?
+                        .put(&key, st.index, Arc::new(bytes));
+                }
+            }
+        }
+        if let Some(b) = self.cached(&key, stream.index)? {
+            return Ok(b);
+        }
+        // The pass failed (one broken track stops the muxer for all): the
+        // track asked for, alone; what it gave is kept even if FFmpeg
+        // stopped partway, when it holds anything.
+        let alone = extract::Scratch::new()?;
+        let one = tools::run_with_progress(
+            &tools.ffmpeg,
+            &as_strs(&extract::args(input, info, &[stream], &alone.0)),
+            EXTRACT_STALL,
+            EXTRACT_LIMIT,
+            &report,
+        )
+        .await;
+        match extract::out_path(&alone.0, stream).and_then(|p| read_extracted(&p)) {
+            Some(bytes) => {
+                let bytes = Arc::new(bytes);
+                self.extracted
+                    .lock()
+                    .map_err(|_| "lock")?
+                    .put(&key, stream.index, bytes.clone());
+                Ok(bytes)
+            }
+            None => Err(match one.or(pass) {
+                Err(e) if e == "timeout" => e,
+                _ => "unreadable_subtitle".into(),
+            }),
+        }
     }
+
+    fn cached(&self, key: &extract::FileKey, index: usize) -> Result<Option<Arc<Vec<u8>>>, String> {
+        Ok(self.extracted.lock().map_err(|_| "lock")?.get(key, index))
+    }
+}
+
+fn as_strs(v: &[String]) -> Vec<&str> {
+    v.iter().map(String::as_str).collect()
+}
+
+/// An extracted track's file: `None` when FFmpeg wrote nothing (or too much
+/// to be a subtitle).
+fn read_extracted(path: &Path) -> Option<Vec<u8>> {
+    let len = std::fs::metadata(path).ok()?.len();
+    if len == 0 || len > MAX_SUBTITLE_BYTES {
+        return None;
+    }
+    std::fs::read(path).ok()
 }
 
 /// A subtitle track ready for the player.
