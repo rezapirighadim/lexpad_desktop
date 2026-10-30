@@ -1,0 +1,2 @@
+import{i as e,t}from"./react--nwWWpNE.js";import{i as n}from"./Icon-r_cmDKFL.js";import"./dist-DGeUOeHk.js";import{r}from"./i18n-iFJyhARw.js";import{ft as i,ht as a}from"./index-D2_vyYAH.js";import{t as o}from"./BoxMeter-GIdaLdYP.js";var s={link:`_6VFNl8 press`},c=t(),l=`${a(`how`)}#${i.boxes}`;function u({box:t,className:i}){let a=Math.min(Math.max(Math.round(t),1),5);return(0,c.jsx)(e,{to:l,className:n(s.link,i),"aria-label":r(`word.stepHow`,{box:a,total:5}),children:(0,c.jsx)(o,{box:a,label:!0})})}export{u as n,l as t};
+//# sourceMappingURL=StepLink-BjZMAcZq.js.map
