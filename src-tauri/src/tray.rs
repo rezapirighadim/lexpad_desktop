@@ -1,6 +1,7 @@
 //! The menu-bar (macOS) / tray (Windows) icon. A left click opens the panel
 //! (panel.rs); a right click opens a small native menu as a fallback:
-//! Open Lexpad, Settings, Quit.
+//! Open Lexpad, Open a video…, Lexpad on your phone… / Lexpad everywhere…
+//! (signed in only, `everywhere`), Settings…, Quit Lexpad.
 //!
 //! The icons are drawn by `scripts/icons.py` from the Lexpad mark:
 //! - macOS: a template image (black on transparent; the system tints it for
@@ -9,11 +10,25 @@
 //! - Windows: the coloured mark from `tray.ico`, at the frame that matches
 //!   the system's small-icon size for its display scaling.
 
+use std::sync::Mutex;
+
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager, Wry};
 
-use crate::panel;
+use crate::{everywhere, panel};
+
+/// Where "Lexpad on your phone…" goes in the right-click menu: after Open
+/// Lexpad and Open a video…, above Settings… (uiux spec §6.3).
+const EVERYWHERE_AT: usize = 2;
+
+/// The right-click menu and its "Lexpad everywhere" item, which is in the
+/// menu only while someone is signed in. Its label follows `everywhere`.
+struct EverywhereItem {
+    menu: Menu<Wry>,
+    item: MenuItem<Wry>,
+    shown: Mutex<bool>,
+}
 
 /// The status item's slot in points (the size scripts/icons.py draws).
 #[cfg(target_os = "macos")]
@@ -30,6 +45,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Open Lexpad", true, None::<&str>)?;
     // The Player, straight to the file dialog (spec §2, §24.3).
     let video = MenuItem::with_id(app, "video", "Open a video…", true, None::<&str>)?;
+    // Not in the menu until a session is known (`set_everywhere`).
+    let phone = MenuItem::with_id(app, "everywhere", everywhere::OFFER, true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Lexpad", true, None::<&str>)?;
     let menu = Menu::with_items(
@@ -42,6 +59,11 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
             &quit,
         ],
     )?;
+    app.manage(EverywhereItem {
+        menu: menu.clone(),
+        item: phone,
+        shown: Mutex::new(false),
+    });
     let builder = TrayIconBuilder::with_id("main")
         .tooltip(if crate::config::PLAYER_TEST {
             "Lexpad Player Test"
@@ -52,6 +74,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "open" => crate::open_web(app, None),
+            "everywhere" => everywhere::open(app),
             "video" => crate::player_window::open(app, crate::player_window::Opened::Pick),
             "settings" => crate::open_desktop_settings(app),
             "quit" => app.exit(0),
@@ -90,6 +113,36 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         }
     })?;
     Ok(())
+}
+
+/// Puts "Lexpad on your phone…" / "Lexpad everywhere…" in the right-click
+/// menu, with the words for `used` (`Some`, signed in), or takes it out
+/// (`None`, signed out).
+pub fn set_everywhere(app: &AppHandle, used: Option<bool>) {
+    let Some(entry) = app.try_state::<EverywhereItem>() else {
+        return;
+    };
+    let Ok(mut shown) = entry.shown.lock() else {
+        return;
+    };
+    let result = match (used, *shown) {
+        (Some(used), was) => entry
+            .item
+            .set_text(everywhere::label(used))
+            .and_then(|()| {
+                if was {
+                    Ok(())
+                } else {
+                    entry.menu.insert(&entry.item, EVERYWHERE_AT)
+                }
+            })
+            .map(|()| *shown = true),
+        (None, true) => entry.menu.remove(&entry.item).map(|()| *shown = false),
+        (None, false) => Ok(()),
+    };
+    if let Err(e) = result {
+        log::warn!("could not update the tray menu's Lexpad everywhere item: {e}");
+    }
 }
 
 /// The one-time hint after the last window closed (Start window spec §6):

@@ -33,6 +33,8 @@ function fake(state: Partial<State> = {}, over: Partial<PanelBackend> = {}): Pan
     hidePanel: vi.fn(async () => undefined),
     fitPanel: vi.fn(async () => undefined),
     openWeb: vi.fn(async () => undefined),
+    phoneUsed: vi.fn(async () => false),
+    openEverywhere: vi.fn(async () => undefined),
     openSettings: vi.fn(async () => undefined),
     openAccessibilitySettings: vi.fn(async () => undefined),
     quit: vi.fn(async () => undefined),
@@ -130,12 +132,56 @@ describe('the panel, signed in', () => {
   });
 });
 
+describe('the Lexpad everywhere row', () => {
+  it('offers the phone while no phone app was used, and opens Lexpad everywhere', async () => {
+    const backend = fake();
+    await draw(backend);
+    const row = root.querySelector<HTMLButtonElement>('#everywhere')!;
+    expect(row.textContent).toBe('Lexpad on your phone…');
+    expect(row.type).toBe('button');
+    row.click();
+    expect(backend.openEverywhere).toHaveBeenCalledTimes(1);
+    expect(backend.openWeb).not.toHaveBeenCalled();
+  });
+
+  it('says Lexpad everywhere once a phone app was used', async () => {
+    await draw(fake({}, { phoneUsed: vi.fn(async () => true) }));
+    expect(root.querySelector('#everywhere')?.textContent).toBe('Lexpad everywhere…');
+  });
+
+  it('keeps the offer when the answer cannot be read', async () => {
+    await draw(fake({}, { phoneUsed: vi.fn(async () => Promise.reject('offline')) }));
+    expect(root.querySelector('#everywhere')?.textContent).toBe('Lexpad on your phone…');
+  });
+
+  it('sits right above the footer, after the recent words and the notebook', async () => {
+    await draw(fake());
+    const row = root.querySelector('#everywhere')!;
+    expect(row.nextElementSibling?.classList.contains('foot')).toBe(true);
+    expect(row.previousElementSibling?.classList.contains('notebook')).toBe(true);
+    // Tab order is the document order: recent words, the row, Open Lexpad, Settings…, Quit.
+    const order = [...root.querySelectorAll<HTMLElement>('button, input, select')]
+      .filter((b) => !(b as HTMLButtonElement).disabled)
+      .map((b) => b.id || b.textContent?.trim() || b.tagName);
+    expect(order.slice(-5)).toEqual(['notebook', 'everywhere', 'Open Lexpad', 'Settings…', 'Quit']);
+    expect(order.indexOf('everywhere')).toBeGreaterThan(order.findIndex((t) => t.startsWith('candid')));
+  });
+
+  it('asks once per opening, beside the state', async () => {
+    const backend = fake();
+    const panel = await draw(backend);
+    await panel.open(false);
+    expect(backend.phoneUsed).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('the panel, signed out', () => {
   it('offers to connect instead of the add box', async () => {
     const backend = fake({ connected: false, user: null, notebooks: [] });
     await draw(backend);
     expect(root.querySelector('.add')).toBeNull();
     expect(root.querySelector('.account')?.textContent).toBe('Not signed in');
+    expect(root.querySelector('#everywhere')).toBeNull();
     root.querySelector<HTMLButtonElement>('.connect .btn')!.click();
     expect(backend.connect).toHaveBeenCalled();
   });
@@ -158,6 +204,7 @@ describe('the panel, always', () => {
   it('says so when the account cannot be read, and still offers the way out', async () => {
     await draw(fake({}, { state: vi.fn(async () => Promise.reject('error')) }));
     expect(root.querySelector('.note.bad')).not.toBeNull();
+    expect(root.querySelector('#everywhere')).toBeNull();
     expect(root.querySelectorAll('.foot .act')).toHaveLength(3);
   });
 

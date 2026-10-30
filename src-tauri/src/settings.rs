@@ -73,6 +73,11 @@ pub struct Settings {
     pub played_video: bool,
     /// "Lexpad is still here" was shown once, when the last window closed (§6).
     pub tray_hint_shown: bool,
+    /// The account (its id) that the API said has used a Lexpad phone app.
+    /// The server never takes that back (`everUsed`), so once it is known
+    /// the tray says "Lexpad everywhere…" without asking again, offline too.
+    /// Another account signed in here is asked for afresh (`everywhere`).
+    pub phone_used_by: Option<String>,
 }
 
 fn on() -> bool {
@@ -195,6 +200,7 @@ impl Default for Settings {
             start_seen: false,
             played_video: false,
             tray_hint_shown: false,
+            phone_used_by: None,
         }
     }
 }

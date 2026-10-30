@@ -540,6 +540,26 @@ pub fn open_web(app: AppHandle, word_id: Option<String>) -> Result<(), String> {
     Ok(())
 }
 
+/// Whether the account signed in has ever used a Lexpad phone app, for the
+/// panel's "Lexpad on your phone…" / "Lexpad everywhere…" row
+/// (`everywhere::phone_used`). False signed out, where the panel has no row.
+/// The tray's right-click menu is put in step with the same answer.
+#[tauri::command]
+pub async fn phone_used(app: AppHandle, state: State<'_, AppState>) -> Result<bool, String> {
+    let used = crate::everywhere::phone_used(&state).await;
+    crate::tray::set_everywhere(&app, used);
+    Ok(used.unwrap_or(false))
+}
+
+/// The panel's Lexpad everywhere row: puts the panel away and opens Settings
+/// → Lexpad everywhere (`everywhere::open`). The address is built in the core.
+#[tauri::command]
+pub fn open_everywhere(app: AppHandle) -> Result<(), String> {
+    panel::hide(&app, false);
+    crate::everywhere::open(&app);
+    Ok(())
+}
+
 /// The longest report payload the popup may hand over: the card's text,
 /// capped there, as base64url. Anything longer is not from the card.
 const MAX_REPORT_FRAGMENT: usize = 8192;

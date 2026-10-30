@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "panel",
-  "description": "The menu-bar / tray panel: account, add a word (opens the card), recent words, default notebook, Open Lexpad, Settings, Quit. Nothing else.",
+  "description": "The menu-bar / tray panel: account, add a word (opens the card), recent words, default notebook, Lexpad everywhere (whether a phone app was used, and opening Settings → Lexpad everywhere), Open Lexpad, Settings, Quit. Nothing else.",
   "windows": ["panel"],
   "permissions": [
     "core:event:allow-listen",
@@ -15,6 +15,8 @@
     "allow-hide-panel",
     "allow-fit-panel",
     "allow-open-web",
+    "allow-phone-used",
+    "allow-open-everywhere",
     "allow-open-settings",
     "allow-open-accessibility-settings",
     "allow-quit"

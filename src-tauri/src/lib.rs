@@ -24,6 +24,7 @@ mod config;
 mod e2e;
 #[cfg(test)]
 mod e2e_main;
+mod everywhere;
 mod main_window;
 mod media;
 #[cfg(windows)]
@@ -50,7 +51,7 @@ mod word_queue;
 
 use std::sync::{Arc, Mutex};
 
-use tauri::{AppHandle, DragDropEvent, Manager, WindowEvent};
+use tauri::{AppHandle, DragDropEvent, Listener as _, Manager, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt as _};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt as _, ShortcutState};
 use tauri_plugin_opener::OpenerExt as _;
@@ -563,6 +564,16 @@ pub fn run() {
             }
             panel::create(&handle)?;
             tray::build(&handle)?;
+            // The right-click menu's Lexpad everywhere item: in when signed
+            // in, with the words for the account, and again after every
+            // sign-in or sign-out.
+            tauri::async_runtime::spawn(everywhere::sync_tray(handle.clone()));
+            {
+                let app = handle.clone();
+                handle.listen_any("session:changed", move |_| {
+                    tauri::async_runtime::spawn(everywhere::sync_tray(app.clone()));
+                });
+            }
             // Only when the learner turned it on (never on a first run: no
             // "Background Items Added" before they did anything, §6). Applied
             // again each start, so the item carries --login after an update.
@@ -698,6 +709,8 @@ pub fn run() {
             commands::hide_panel,
             commands::fit_panel,
             commands::open_web,
+            commands::phone_used,
+            commands::open_everywhere,
             commands::open_report,
             commands::quit,
             commands::api_fetch,

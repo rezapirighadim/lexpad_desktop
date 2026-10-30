@@ -69,6 +69,10 @@ export interface PanelBackend {
   fitPanel(height: number): Promise<void>;
   /** The web app in the browser: its home, or one word's page. */
   openWeb(wordId: string | null): Promise<void>;
+  /** Whether this account ever used a Lexpad phone app (false signed out). */
+  phoneUsed(): Promise<boolean>;
+  /** Settings → Lexpad everywhere, in Lexpad's window (or the browser). */
+  openEverywhere(): Promise<void>;
   openSettings(): Promise<void>;
   openAccessibilitySettings(): Promise<void>;
   quit(): Promise<void>;
@@ -100,5 +104,7 @@ export const tauriBackend: Backend & SettingsBackend & PanelBackend = {
   hidePanel: () => invoke<void>('hide_panel'),
   fitPanel: (height) => invoke<void>('fit_panel', { height }),
   openWeb: (wordId) => invoke<void>('open_web', { wordId }),
+  phoneUsed: () => invoke<boolean>('phone_used'),
+  openEverywhere: () => invoke<void>('open_everywhere'),
   quit: () => invoke<void>('quit'),
 };
