@@ -1,8 +1,9 @@
 /**
  * The menu-bar / tray panel: who is signed in, a box to add a word (the card
  * opens for it, exactly as for a selection), the shortcut, the words added
- * from this computer, the default notebook, and Open Lexpad / Settings /
- * Quit. Signed out, it offers to connect instead.
+ * from this computer, the default notebook, "Lexpad on your phone…" (or
+ * "Lexpad everywhere…" once a phone app was used), and Open Lexpad /
+ * Settings / Quit. Signed out, it offers to connect instead.
  *
  * Drawn with the DOM and `textContent`; nothing from the API is parsed as
  * HTML. Esc closes it; every control is reachable with Tab.
@@ -18,6 +19,13 @@ const RTL = new RegExp('[֐-ࣿיִ-﷿ﹰ-﻿]');
 
 const MARK =
   '<svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#2E7B4E"/><rect x="10" y="8" width="12" height="16" rx="2" fill="none" stroke="#fff" stroke-width="2"/><path d="M14 8v16M17 12h2M17 15h2" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>';
+/* The phone and the globe, 18 px, as the web app's rail draws them (uiux 2026-10-31-ecosystem-cards §6.1). */
+const PHONE =
+  '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg>';
+const GLOBE =
+  '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z"/></svg>';
+const CHEVRON =
+  '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5"/></svg>';
 const RETURN =
   '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3v5a2 2 0 0 1-2 2H3"/><path d="M6 7l-3 3 3 3"/></svg>';
 
@@ -74,9 +82,15 @@ export class Panel {
     delete document.documentElement.dataset.hint;
     let state: State;
     let recent: RecentWord[] = [];
+    let phoneUsed = false;
+    // Asked beside the state, so the panel waits for one round trip, not two.
+    // A failed answer keeps the offer: both labels open the same page.
+    const phone = this.backend.phoneUsed().catch(() => false);
     try {
       state = await this.backend.state();
-      if (state.connected) recent = await this.backend.recent().catch(() => []);
+      if (state.connected) {
+        [recent, phoneUsed] = await Promise.all([this.backend.recent().catch(() => []), phone]);
+      }
     } catch {
       if (generation !== this.generation) return;
       this.state = undefined;
@@ -93,7 +107,7 @@ export class Panel {
     const active = document.activeElement;
     const activeId = active instanceof HTMLElement && this.root.contains(active) ? active.id : '';
     this.root.replaceChildren(
-      ...(state.connected ? this.connected(state, recent) : this.signedOut()),
+      ...(state.connected ? this.connected(state, recent, phoneUsed) : this.signedOut()),
       this.footer(),
     );
     const input = this.root.querySelector<HTMLInputElement>('.add input');
@@ -153,7 +167,7 @@ export class Panel {
     return head;
   }
 
-  private connected(state: State, recent: RecentWord[]): HTMLElement[] {
+  private connected(state: State, recent: RecentWord[], phoneUsed: boolean): HTMLElement[] {
     const parts: HTMLElement[] = [this.header(state)];
 
     // Add a word: Enter opens the card for it.
@@ -202,7 +216,28 @@ export class Panel {
     parts.push(this.recentList(state, recent));
     const picker = this.notebookPicker(state.notebooks, state.notebookId);
     if (picker) parts.push(picker);
+    parts.push(this.everywhereRow(phoneUsed));
     return parts;
+  }
+
+  /**
+   * One row above the footer, signed in only: "Lexpad on your phone…" while
+   * this account never used a phone app, then "Lexpad everywhere…". It opens
+   * Settings → Lexpad everywhere in Lexpad's window, where the QR code is.
+   */
+  private everywhereRow(phoneUsed: boolean): HTMLElement {
+    const row = button('every', '', () => void this.backend.openEverywhere());
+    row.id = 'everywhere';
+    const icon = el('span', 'every-icon');
+    icon.innerHTML = phoneUsed ? GLOBE : PHONE;
+    const chevron = el('span', 'every-chev');
+    chevron.innerHTML = CHEVRON;
+    row.append(
+      icon,
+      el('span', 'every-label', phoneUsed ? 'Lexpad everywhere…' : 'Lexpad on your phone…'),
+      chevron,
+    );
+    return row;
   }
 
   private recentList(state: State, recent: RecentWord[]): HTMLElement {
