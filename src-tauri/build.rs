@@ -31,6 +31,8 @@ fn main() {
             "hide_panel",
             "fit_panel",
             "open_web",
+            "phone_used",
+            "open_everywhere",
             "open_report",
             "quit",
             "api_fetch",

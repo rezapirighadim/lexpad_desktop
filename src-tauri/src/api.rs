@@ -529,6 +529,17 @@ impl Api {
         Err(Failure::SignedOut)
     }
 
+    /// Whether this account has ever used a Lexpad phone app (Android or
+    /// iOS), from `GET /me/surfaces`: the same rows the web app's Lexpad
+    /// everywhere page reads. The server keeps `everUsed` once a phone
+    /// session was opened, so it stays true after signing out there.
+    pub async fn phone_used(&self) -> Result<bool, Failure> {
+        let body = self
+            .request(reqwest::Method::GET, "/me/surfaces", None, false)
+            .await?;
+        Ok(phone_used_in(&body))
+    }
+
     /// The account's notebooks, as the API sends them.
     pub async fn notebooks(&self) -> Result<Vec<Value>, Failure> {
         let body = self
@@ -615,6 +626,25 @@ impl Api {
             .map(str::to_owned)
             .ok_or(Failure::Error)
     }
+}
+
+/// The phone apps among the API's surfaces.
+const PHONE_SURFACES: [&str; 2] = ["android", "ios"];
+
+/// Whether a `/me/surfaces` answer has a phone app this account has used.
+/// Anything not shaped like the contract's `SurfaceList` reads as "not used",
+/// which only keeps the tray offering the phone.
+pub fn phone_used_in(body: &Value) -> bool {
+    body.get("surfaces")
+        .and_then(Value::as_array)
+        .is_some_and(|rows| {
+            rows.iter().any(|row| {
+                row.get("surface")
+                    .and_then(Value::as_str)
+                    .is_some_and(|s| PHONE_SURFACES.contains(&s))
+                    && row.get("everUsed").and_then(Value::as_bool) == Some(true)
+            })
+        })
 }
 
 /// The API's refusal, as a failure the popup can phrase. Limits are never
@@ -765,6 +795,54 @@ mod tests {
         }
         assert_eq!(refreshes.load(Ordering::SeqCst), 1);
         assert_eq!(store.load().unwrap().refresh_token, "rt-2");
+    }
+
+    #[test]
+    fn a_phone_app_counts_only_once_it_was_used() {
+        let rows = |android: bool, ios: bool| {
+            json!({ "surfaces": [
+                { "surface": "web", "release": "live", "everUsed": true, "active": true },
+                { "surface": "android", "release": "live", "everUsed": android, "active": false },
+                { "surface": "ios", "release": "beta", "everUsed": ios, "active": false },
+                { "surface": "desktop", "release": "live", "everUsed": true, "active": true },
+            ]})
+        };
+        assert!(!phone_used_in(&rows(false, false)));
+        assert!(phone_used_in(&rows(true, false)));
+        assert!(phone_used_in(&rows(false, true)));
+        // The computer and the web never count as a phone.
+        assert!(!phone_used_in(&json!({ "surfaces": [
+            { "surface": "desktop", "everUsed": true },
+            { "surface": "extension", "everUsed": true },
+        ]})));
+        // Not the contract's shape: not used.
+        assert!(!phone_used_in(&json!([])));
+        assert!(!phone_used_in(
+            &json!({ "surfaces": [{ "surface": "android", "everUsed": "yes" }] })
+        ));
+        assert!(!phone_used_in(&Value::Null));
+    }
+
+    #[tokio::test]
+    async fn asks_the_surfaces_with_the_session() {
+        let base = serve(|line, auth, _| {
+            if line.starts_with("POST /api/v1/auth/refresh") {
+                return (200, SESSION.into());
+            }
+            if line.starts_with("GET /api/v1/me/surfaces ") && auth == "at-2" {
+                return (
+                    200,
+                    r#"{"surfaces":[{"surface":"ios","release":"live","everUsed":true,"active":false}]}"#
+                        .into(),
+                );
+            }
+            (404, "{}".into())
+        })
+        .await;
+        assert_eq!(Api::new(&base, signed_in()).phone_used().await, Ok(true));
+        // Signed out: no request, and the caller knows why.
+        let none = Api::new(&base, Arc::new(Memory::default()));
+        assert_eq!(none.phone_used().await, Err(Failure::SignedOut));
     }
 
     #[tokio::test]
