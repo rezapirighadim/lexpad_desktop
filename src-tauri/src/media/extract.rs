@@ -231,13 +231,17 @@ mod tests {
             s.contains("-discard:v all -discard:a all -i /films/a.mkv"),
             "{s}"
         );
-        assert!(s.contains("-map 0:2 -c:s copy -f srt /tmp/x/2.srt"), "{s}");
-        assert!(s.contains("-map 0:3 -c:s copy -f ass /tmp/x/3.ass"), "{s}");
-        assert!(s.contains("-map 0:5 -c:s srt -f srt /tmp/x/5.srt"), "{s}");
-        assert!(
-            s.contains("-map 0:6 -c:s copy -f webvtt /tmp/x/6.vtt"),
-            "{s}"
-        );
+        // The output files are joined with the system's separator (a backslash on Windows).
+        let out = |name: &str| dir.join(name).display().to_string();
+        let want = [
+            format!("-map 0:2 -c:s copy -f srt {}", out("2.srt")),
+            format!("-map 0:3 -c:s copy -f ass {}", out("3.ass")),
+            format!("-map 0:5 -c:s srt -f srt {}", out("5.srt")),
+            format!("-map 0:6 -c:s copy -f webvtt {}", out("6.vtt")),
+        ];
+        for w in &want {
+            assert!(s.contains(w.as_str()), "{w} in {s}");
+        }
         assert!(!s.contains("0:4"), "no picture track: {s}");
         assert!(s.ends_with("-progress pipe:1"), "{s}");
         // A file of subtitles alone has nothing to discard.
