@@ -1,0 +1,1 @@
+import{a as e}from"./play-7GESKUWM.js";function t(){return!e()}export{t};

@@ -1,0 +1,1 @@
+var e=1e4,t=45e3,n=`day1`;export{t as n,e as r,n as t};

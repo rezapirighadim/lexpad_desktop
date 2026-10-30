@@ -1,0 +1,1 @@
+import{r as e}from"./rolldown-runtime-hePW80VL.js";import{x as t}from"./react--nwWWpNE.js";import{r as n}from"./useConfig-CBUoSll5.js";var r=e(t(),1);function i(){let e=n(e=>e.appPolishV2),t=n(e=>e.ensure);return(0,r.useEffect)(()=>{t()},[t]),e}export{i as t};

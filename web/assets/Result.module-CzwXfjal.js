@@ -1,0 +1,1 @@
+var e={result:`KIN3IT`,good:`_1d7CdS`,icon:`pgvn0V`,soft:`EWjWKd`,text:`psvA9T`,offer:`qAtNCD`,offerTitle:`hWk-iY`,offerBody:`_4gnnE-`,offerActions:`vUlZK1`,offerYes:`pO02KQ`,offerNo:`GtzXZk`};export{e as t};

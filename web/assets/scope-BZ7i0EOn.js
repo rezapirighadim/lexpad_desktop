@@ -1,0 +1,1 @@
+function e(e,t){let n=e.map(e=>({list:e,size:e.length,take:0})),r=t,i=n.filter(e=>e.size>0).length;for(;r>0&&i>0;){let e=Math.max(1,Math.floor(r/i));i=0;for(let t of n){if(r<=0)break;let n=Math.min(e,t.size-t.take,r);t.take+=n,r-=n,t.take<t.size&&(i+=1)}}return n.flatMap(e=>e.list.slice(0,e.take))}export{e as t};

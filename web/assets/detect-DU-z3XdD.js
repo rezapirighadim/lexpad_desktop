@@ -1,0 +1,1 @@
+function e(){return window.Capacitor}function t(){return e()?.isNativePlatform()===!0}function n(){let t=e()?.getPlatform();return t===`ios`||t===`android`?t:`web`}function r(){let e=window;return e.__LEXPAD_CONFIG?.platform===`desktop`&&typeof e.__TAURI_INTERNALS__==`object`}export{t as n,n as r,r as t};

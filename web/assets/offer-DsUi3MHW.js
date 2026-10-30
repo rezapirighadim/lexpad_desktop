@@ -1,0 +1,1 @@
+function e(e,t){return!t&&e<10}function t(e,t){return e>=1&&t<5}export{e as n,t};
