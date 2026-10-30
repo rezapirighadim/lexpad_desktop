@@ -32,8 +32,11 @@ Lexpad lives in the menu bar (macOS) or the system tray (Windows), starts when y
 can turn that off), and runs once. From 0.2 it is also the whole Lexpad app in a window of its
 own: Today, practice (offline too), the notebook, Lex, Progress and Settings. Click its icon for a small panel: type a word to add it, see
 your shortcut, the last words you added from this computer (click one to open it in Lexpad),
-pick the notebook new words go to, and Open Lexpad, Settings or Quit. Esc or a click elsewhere
-closes it. Right-click the icon for a short menu with the same three actions.
+pick the notebook new words go to, "Lexpad on your phone…" (it says "Lexpad everywhere…" once
+you have used a Lexpad phone app; it opens Settings → Lexpad everywhere), and Open Lexpad,
+Settings or Quit. Esc or a click elsewhere closes it. Right-click the icon for a short menu:
+Open Lexpad, Open a video…, the same Lexpad everywhere item when you are signed in, Settings…
+and Quit Lexpad.
 
 | Light                                                 | Dark                                                |
 | ----------------------------------------------------- | --------------------------------------------------- |

@@ -70,7 +70,11 @@ Use the installer from the latest `build` run on GitHub (Actions → build → a
     size and place; move it to a second monitor, unplug that monitor, open it again: it comes
     back on the remaining screen. Set a reminder time a few minutes ahead (Settings →
     Notifications), close the window: a toast arrives at that time; click it: the window opens.
-20. **Right-click menu.** Right-click the tray icon: Open Lexpad, Settings…, Quit Lexpad.
+20. **Right-click menu.** Right-click the tray icon: Open Lexpad, Open a video…, Lexpad on your
+    phone… (signed in only; "Lexpad everywhere…" once the account used a phone app), Settings…,
+    Quit Lexpad. Lexpad on your phone… opens Settings → Lexpad everywhere in Lexpad's window. Sign
+    out: the item is gone from the menu; sign in again: it is back. The panel shows the same row
+    above Open Lexpad, and Tab reaches it after the recent words.
 21. **Uninstall.** Settings → Apps → Lexpad → Uninstall. The tray icon is gone, and the login
     item with it.
 
