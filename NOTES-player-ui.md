@@ -92,3 +92,12 @@ etaSeconds?: number }` while a transcode runs, so the processing screen can say 
   macOS the answer now goes through `run_on_main_thread`, where the check and the call cannot be
   split. `scripts/player-bench.sh` (release settings) then passed twice on Big Buck Bunny,
   Sintel and Tears of Steel (mp4, mkv remux, mov audio transcode): first frame 94–258 ms.
+
+## Volume above 100% on macOS (31 Oct 2026, for 0.3.23)
+
+- Asked by the UI and done here: `media_open` and `media_set_audio` take `boost`; the plan then
+  re-encodes the sound twice as loud behind a -1 dBFS limiter (`AudioPlan.gain` = 2), and
+  `media_engine` answers `audioBoost: true`. WKWebView's Web Audio hears a `lexmedia` file played
+  by its address but only silence from Media Source (every streamed mode), which is why the
+  front stopped boost on macOS at 5d43ec28. The front now asks for the louder stream the first
+  time the volume goes past 100% and plays it at volume / 2.

@@ -40,6 +40,17 @@ const HEADERS: &[&str] = &[
 const SURFACE: &str = "x-lexpad-surface";
 /// The short slug that goes with it (a file kind; never a name or an address).
 const CONTEXT: &str = "x-lexpad-context";
+/// The app session the call belongs to (contract §9), so what the server
+/// records for it joins the visit: 8–64 of `[A-Za-z0-9_-]`, a random id.
+const APP_SESSION: &str = "x-lexpad-app-session";
+
+/// An app session as the API takes it.
+pub fn valid_app_session(value: &str) -> bool {
+    (8..=64).contains(&value.len())
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
 
 /// A surface as the API takes it: `^[a-z0-9]+(\.[a-z0-9_]+){0,3}$`, at most
 /// 48 characters, and, from this window, always one of the desktop app's own.
@@ -79,6 +90,7 @@ fn header_allowed(name: &str, value: &str) -> bool {
     match name {
         SURFACE => valid_surface(value),
         CONTEXT => valid_context(value),
+        APP_SESSION => valid_app_session(value),
         _ => HEADERS.contains(&name),
     }
 }
@@ -375,6 +387,30 @@ mod tests {
                 "/Users/me/Movies/film.mkv".into(),
             ),
         ];
+        assert!(check(API, &r).unwrap().headers.is_empty());
+    }
+
+    #[test]
+    fn the_app_session_crosses_only_as_a_short_random_id() {
+        let mut r = req("POST", "https://api.lexpad.app/api/v1/notebooks/x/words");
+        r.headers = vec![("X-Lexpad-App-Session".into(), "visit-0001_AbC".into())];
+        assert_eq!(
+            check(API, &r).unwrap().headers,
+            [(
+                "x-lexpad-app-session".to_string(),
+                "visit-0001_AbC".to_string()
+            )]
+        );
+        for bad in [
+            "short",
+            "has space here",
+            "a/b/c/d/e/f",
+            "x\r\nX: y",
+            &"a".repeat(65),
+        ] {
+            assert!(!valid_app_session(bad), "{bad}");
+        }
+        r.headers = vec![("X-Lexpad-App-Session".into(), "has space here".into())];
         assert!(check(API, &r).unwrap().headers.is_empty());
     }
 

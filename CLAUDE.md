@@ -103,8 +103,8 @@ docs/ffmpeg.md                   FFmpeg's licence (LGPL only), sources, builds, 
 - **The core stays the only holder of tokens.** The window never gets a session of its own: every
   API call goes to the core (`api_fetch`), which checks it (`proxy.rs`: the API's own origin under
   `/api/v1/`, the client's headers only, no sign-in, refresh, password, other-session or assistant
-  calls; the activity headers `X-Lexpad-Surface` / `X-Lexpad-Context` only when well formed, and a
-  surface only when it is the desktop app's own, `desktop.`…) and sends it with the desktop app's own delegated session from the credential store,
+  calls; the activity headers `X-Lexpad-Surface` / `X-Lexpad-Context` / `X-Lexpad-App-Session` only
+  when well formed, and a surface only when it is the desktop app's own, `desktop.`…) and sends it with the desktop app's own delegated session from the credential store,
   refreshing it single-flight, streaming the body back over a channel. No server change was
   needed: the delegated session may do everything the app does day to day, and what it may not
   (a password, linking Google or Apple, connecting another client or an assistant) the window
@@ -175,6 +175,14 @@ page written by us (designed separately); this repository holds the engine.
   Foundation, OpenH264 last; never x264). HEVC/VP9/AV1 are transcoded even where one webview
   could play them: both platforms must behave the same. HDR (PQ, HLG) is tone-mapped to SDR
   BT.709 (zscale + Hable, CPU, capped at 1080p).
+- **Volume above 100% on macOS is the engine's** (`Options::boost`, `AudioPlan::gain`): WKWebView
+  gives a MediaElementAudioSourceNode only silence for a Media Source stream (proved headlessly
+  on macOS 26.6, 31 Oct 2026: a `lexmedia` file by its address is heard, MSE and
+  ManagedMediaSource are not), so the page asks `media_open` / `media_set_audio` for `boost`, and
+  the run re-encodes the sound `BOOST_GAIN` (2×) louder behind `alimiter` at -1 dBFS (a `Direct`
+  MP4 becomes `audioTranscode` while it is on); the element plays it at volume / 2.
+  `engine_tests::a_boosted_run_is_twice_as_loud_and_never_clips` checks the levels with the real
+  FFmpeg. `media_engine` says `audioBoost`. Windows keeps Web Audio.
 - **The bundled FFmpeg is LGPL only** (docs/ffmpeg.md): Tauri sidecars, built on the Mac
   (`scripts/ffmpeg/build-macos.sh`) or fetched pinned for Windows; `check-lgpl.sh` refuses
   anything else. `src-tauri/binaries/` is never committed; a build needs it (Tauri checks
@@ -229,7 +237,9 @@ page written by us (designed separately); this repository holds the engine.
   holds every close for it and the page ends with `destroy()` (`core:window:allow-destroy` in
   player.json). If the page never does (a hung webview), the core closes it itself
   (`player_window::CloseGuard`): on a second close request at once, else `CLOSE_FALLBACK` (2 s)
-  after the first.
+  after the first. Quitting with the Player open (Quit, a shutdown) closes it the same way
+  first and quits once it is gone or `QUIT_WAIT` (1.5 s) passed (`close_before_quit`), so its
+  last watched minutes and counts are kept; a restart is never held.
 
 The Player's page is the web app's `/player` route (lexpad_front `features/player`), bundled in
 `web/` like the rest; this repository holds its window and the app's structure around it (spec
@@ -332,7 +342,7 @@ The Player's page is the web app's `/player` route (lexpad_front `features/playe
   `from`, which wins over the popup's capture and refuses any other value),
   and only while GET /config says `activity: true` (`Api::activity_now`: the cached answer only,
   never awaited on a word's path; refreshed in the background at start, after sign-in and when 6
-  hours old, one read at a time; unknown or a failed read is off). The window's app sets its own (`desktop.app.*`) and the
+  hours old, one read at a time; never heard is off, and a failed read keeps the last answer heard). The window's app sets its own (`desktop.app.*`) and the
   proxy lets them through. Background calls (the inbox poll, settings) say nothing.
 - **Every call says which copy it is, in its User-Agent and nothing else** (`config::user_agent`,
   since 0.3.11): `Lexpad-Desktop/<version> (macOS)`, `(Windows; store)` for the Microsoft

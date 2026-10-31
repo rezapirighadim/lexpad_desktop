@@ -176,9 +176,18 @@ impl Gate {
             Some(body.get("activity").and_then(Value::as_bool) == Some(true))
         }
         .await;
+        // A failed read keeps the last answer heard (contract §2.1): one
+        // dropped connection does not take the surface off the saves made
+        // in the next minutes. Never heard: off.
+        let before = self
+            .cache
+            .lock()
+            .expect("activity lock")
+            .map(|(on, _)| on)
+            .unwrap_or(false);
         let kept = match answer {
             Some(on) => (on, Instant::now() + ACTIVITY_KEEP),
-            None => (false, Instant::now() + ACTIVITY_RETRY),
+            None => (before, Instant::now() + ACTIVITY_RETRY),
         };
         *self.cache.lock().expect("activity lock") = Some(kept);
         kept.0
@@ -1016,6 +1025,25 @@ mod tests {
             // The answer is kept: one read for all three calls.
             assert_eq!(configs.load(Ordering::SeqCst), 1);
         }
+    }
+
+    #[tokio::test]
+    async fn a_failed_read_keeps_the_last_answer_heard() {
+        let up = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let flag = up.clone();
+        let base = serve(move |_, _, _| {
+            if flag.load(Ordering::SeqCst) {
+                (200, r#"{"activity":true}"#.into())
+            } else {
+                (503, "{}".into())
+            }
+        })
+        .await;
+        let api = Api::new(&base, Arc::new(Memory::default()));
+        assert!(api.refresh_activity().await);
+        up.store(false, Ordering::SeqCst);
+        assert!(api.refresh_activity().await, "one failed read keeps on");
+        assert!(api.activity_now());
     }
 
     #[tokio::test]

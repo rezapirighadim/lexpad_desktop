@@ -47,6 +47,10 @@ pub struct EngineDto {
     licence: &'static str,
     /// The scheme's origin, as the page writes media addresses.
     base_url: &'static str,
+    /// The engine can make a video's sound louder itself (`boost` on
+    /// `media_open` / `media_set_audio`), for volume above 100% where Web
+    /// Audio cannot hear the video (macOS).
+    audio_boost: bool,
 }
 
 /// Whether the engine is there, its FFmpeg, and what this machine can do.
@@ -59,6 +63,7 @@ pub async fn media_engine(media: Media<'_>) -> Result<EngineDto, String> {
             caps: None,
             licence: "LGPL-2.1-or-later",
             base_url: protocol::base_url(),
+            audio_boost: false,
         });
     };
     Ok(EngineDto {
@@ -67,6 +72,7 @@ pub async fn media_engine(media: Media<'_>) -> Result<EngineDto, String> {
         caps: Some(tools::caps(&tools).await),
         licence: "LGPL-2.1-or-later",
         base_url: protocol::base_url(),
+        audio_boost: true,
     })
 }
 
@@ -229,6 +235,7 @@ pub async fn media_open<R: Runtime>(
     audio: Option<usize>,
     audio_delay_ms: Option<i64>,
     at: Option<f64>,
+    boost: Option<bool>,
 ) -> Result<PlaybackDto, String> {
     let (path, file) = file_ref(&media, &file_id)?;
     if file.kind != Kind::Video {
@@ -242,6 +249,7 @@ pub async fn media_open<R: Runtime>(
     let opts = Options {
         audio: audio.or(saved.audio),
         audio_delay_ms: audio_delay_ms.unwrap_or(saved.audio_delay_ms),
+        boost: boost.unwrap_or(false),
     };
     let id = uuid::Uuid::new_v4().simple().to_string();
     let emitter = app.clone();
@@ -276,8 +284,10 @@ pub fn media_seek(media: Media<'_>, session: String, at: f64) -> Result<RunDto, 
     run_dto(&s, Some(run), offset).ok_or_else(|| "direct".into())
 }
 
-/// A new audio track or delay, kept for this video: a new plan (which may
-/// change the mode, e.g. `Direct` to `Remux`) and a new run from `at`.
+/// A new audio track or delay, kept for this video, or the sound made louder
+/// by the engine (`boost`, not kept: the page asks for it from its volume):
+/// a new plan (which may change the mode, e.g. `Direct` to `Remux`) and a
+/// new run from `at`.
 #[tauri::command]
 pub fn media_set_audio(
     media: Media<'_>,
@@ -285,6 +295,7 @@ pub fn media_set_audio(
     audio: Option<usize>,
     audio_delay_ms: i64,
     at: f64,
+    boost: Option<bool>,
 ) -> Result<PlaybackDto, String> {
     let s = media.session(&session).ok_or("no_session")?;
     let (path, file) = file_ref(&media, &s.file_id)?;
@@ -292,6 +303,7 @@ pub fn media_set_audio(
     s.replan(Options {
         audio,
         audio_delay_ms,
+        boost: boost.unwrap_or(false),
     })
     .map_err(unplayable)?;
     let key = resume::key_for(&path, file.size);
