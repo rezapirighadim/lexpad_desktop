@@ -72,6 +72,12 @@ pub struct Dropped {
     pub subtitles: Vec<FileRef>,
     /// Names only: what was given and cannot be played or shown.
     pub unsupported: Vec<String>,
+    /// How they came, for the activity reports (`player.open` via): `drop`
+    /// on the Player, `open_with` from outside it (the system's "Open with",
+    /// a second launch, a drop on another Lexpad window). None from the
+    /// open dialog, which the page asked for itself.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub via: Option<&'static str>,
 }
 
 #[derive(Default)]

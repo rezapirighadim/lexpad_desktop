@@ -37,6 +37,8 @@ export interface Dropped {
   videos: FileRef[];
   subtitles: FileRef[];
   unsupported: string[];
+  /** How they came (a drop on the Player, or from outside it); absent from the open dialog. */
+  via?: 'drop' | 'open_with';
 }
 
 export type Encoder = 'videoToolbox' | 'nvenc' | 'qsv' | 'amf' | 'mediaFoundation' | 'openH264';
