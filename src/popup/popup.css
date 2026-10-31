@@ -389,9 +389,12 @@ input {
 .video-hint-text b {
   color: var(--ink);
 }
+/* At least 24 px tall (WCAG 2.5.8, review s3), on the hint's first line. */
 .video-hint-open {
   flex: none;
-  padding: 0;
+  min-height: 24px;
+  margin-top: -4px;
+  padding: 2px 0;
   border: 0;
   background: none;
   font: inherit;

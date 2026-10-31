@@ -310,8 +310,13 @@ describe('the Player row', () => {
     const backend = fake({}, { recentVideos: vi.fn(async () => [film]) });
     await draw(backend);
     const row = root.querySelector<HTMLButtonElement>('#watch')!;
-    expect(row.querySelector('.every-label')?.textContent).toBe('Continue Tears of Steel · 8 min left');
+    expect(row.querySelector('.watch-name')?.textContent).toBe('Continue Tears of Steel');
     expect(row.querySelector('.watch-title')?.textContent).toBe('Tears of Steel');
+    // The minutes sit outside the two-line clamp, so they always show (review R4).
+    expect(row.querySelector('.watch-name .watch-left')).toBeNull();
+    expect(row.querySelector('.every-label > .watch-left')?.textContent).toBe('· 8 min left');
+    expect(row.getAttribute('aria-label')).toBe('Continue Tears of Steel, 8 minutes left');
+    expect(row.title).toBe('Continue Tears of Steel, 8 minutes left');
     expect(row.querySelector('kbd')).toBeNull();
     expect(row.querySelector('.every-chev svg')).not.toBeNull();
     row.click();

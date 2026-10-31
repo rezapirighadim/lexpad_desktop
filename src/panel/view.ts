@@ -247,14 +247,22 @@ export class Panel {
     const label = el('span', 'every-label');
     const end = el('span', watch.kind === 'continue' ? 'every-chev' : 'every-key');
     if (watch.kind === 'continue') {
-      label.append('Continue ');
+      // The title is held to two lines; the minutes sit outside that, so they always show (review R4).
+      const name = el('span', 'watch-name');
+      name.append('Continue ');
       const title = el('b', 'watch-title', watch.title);
       title.dir = 'auto';
-      label.append(title);
+      name.append(title);
+      label.append(name);
       if (watch.minutesLeft !== undefined) {
-        label.append(el('span', 'watch-left', ` · ${String(watch.minutesLeft)} min left`));
+        label.append(el('span', 'watch-left', `· ${String(watch.minutesLeft)} min left`));
       }
-      label.title = label.textContent;
+      const whole =
+        watch.minutesLeft === undefined
+          ? `Continue ${watch.title}`
+          : `Continue ${watch.title}, ${String(watch.minutesLeft)} ${watch.minutesLeft === 1 ? 'minute' : 'minutes'} left`;
+      row.title = whole;
+      row.setAttribute('aria-label', whole);
       end.innerHTML = CHEVRON;
     } else {
       label.textContent = 'Watch a video…';
