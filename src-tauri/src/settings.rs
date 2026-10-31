@@ -78,6 +78,9 @@ pub struct Settings {
     /// the tray says "Lexpad everywhere…" without asking again, offline too.
     /// Another account signed in here is asked for afresh (`everywhere`).
     pub phone_used_by: Option<String>,
+    /// The shortcut card's hint when a video app is in front: when each
+    /// app's showed, and how many in all (`video_hint`).
+    pub video_hint: crate::video_hint::VideoHint,
 }
 
 fn on() -> bool {
@@ -201,6 +204,7 @@ impl Default for Settings {
             played_video: false,
             tray_hint_shown: false,
             phone_used_by: None,
+            video_hint: Default::default(),
         }
     }
 }

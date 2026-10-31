@@ -231,7 +231,7 @@ pub fn centred(
 /// window goes); anything else is refused, and the page says why.
 pub fn dropped(app: &AppHandle, paths: &[PathBuf]) {
     let kind = classify(paths);
-    if kind == Dropped::Video && crate::open_media(app, paths) {
+    if kind == Dropped::Video && crate::open_media(app, paths, crate::player_window::Door::Drop) {
         return;
     }
     let _ = app.emit_to(LABEL, REFUSED_EVENT, kind.word());
@@ -290,7 +290,8 @@ pub async fn start_open_video(app: AppHandle) -> Result<String, String> {
         return Ok("cancelled".into());
     }
     let kind = classify(&paths);
-    if kind == Dropped::Video && crate::open_media(&app, &paths) {
+    if kind == Dropped::Video && crate::open_media(&app, &paths, crate::player_window::Door::Start)
+    {
         return Ok("opened".into());
     }
     Ok(kind.word().into())

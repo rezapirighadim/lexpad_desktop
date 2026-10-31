@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "panel",
-  "description": "The menu-bar / tray panel: account, add a word (opens the card), recent words, default notebook, Lexpad everywhere (whether a phone app was used, and opening Settings → Lexpad everywhere), Open Lexpad, Settings, Quit. Nothing else.",
+  "description": "The menu-bar / tray panel: account, add a word (opens the card), recent words, default notebook, Lexpad everywhere (whether a phone app was used, and opening Settings → Lexpad everywhere), \"Watch a video…\" (the Continue watching list, and opening the Player through the tray), Open Lexpad, Settings, Quit. Nothing else.",
   "windows": ["panel"],
   "permissions": [
     "core:event:allow-listen",
@@ -19,6 +19,8 @@
     "allow-open-everywhere",
     "allow-open-settings",
     "allow-open-accessibility-settings",
-    "allow-quit"
+    "allow-quit",
+    "allow-media-recent",
+    "allow-panel-watch"
   ]
 }

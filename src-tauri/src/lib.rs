@@ -46,6 +46,7 @@ mod smoke;
 mod state;
 mod store;
 mod tray;
+mod video_hint;
 mod welcome;
 mod word_queue;
 
@@ -212,7 +213,11 @@ pub fn open_in_browser(app: &AppHandle, word_id: Option<&str>) {
 /// video…" or a drop on it): to the Player, which comes forward and plays.
 /// Nothing else opens, and a Start window already up goes (Start window spec
 /// §2, state B).
-pub fn open_media(app: &AppHandle, paths: &[std::path::PathBuf]) -> bool {
+pub fn open_media(
+    app: &AppHandle,
+    paths: &[std::path::PathBuf],
+    door: player_window::Door,
+) -> bool {
     if paths.is_empty() || !media::open_from_system(app, paths) {
         return false;
     }
@@ -222,7 +227,7 @@ pub fn open_media(app: &AppHandle, paths: &[std::path::PathBuf]) -> bool {
     #[cfg(feature = "player-dev")]
     player_dev::open(app);
     #[cfg(not(feature = "player-dev"))]
-    player_window::open(app, player_window::Opened::File);
+    player_window::open(app, player_window::Opened::File, Some(door));
     true
 }
 
@@ -291,7 +296,11 @@ fn open_first(app: &AppHandle, first: welcome::FirstWindow) {
     match first {
         welcome::FirstWindow::Nothing => {}
         welcome::FirstWindow::Start => welcome::open(app),
-        welcome::FirstWindow::Player => player_window::open(app, player_window::Opened::Launch),
+        welcome::FirstWindow::Player => player_window::open(
+            app,
+            player_window::Opened::Launch,
+            Some(player_window::Door::Launch),
+        ),
         welcome::FirstWindow::Learn => open_web(app, None),
     }
 }
@@ -429,13 +438,17 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             // "Open with Lexpad" on Windows starts a second Lexpad with the
             // file; it hands the file here and quits.
-            if open_media(app, &media::files_in_args(&args)) {
+            if open_media(app, &media::files_in_args(&args), player_window::Door::File) {
                 return;
             }
             // "Lexpad Player" in the Start menu, or a pinned Player's taskbar
             // button (Windows), starts Lexpad with --player.
             if args.iter().any(|a| a == player_window::PLAYER_FLAG) {
-                player_window::open(app, player_window::Opened::Launch);
+                player_window::open(
+                    app,
+                    player_window::Opened::Launch,
+                    Some(player_window::Door::Launch),
+                );
             } else {
                 open_again(app);
             }
@@ -599,12 +612,16 @@ pub fn run() {
                     .map(|mut f| std::mem::take(&mut *f))
                     .unwrap_or_default(),
             );
-            let opened = open_media(&handle, &files);
+            let opened = open_media(&handle, &files, player_window::Door::File);
             // "Lexpad Player" in the Start menu or a pinned Player's taskbar
             // button (Windows) starts Lexpad with --player (state G).
             let player_flag = std::env::args().any(|a| a == player_window::PLAYER_FLAG);
             if player_flag && !opened {
-                player_window::open(&handle, player_window::Opened::Launch);
+                player_window::open(
+                    &handle,
+                    player_window::Opened::Launch,
+                    Some(player_window::Door::Launch),
+                );
             }
             #[cfg(windows)]
             let store_login = msix::started_at_login();
@@ -677,7 +694,7 @@ pub fn run() {
             // A video dropped anywhere on Lexpad's window opens the Player
             // with it; nothing plays in the learning window (spec §24.3).
             (main_window::LABEL, WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. })) => {
-                open_media(window.app_handle(), paths);
+                open_media(window.app_handle(), paths, player_window::Door::Drop);
             }
             // Videos and subtitles dropped on a player window.
             (label, WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }))
@@ -711,6 +728,9 @@ pub fn run() {
             commands::open_web,
             commands::phone_used,
             commands::open_everywhere,
+            commands::panel_watch,
+            commands::video_hint,
+            commands::open_player_pick,
             commands::open_report,
             commands::quit,
             commands::api_fetch,
@@ -809,7 +829,7 @@ pub fn run() {
                     }
                     return;
                 }
-                open_media(app, &paths);
+                open_media(app, &paths, player_window::Door::File);
             }
             _ => {}
         });
