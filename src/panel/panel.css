@@ -382,6 +382,54 @@ kbd {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
+/* The Player's row (spec uiux/2026-10-31-player-next A2): the phone row
+ * under it drops its own rule and moves up, so the two read as one group. */
+.every + .every {
+  margin-top: -10px;
+}
+.every + .every::before {
+  display: none;
+}
+.every-key {
+  display: inline-flex;
+  flex: none;
+}
+.every-key kbd {
+  padding: 2px 8px;
+}
+/* "Continue {title}" holds at most two lines; the minutes left sit beside it,
+ * outside the clamp, so they always show (uiux review R4). The whole line is
+ * the row's title and aria-label. */
+.watch .every-label {
+  min-width: 0;
+  padding: 6px 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.3em;
+}
+/* With too little room for both (large text), the minutes go to a line of their own. */
+.watch-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+.watch-left {
+  flex: none;
+  white-space: nowrap;
+}
+.watch-title {
+  font-weight: 800;
+}
+.watch-left {
+  color: var(--dim);
+  font-weight: 500;
+}
 /* The row's rule takes the footer's place. */
 .every + .foot {
   border-top: 0;
@@ -392,7 +440,9 @@ kbd {
 
 .foot {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--s1);
+  row-gap: var(--s1);
   border-top: 1px solid var(--line);
   padding-top: var(--s2);
 }
@@ -414,9 +464,10 @@ kbd {
   margin-left: calc(var(--s2) * -1);
   color: var(--accent);
 }
+/* Quit keeps to the right, also when large text wraps it onto a line of its own (review R3). */
 .act.quit {
-  margin-left: auto;
-  margin-right: calc(var(--s2) * -1);
+  margin-inline-start: auto;
+  margin-inline-end: calc(var(--s2) * -1);
   color: var(--dim);
 }
 .act:hover {

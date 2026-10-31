@@ -75,7 +75,11 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id.as_ref() {
             "open" => crate::open_web(app, None),
             "everywhere" => everywhere::open(app),
-            "video" => crate::player_window::open(app, crate::player_window::Opened::Pick),
+            "video" => crate::player_window::open(
+                app,
+                crate::player_window::Opened::Pick,
+                Some(crate::player_window::Door::Tray),
+            ),
             "settings" => crate::open_desktop_settings(app),
             "quit" => app.exit(0),
             _ => {}

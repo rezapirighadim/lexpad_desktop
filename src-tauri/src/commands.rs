@@ -560,6 +560,46 @@ pub fn open_everywhere(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// The panel's "Watch a video…" row (spec A2): puts the panel away and opens
+/// the Player through the tray, to play `file_id` (its Continue form, an id
+/// from `media_recent`) or to the open dialog.
+#[tauri::command]
+pub fn panel_watch(app: AppHandle, file_id: Option<String>) -> Result<(), String> {
+    panel::hide(&app, false);
+    let pick = file_id.is_none();
+    crate::player_window::open_through(&app, pick, file_id, Some(crate::player_window::Door::Tray))
+}
+
+/// The shortcut card asks whether its video-app hint is due for the app in
+/// front (spec A5). The core decides and records it in one step; the answer
+/// is the app's name for the card, or None.
+#[tauri::command]
+pub async fn video_hint(
+    state: State<'_, AppState>,
+    app_name: String,
+) -> Result<Option<String>, String> {
+    let signed_in = state.api.user().await.is_some();
+    let mut claimed = None;
+    state.update_settings(|s| {
+        claimed =
+            crate::video_hint::claim(&mut s.video_hint, &app_name, signed_in, chrono::Utc::now());
+    })?;
+    Ok(claimed.map(str::to_string))
+}
+
+/// The hint's "Open…": the card goes, and the Player opens its file dialog.
+#[tauri::command]
+pub fn open_player_pick(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    *state.capture.lock().map_err(|_| "lock")? = None;
+    popup::hide(&app);
+    crate::player_window::open(
+        &app,
+        crate::player_window::Opened::Pick,
+        Some(crate::player_window::Door::PopupHint),
+    );
+    Ok(())
+}
+
 /// The longest report payload the popup may hand over: the card's text,
 /// capped there, as base64url. Anything longer is not from the card.
 const MAX_REPORT_FRAGMENT: usize = 8192;

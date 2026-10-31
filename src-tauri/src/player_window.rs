@@ -56,6 +56,93 @@ pub enum Opened {
     Launch,
 }
 
+/// Which door opened the Player, for the activity reports (spec
+/// `uiux/2026-10-31-player-next/spec.md` A1): the page sends it as
+/// `player.window {from}`. One list, kept the same as the page's
+/// (lexpad_front `features/player/door.ts`) and the server's allow-list.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Door {
+    /// The Start window's "Open a video…".
+    Start,
+    /// The launch table (`welcome::first_window`), a second launch, the Dock,
+    /// `--player` (the Start menu's "Lexpad Player").
+    Launch,
+    /// The tray panel's "Watch a video…" row and the tray menu's "Open a video…".
+    Tray,
+    /// The learning window's Player page.
+    Watch,
+    /// Today's "Learn from what you watch" card.
+    TodayCard,
+    /// Today's "Your first 5 words" row about the Player.
+    FirstFive,
+    /// The shortcut card's hint when a video app is in front.
+    PopupHint,
+    /// A file dropped on the learning window or the Start window.
+    Drop,
+    /// The system's "Open with", a file association, a file in the arguments.
+    File,
+    /// The menu bar (⌘O, Window → Player ⌘2) or Ctrl+2 on Windows.
+    Menu,
+}
+
+impl Door {
+    pub const ALL: [Door; 10] = [
+        Door::Start,
+        Door::Launch,
+        Door::Tray,
+        Door::Watch,
+        Door::TodayCard,
+        Door::FirstFive,
+        Door::PopupHint,
+        Door::Drop,
+        Door::File,
+        Door::Menu,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Door::Start => "start",
+            Door::Launch => "launch",
+            Door::Tray => "tray",
+            Door::Watch => "watch",
+            Door::TodayCard => "today_card",
+            Door::FirstFive => "first_five",
+            Door::PopupHint => "popup_hint",
+            Door::Drop => "drop",
+            Door::File => "file",
+            Door::Menu => "menu",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Door> {
+        Door::ALL.into_iter().find(|d| d.as_str() == s)
+    }
+
+    /// The doors the learning window's page may name in `open_player`: its
+    /// own buttons and keys. The others are the core's to say.
+    fn page_may_name(self) -> bool {
+        matches!(
+            self,
+            Door::Watch | Door::TodayCard | Door::FirstFive | Door::Menu
+        )
+    }
+}
+
+/// The door a page named in `open_player`: absent is none, anything that is
+/// not one of the page's doors is refused.
+pub fn page_door(from: Option<&str>) -> Result<Option<Door>, String> {
+    match from {
+        None => Ok(None),
+        Some(f) => Door::parse(f)
+            .filter(|d| d.page_may_name())
+            .map(Some)
+            .ok_or_else(|| "not a door".to_string()),
+    }
+}
+
+/// The event that tells an open Player which door brought it forward.
+pub const DOOR_EVENT: &str = "player:door";
+
 impl Opened {
     fn from(self) -> Option<&'static str> {
         match self {
@@ -69,12 +156,13 @@ impl Opened {
     /// The route's query: how it was opened, and `seen=start` once the
     /// Start window has been shown, so the Player never asks for a sign-in
     /// of its own after it (Start window spec §7).
-    fn query(self, start_seen: bool) -> String {
+    fn query(self, start_seen: bool, door: Option<Door>) -> String {
         let parts: Vec<String> = self
             .from()
             .map(|f| format!("from={f}"))
             .into_iter()
             .chain(start_seen.then(|| "seen=start".to_string()))
+            .chain(door.map(|d| format!("door={}", d.as_str())))
             .collect();
         if parts.is_empty() {
             String::new()
@@ -87,24 +175,32 @@ impl Opened {
 /// Where the big window was before it became the mini player.
 static BEFORE_MINI: Mutex<Option<Area>> = Mutex::new(None);
 
-/// Opens the Player, or brings it forward.
-pub fn open(app: &AppHandle, opened: Opened) {
+/// Opens the Player, or brings it forward, through `door` (`None`: a second
+/// step of one opening, which must not be counted twice).
+pub fn open(app: &AppHandle, opened: Opened, door: Option<Door>) {
     let handle = app.clone();
-    let _ = app.run_on_main_thread(move || open_now(&handle, opened));
+    let _ = app.run_on_main_thread(move || open_now(&handle, opened, door));
 }
 
-fn open_now(app: &AppHandle, opened: Opened) {
+fn open_now(app: &AppHandle, opened: Opened, door: Option<Door>) {
     crate::refresh_dock(app, true);
     if let Some(win) = app.get_webview_window(LABEL) {
+        // Already in front (a menu command while watching): no door was used.
+        let in_front = win.is_focused().unwrap_or(false)
+            && win.is_visible().unwrap_or(false)
+            && !win.is_minimized().unwrap_or(false);
         let _ = win.unminimize();
         let _ = win.show();
         let _ = win.set_focus();
+        if let Some(d) = door.filter(|_| !in_front) {
+            let _ = win.emit_to(LABEL, DOOR_EVENT, d.as_str());
+        }
         if opened == Opened::Pick {
             let _ = win.emit_to(LABEL, "player:menu", "open");
         }
         return;
     }
-    if let Err(e) = build(app, opened) {
+    if let Err(e) = build(app, opened, door) {
         log::warn!("could not open the Player: {e}");
         crate::refresh_dock(app, false);
     }
@@ -112,15 +208,15 @@ fn open_now(app: &AppHandle, opened: Opened) {
 
 /// The script that runs before the page: the app's configuration (as for
 /// Lexpad's window) and the Player's route, so the router starts there.
-fn init_script(device_id: &str, opened: Opened, start_seen: bool) -> String {
+fn init_script(device_id: &str, opened: Opened, start_seen: bool, door: Option<Door>) -> String {
     format!(
         "{}\nif (!location.hash || location.hash === '#/') history.replaceState(null, '', '#/player{}');",
         main_window::config_script(device_id),
-        opened.query(start_seen)
+        opened.query(start_seen, door)
     )
 }
 
-fn build(app: &AppHandle, opened: Opened) -> tauri::Result<()> {
+fn build(app: &AppHandle, opened: Opened, door: Option<Door>) -> tauri::Result<()> {
     let state = app.state::<AppState>();
     let (device_id, saved, start_seen) = {
         let s = state
@@ -137,7 +233,7 @@ fn build(app: &AppHandle, opened: Opened) -> tauri::Result<()> {
         .min_inner_size(MIN_SIZE.0, MIN_SIZE.1)
         .visible(false)
         .background_color(tauri::window::Color(0, 0, 0, 255))
-        .initialization_script(init_script(&device_id, opened, start_seen))
+        .initialization_script(init_script(&device_id, opened, start_seen, door))
         .on_navigation(move |url| {
             if main_window::is_app_page(url) {
                 return true;
@@ -410,21 +506,25 @@ pub fn destroyed() {
     }
 }
 
-/// The Player, opened or brought forward (the Watch page, ⌘2 / Ctrl+2): to
-/// the open dialog with `pick`, or to play `file_id` (an id the engine gave).
-#[tauri::command]
-pub fn open_player(
-    app: AppHandle,
-    pick: Option<bool>,
+/// Whether `id` looks like an id the engine gave (never a path).
+fn is_file_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 64
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+/// The Player through `door`: to play `file_id`, to the open dialog with
+/// `pick`, or just brought forward.
+pub fn open_through(
+    app: &AppHandle,
+    pick: bool,
     file_id: Option<String>,
+    door: Option<Door>,
 ) -> Result<(), String> {
     if let Some(id) = file_id {
-        if id.is_empty()
-            || id.len() > 64
-            || !id
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        {
+        if !is_file_id(&id) {
             return Err("not a file id".into());
         }
         if app.get_webview_window(LABEL).is_some() {
@@ -432,18 +532,25 @@ pub fn open_player(
         } else if let Ok(mut p) = PLAY.lock() {
             *p = Some(id);
         }
-        open(&app, Opened::App);
+        open(app, Opened::App, door);
         return Ok(());
     }
-    open(
-        &app,
-        if pick == Some(true) {
-            Opened::Pick
-        } else {
-            Opened::App
-        },
-    );
+    open(app, if pick { Opened::Pick } else { Opened::App }, door);
     Ok(())
+}
+
+/// The Player, opened or brought forward (the Watch page, Today's card, ⌘2 /
+/// Ctrl+2): to the open dialog with `pick`, or to play `file_id` (an id the
+/// engine gave). `from` is the page's door (`Door::page_may_name`).
+#[tauri::command]
+pub fn open_player(
+    app: AppHandle,
+    pick: Option<bool>,
+    file_id: Option<String>,
+    from: Option<String>,
+) -> Result<(), String> {
+    let door = page_door(from.as_deref())?;
+    open_through(&app, pick == Some(true), file_id, door)
 }
 
 /// The page asks once, when it starts listening, for a video it should play.
@@ -915,13 +1022,87 @@ mod tests {
 
     #[test]
     fn the_route_script_starts_the_router_on_the_player() {
-        let s = init_script("dev", Opened::Pick, false);
+        let s = init_script("dev", Opened::Pick, false, None);
         assert!(s.contains("window.__LEXPAD_CONFIG"));
         assert!(s.contains("#/player?from=pick'"));
-        assert!(init_script("dev", Opened::Launch, false).ends_with("'#/player');"));
+        assert!(init_script("dev", Opened::Launch, false, None).ends_with("'#/player');"));
         // After the Start window, the Player is told so (no second sign-in).
-        assert!(init_script("dev", Opened::File, true).contains("#/player?from=file&seen=start'"));
-        assert!(init_script("dev", Opened::Launch, true).ends_with("'#/player?seen=start');"));
+        assert!(
+            init_script("dev", Opened::File, true, None).contains("#/player?from=file&seen=start'")
+        );
+        assert!(init_script("dev", Opened::Launch, true, None).ends_with("'#/player?seen=start');"));
+    }
+
+    #[test]
+    fn the_route_says_which_door_opened_the_player() {
+        assert!(init_script("dev", Opened::Pick, false, Some(Door::Tray))
+            .contains("#/player?from=pick&door=tray'"));
+        assert!(
+            init_script("dev", Opened::Launch, false, Some(Door::Launch))
+                .ends_with("'#/player?door=launch');")
+        );
+        assert!(init_script("dev", Opened::File, true, Some(Door::Drop))
+            .contains("#/player?from=file&seen=start&door=drop'"));
+    }
+
+    #[test]
+    fn every_door_has_one_name_and_reads_back() {
+        let names: Vec<&str> = Door::ALL.iter().map(|d| d.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "start",
+                "launch",
+                "tray",
+                "watch",
+                "today_card",
+                "first_five",
+                "popup_hint",
+                "drop",
+                "file",
+                "menu"
+            ]
+        );
+        for d in Door::ALL {
+            assert_eq!(Door::parse(d.as_str()), Some(d));
+            // The server keeps a detail of [a-z0-9_.-]{1,32}.
+            assert!(d
+                .as_str()
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c == '_'));
+        }
+        assert_eq!(Door::parse("Tray"), None);
+        assert_eq!(Door::parse(""), None);
+    }
+
+    #[test]
+    fn a_page_names_only_its_own_doors() {
+        assert_eq!(page_door(None), Ok(None));
+        assert_eq!(page_door(Some("watch")), Ok(Some(Door::Watch)));
+        assert_eq!(page_door(Some("today_card")), Ok(Some(Door::TodayCard)));
+        assert_eq!(page_door(Some("first_five")), Ok(Some(Door::FirstFive)));
+        assert_eq!(page_door(Some("menu")), Ok(Some(Door::Menu)));
+        // The core's doors, and anything else, are refused.
+        for f in [
+            "tray",
+            "file",
+            "drop",
+            "launch",
+            "start",
+            "popup_hint",
+            "x",
+            "watch&x=1",
+        ] {
+            assert!(page_door(Some(f)).is_err(), "{f}");
+        }
+    }
+
+    #[test]
+    fn a_file_id_is_never_a_path() {
+        assert!(is_file_id("a1-B_2"));
+        assert!(!is_file_id(""));
+        assert!(!is_file_id("../x"));
+        assert!(!is_file_id(&"a".repeat(65)));
     }
 }
 

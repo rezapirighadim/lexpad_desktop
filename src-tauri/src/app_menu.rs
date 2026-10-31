@@ -11,7 +11,7 @@
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::main_window;
-use crate::player_window::{self, Opened};
+use crate::player_window::{self, Door, Opened};
 use crate::settings::{OpenAt, Place};
 use crate::state::AppState;
 
@@ -78,14 +78,15 @@ pub fn open_at(app: AppHandle) -> String {
 /// A menu command for the Player: brought forward (opened if need be), then told.
 fn to_player(app: &AppHandle, command: &str) {
     if app.get_webview_window(player_window::LABEL).is_none() {
-        player_window::open(app, Opened::App);
+        player_window::open(app, Opened::App, Some(Door::Menu));
         if command == "open" {
-            // A fresh Player opens the dialog itself once it listens.
-            player_window::open(app, Opened::Pick);
+            // A fresh Player opens the dialog itself once it listens (the
+            // same opening: its door is counted once).
+            player_window::open(app, Opened::Pick, None);
             return;
         }
     } else {
-        player_window::open(app, Opened::App);
+        player_window::open(app, Opened::App, Some(Door::Menu));
     }
     let _ = app.emit_to(player_window::LABEL, "player:menu", command);
 }
@@ -140,7 +141,7 @@ pub fn handle(app: &AppHandle, id: &str) {
     }
     match id {
         "m.lexpad" => main_window::open(app, None),
-        "m.player" => player_window::open(app, Opened::App),
+        "m.player" => player_window::open(app, Opened::App, Some(Door::Menu)),
         "m.settings" => {
             let player_in_front = app
                 .get_webview_window(player_window::LABEL)
@@ -282,7 +283,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
 pub fn open_window(app: AppHandle, which: String) -> Result<(), String> {
     match which.as_str() {
         "lexpad" => main_window::open(&app, None),
-        "player" => player_window::open(&app, Opened::App),
+        "player" => player_window::open(&app, Opened::App, Some(Door::Menu)),
         _ => return Err("not a window".into()),
     }
     Ok(())

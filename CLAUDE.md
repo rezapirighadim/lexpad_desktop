@@ -78,7 +78,9 @@ src-tauri/src/word_queue.rs      words saved before they can reach the account (
 src-tauri/src/player_dev.rs      the engine's development page's window, only with `--features player-dev` (never shipped)
 src/lib/media/                   the page side: api.ts (typed commands), stream.ts (MSE), cues.ts (subtitle timing, tested)
 src/player-dev.html, player-dev/ the development page (LEXPAD_PLAYER_DEV=1 + feature player-dev): <video> + MSE + 3 subtitle tracks
-src-tauri/src/player_window.rs   the Lexpad Player's window (the web app's /player), the mini player, its Windows taskbar button (tested)
+src-tauri/src/player_window.rs   the Lexpad Player's window (the web app's /player), the mini player, its Windows taskbar button, the doors (tested)
+src-tauri/src/video_hint.rs      the shortcut card's hint when a video app is in front: the apps' names, once per app per 14 days, 3 in all (tested)
+src/panel/watch.ts               the panel's "Watch a video…" / "Continue {title}" row (tested); src/lib/videoTitle.ts is lexpad_front's title parser, keep them identical
 src-tauri/src/app_menu.rs        the two windows: where Lexpad opens, ⌘1 / ⌘2, the macOS menu bar's Playback, Subtitles and Window menus (tested)
 src-tauri/src/welcome.rs         the Start window, its commands and the launch table A–G (`first_window`, tested)
 src/welcome.html, src/welcome/   the Start window: the real Player's loop, Open a video…, Google / Apple (tested with happy-dom)
@@ -262,6 +264,28 @@ The Player's page is the web app's `/player` route (lexpad_front `features/playe
   checked app path (`open_lexpad`). ⌘1 / ⌘2 are the Window menu's items on macOS; on Windows
   each page answers Ctrl+1 / Ctrl+2 (`open_window`). Files opened from the system and drops on
   either window open the Player.
+- **Every way into the Player is a door** (`player_window::Door`, spec
+  `uiux/2026-10-31-player-next/spec.md` A1, for the activity reports): `start` (the Start
+  window's Open a video…), `launch` (the launch table, the Dock, a second launch, `--player`),
+  `tray` (the panel's Watch row, the tray menu's Open a video…), `watch`, `today_card`,
+  `first_five` (the learning window's Player page and Today's cards), `popup_hint` (the card's
+  video hint), `drop` (a file dropped on the learning window or the Start window), `file` (Open
+  with, a file association, the arguments), `menu` (⌘O, Window → Player, Ctrl+2). The core
+  says it in the route (`door=<door>`) when it makes the window, or as `player:door` when it
+  brings the window forward from behind; a Player already in front hears nothing. The page
+  sends it on (`player.window {from}`). `open_player`'s `from` takes only the learning window's
+  own doors (`watch`, `today_card`, `first_five`, `menu`); the list is kept the same as the
+  page's and the server's allow-list.
+- **The panel's Player row** (spec A2): "Watch a video…" with ⌘O / Ctrl+O above the phone row,
+  signed in and out, or "Continue {title} · {n} min left" (the newest Continue watching entry
+  still where it was and not finished; under a minute left, no minutes). It calls
+  `panel_watch` (door `tray`). The panel may read `media_recent` for it, nothing else of the engine.
+- **The card's video hint** (spec A5): when the app in front is a video player (`video_hint.rs`:
+  the names macOS and Windows report, compared without case), the card says "Watching in
+  {App}? Open the film in Lexpad Player and click any word." with Open… (`open_player_pick`,
+  door `popup_hint`). The core decides and records in one step (`video_hint` command): once
+  per app every 14 days, 3 times in all on this computer (`settings.json` `videoHint`), never
+  signed out.
 - **Which window a launch opens is one table** (`welcome::first_window`, spec
   `uiux/specs/2026-10-26-desktop-first-run.md` §2, a test per row): a video that opened Lexpad
   is the only window (B; decided `FIRST_WINDOW_GRACE` after `RunEvent::Ready`, because macOS

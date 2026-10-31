@@ -3,16 +3,20 @@
  * opens for it, exactly as for a selection), the shortcut, the words added
  * from this computer, the default notebook, "Lexpad on your phone…" (or
  * "Lexpad everywhere…" once a phone app was used), and Open Lexpad /
- * Settings / Quit. Signed out, it offers to connect instead.
+ * Settings / Quit. Signed out, it offers to connect instead. Above the
+ * phone row, signed in or not, "Watch a video…" opens the Player (or
+ * "Continue {title}" after a video; `watch.ts`).
  *
  * Drawn with the DOM and `textContent`; nothing from the API is parsed as
  * HTML. Esc closes it; every control is reachable with Tab.
  */
 import type { PanelBackend } from '../lib/backend.js';
+import type { RecentEntry } from '../lib/media/api.js';
 import { failureOf } from '../lib/backend.js';
 import { isMac, prettyShortcut } from '../lib/shortcut.js';
 import { ago } from '../lib/time.js';
 import type { Notebook, RecentWord, State } from '../lib/types.js';
+import { watchRow, type WatchRow } from './watch.js';
 
 /** Right-to-left scripts, for the direction and the face. */
 const RTL = new RegExp('[֐-ࣿיִ-﷿ﹰ-﻿]');
@@ -26,6 +30,9 @@ const GLOBE =
   '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z"/></svg>';
 const CHEVRON =
   '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5"/></svg>';
+/* The Player's film, 18 px, as the web app draws it (features/player/ui/icons.tsx). */
+const FILM =
+  '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4" width="17" height="16" rx="2"/><path d="M8 4v16M16 4v16M3.5 8.5H8M3.5 12H8M3.5 15.5H8M16 8.5h4.5M16 12h4.5M16 15.5h4.5"/></svg>';
 const RETURN =
   '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3v5a2 2 0 0 1-2 2H3"/><path d="M6 7l-3 3 3 3"/></svg>';
 
@@ -86,6 +93,8 @@ export class Panel {
     // Asked beside the state, so the panel waits for one round trip, not two.
     // A failed answer keeps the offer: both labels open the same page.
     const phone = this.backend.phoneUsed().catch(() => false);
+    // Continue watching, signed in or not; a failed read offers the dialog.
+    const videos = this.backend.recentVideos().catch((): RecentEntry[] => []);
     try {
       state = await this.backend.state();
       if (state.connected) {
@@ -101,13 +110,14 @@ export class Panel {
       );
       return;
     }
+    const watch = watchRow(await videos);
     if (generation !== this.generation) return;
     this.state = state;
     const typed = focus ? '' : (this.root.querySelector<HTMLInputElement>('.add input')?.value ?? '');
     const active = document.activeElement;
     const activeId = active instanceof HTMLElement && this.root.contains(active) ? active.id : '';
     this.root.replaceChildren(
-      ...(state.connected ? this.connected(state, recent, phoneUsed) : this.signedOut()),
+      ...(state.connected ? this.connected(state, recent, phoneUsed, watch) : this.signedOut(watch)),
       this.footer(),
     );
     const input = this.root.querySelector<HTMLInputElement>('.add input');
@@ -167,7 +177,7 @@ export class Panel {
     return head;
   }
 
-  private connected(state: State, recent: RecentWord[], phoneUsed: boolean): HTMLElement[] {
+  private connected(state: State, recent: RecentWord[], phoneUsed: boolean, watch: WatchRow): HTMLElement[] {
     const parts: HTMLElement[] = [this.header(state)];
 
     // Add a word: Enter opens the card for it.
@@ -216,8 +226,50 @@ export class Panel {
     parts.push(this.recentList(state, recent));
     const picker = this.notebookPicker(state.notebooks, state.notebookId);
     if (picker) parts.push(picker);
-    parts.push(this.everywhereRow(phoneUsed));
+    parts.push(this.watchRow(watch), this.everywhereRow(phoneUsed));
     return parts;
+  }
+
+  /**
+   * The Player's row (spec A2), the same row as the phone's, above it:
+   * "Watch a video…" with the Player's own key (⌘O / Ctrl+O, which open the
+   * same dialog there), or "Continue {title} · {n} min left".
+   */
+  private watchRow(watch: WatchRow): HTMLElement {
+    const row = button(
+      'every watch',
+      '',
+      () => void this.backend.watch(watch.kind === 'continue' ? watch.fileId : null),
+    );
+    row.id = 'watch';
+    const icon = el('span', 'every-icon');
+    icon.innerHTML = FILM;
+    const label = el('span', 'every-label');
+    const end = el('span', watch.kind === 'continue' ? 'every-chev' : 'every-key');
+    if (watch.kind === 'continue') {
+      // The title is held to two lines; the minutes sit outside that, so they always show (review R4).
+      const name = el('span', 'watch-name');
+      name.append('Continue ');
+      const title = el('b', 'watch-title', watch.title);
+      title.dir = 'auto';
+      name.append(title);
+      label.append(name);
+      if (watch.minutesLeft !== undefined) {
+        label.append(el('span', 'watch-left', `· ${String(watch.minutesLeft)} min left`));
+      }
+      const whole =
+        watch.minutesLeft === undefined
+          ? `Continue ${watch.title}`
+          : `Continue ${watch.title}, ${String(watch.minutesLeft)} ${watch.minutesLeft === 1 ? 'minute' : 'minutes'} left`;
+      row.title = whole;
+      row.setAttribute('aria-label', whole);
+      end.innerHTML = CHEVRON;
+    } else {
+      label.textContent = 'Watch a video…';
+      end.append(el('kbd', '', this.mac ? '⌘O' : 'Ctrl+O'));
+    }
+    row.append(icon, label, end);
+    return row;
   }
 
   /**
@@ -295,7 +347,7 @@ export class Panel {
     return row;
   }
 
-  private signedOut(): HTMLElement[] {
+  private signedOut(watch: WatchRow): HTMLElement[] {
     const box = el('div', 'connect');
     box.append(
       el(
@@ -330,7 +382,7 @@ export class Panel {
                 : 'Could not sign in. Try again.';
       }
     };
-    return [this.header(this.state ?? null), box];
+    return [this.header(this.state ?? null), box, this.watchRow(watch)];
   }
 
   private footer(): HTMLElement {

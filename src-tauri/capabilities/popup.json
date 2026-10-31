@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "popup",
-  "description": "The add-a-word popup: reads the account's notebooks, looks a word up and adds it, is dragged by its header, and opens the web app's report page for its AI-written meaning. Nothing else.",
+  "description": "The add-a-word popup: reads the account's notebooks, looks a word up and adds it, is dragged by its header, and opens the web app's report page for its AI-written meaning, and, when a video app is in front, its one-line hint (whether it is due) and opening the Player's file dialog. Nothing else.",
   "windows": ["popup"],
   "permissions": [
     "core:event:allow-listen",
@@ -18,6 +18,8 @@
     "allow-accessibility",
     "allow-open-accessibility-settings",
     "allow-open-settings",
-    "allow-open-report"
+    "allow-open-report",
+    "allow-video-hint",
+    "allow-open-player-pick"
   ]
 }

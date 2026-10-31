@@ -46,6 +46,8 @@ function fakeBackend(state: Partial<State>, over: Partial<Backend> = {}): Backen
     openAccessibilitySettings: vi.fn(async () => undefined),
     openSettings: vi.fn(async () => undefined),
     openReport: vi.fn(async () => undefined),
+    videoHint: vi.fn(async () => null),
+    openPlayerPick: vi.fn(async () => undefined),
     ...over,
   };
 }
@@ -314,5 +316,61 @@ describe('Popup', () => {
     await new Popup(root, backend).open();
     press('Escape');
     expect(backend.calls).toContain('hide');
+  });
+});
+
+describe('the hint when a video app is in front', () => {
+  const vlc = (): ReturnType<typeof capture> => capture({ app: 'VLC media player', via: 'none' });
+
+  it('asks the core about the app in front and, when due, says the Player can open the film', async () => {
+    const backend = fakeBackend({ capture: vlc() }, { videoHint: vi.fn(async () => 'VLC') });
+    await new Popup(root, backend).open();
+    expect(backend.videoHint).toHaveBeenCalledWith('VLC media player');
+    const hint = root.querySelector('.video-hint');
+    expect(hint?.querySelector('b')?.textContent).toBe('Watching in VLC?');
+    expect(hint?.querySelector('p')?.textContent).toBe(
+      'Watching in VLC? Open the film in Lexpad Player and click any word.',
+    );
+    // Under the box, above anything else.
+    expect(root.querySelector('input.typed')?.nextElementSibling?.nextElementSibling).toBe(hint);
+    hint!.querySelector<HTMLButtonElement>('button')!.click();
+    expect(backend.openPlayerPick).toHaveBeenCalled();
+  });
+
+  it('shows on the card too, above its buttons', async () => {
+    const backend = fakeBackend(
+      { capture: capture({ app: 'IINA', text: 'candid' }) },
+      { videoHint: vi.fn(async () => 'IINA') },
+    );
+    await new Popup(root, backend).open();
+    await flush();
+    const hint = root.querySelector('.video-hint');
+    expect(hint?.querySelector('b')?.textContent).toBe('Watching in IINA?');
+    expect(hint?.nextElementSibling?.className).toBe('note');
+  });
+
+  it('shows nothing when the core says it is not due (another app, shown lately, or three in all)', async () => {
+    const backend = fakeBackend({ capture: vlc() });
+    await new Popup(root, backend).open();
+    expect(root.querySelector('.video-hint')).toBeNull();
+  });
+
+  it('never asks signed out, or with no app in front', async () => {
+    const out = fakeBackend({ connected: false, user: null, capture: vlc() });
+    await new Popup(root, out).open();
+    expect(out.videoHint).not.toHaveBeenCalled();
+    const none = fakeBackend({ capture: capture({ app: null }) });
+    await new Popup(root, none).open();
+    expect(none.videoHint).not.toHaveBeenCalled();
+  });
+
+  it('opens the card even when the core cannot answer', async () => {
+    const backend = fakeBackend(
+      { capture: vlc() },
+      { videoHint: vi.fn(async () => Promise.reject(new Error('x'))) },
+    );
+    await new Popup(root, backend).open();
+    expect(root.querySelector('input.typed')).not.toBeNull();
+    expect(root.querySelector('.video-hint')).toBeNull();
   });
 });
