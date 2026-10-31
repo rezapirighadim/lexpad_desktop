@@ -27,6 +27,9 @@ const MARK =
   '<svg width="14" height="14" viewBox="0 0 32 32" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"><rect x="10" y="8" width="12" height="16" rx="2"/><path d="M14 8v16M17 12h2M17 15h2"/></svg>';
 const FLAG =
   '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 21V4"/><path d="M5.5 4.5h12.2l-2.6 4.25 2.6 4.25H5.5"/></svg>';
+/* The Player's film, 16 px (lexpad_front features/player/ui/icons.tsx). */
+const FILM =
+  '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4" width="17" height="16" rx="2"/><path d="M8 4v16M16 4v16M3.5 8.5H8M3.5 12H8M3.5 15.5H8M16 8.5h4.5M16 12h4.5M16 15.5h4.5"/></svg>';
 const TICK =
   '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>';
 
@@ -63,6 +66,12 @@ export class Popup {
   private generation = 0;
   /** Stops asking about Accessibility again (the explanation is gone). */
   private stopWatching: (() => void) | undefined;
+  /**
+   * The video app in front, when the core said its hint is due on this
+   * opening (spec uiux/2026-10-31-player-next A5): the card then says the
+   * Player can open the film and click the word. One opening, one hint.
+   */
+  private videoApp: string | null = null;
 
   constructor(
     private readonly root: HTMLElement,
@@ -93,10 +102,13 @@ export class Popup {
       return;
     }
     this.state = state;
+    this.videoApp = null;
     if (!state.connected) {
       this.showSignedOut();
       return;
     }
+    const app = state.capture?.app;
+    if (app) this.videoApp = await this.backend.videoHint(app).catch(() => null);
     const next = plan(state.capture);
     if (next.kind === 'word')
       this.showCard(next.headword, { sentence: next.sentence, app: state.capture?.app ?? null });
@@ -198,6 +210,8 @@ export class Popup {
     });
     const note = el('div', 'note bad');
     this.root.append(input, note);
+    const hint = this.videoHint();
+    if (hint) this.root.append(hint);
     if (this.state?.permission === 'missing') this.root.append(this.permissionBox());
     this.enter = () => {
       const headword = asHeadword(input.value);
@@ -208,6 +222,21 @@ export class Popup {
       this.showCard(headword, { sentence: '', app: null });
     };
     window.setTimeout(() => input.focus(), 0);
+  }
+
+  /** "Watching in VLC? Open the film in Lexpad Player and click any word." with Open…. */
+  private videoHint(): HTMLElement | undefined {
+    const app = this.videoApp;
+    if (app === null) return undefined;
+    const box = el('div', 'video-hint');
+    const icon = el('span', 'video-hint-icon');
+    icon.innerHTML = FILM;
+    const text = el('p', 'video-hint-text');
+    text.append(el('b', '', `Watching in ${app}?`), ' Open the film in Lexpad Player and click any word.');
+    const open = button('video-hint-open', 'Open…', () => void this.backend.openPlayerPick());
+    open.setAttribute('aria-label', 'Open a video in Lexpad Player');
+    box.append(icon, text, open);
+    return box;
   }
 
   /** macOS without Accessibility: why, and the button to the right Settings pane. */
@@ -356,6 +385,8 @@ export class Popup {
     root.append(body);
     if (source.sentence !== '') root.append(from);
     if (this.notebooks().length > 1) root.append(picker);
+    const hint = this.videoHint();
+    if (hint) root.append(hint);
     root.append(note, actions);
 
     let fetched: Card | undefined;
