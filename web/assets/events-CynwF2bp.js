@@ -1,1 +1,0 @@
-import{b as e}from"./surface-DHwppxJK.js";var t=1e3,n=new Set;function r(t){if(!n.has(t)){n.add(t);try{e({name:`intro.step`,meta:{step:t,variant:`v3`}})}catch{}}}function i(n,r){if(!(n<1))try{e({name:`words.count_at_make`,meta:{place:r,words:Math.min(n,t)}})}catch{}}export{r as n,i as t};
