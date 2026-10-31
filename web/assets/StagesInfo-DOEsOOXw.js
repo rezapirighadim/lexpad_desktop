@@ -1,0 +1,1 @@
+import{t as e}from"./react--nwWWpNE.js";import{s as t}from"./backButton-DApkuBPw.js";import{t as n}from"./InfoButton-BhXqKx25.js";var r=e();function i(){return(0,r.jsx)(n,{label:t(`info.stages.about`),title:t(`info.stages.title`),lines:[t(`info.stages.info1`),t(`info.stages.info2`),t(`info.stages.info3`)],inRow:!0})}export{i as t};
