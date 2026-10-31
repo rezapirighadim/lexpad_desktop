@@ -382,6 +382,40 @@ kbd {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
+/* The Player's row (spec uiux/2026-10-31-player-next A2): the phone row
+ * under it drops its own rule and moves up, so the two read as one group. */
+.every + .every {
+  margin-top: -10px;
+}
+.every + .every::before {
+  display: none;
+}
+.every-key {
+  display: inline-flex;
+  flex: none;
+}
+.every-key kbd {
+  padding: 2px 8px;
+}
+/* A long title wraps rather than hiding the minutes left; at most three
+ * lines (large text, a long file name). */
+.watch .every-label {
+  min-width: 0;
+  padding: 6px 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+.watch-title {
+  font-weight: 800;
+}
+.watch-left {
+  color: var(--dim);
+  font-weight: 500;
+}
 /* The row's rule takes the footer's place. */
 .every + .foot {
   border-top: 0;

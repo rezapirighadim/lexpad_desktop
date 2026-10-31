@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PanelBackend } from '../lib/backend.js';
+import type { RecentEntry } from '../lib/media/api.js';
 import type { Notebook, RecentWord, State } from '../lib/types.js';
 import { Panel } from './view.js';
 
@@ -35,6 +36,8 @@ function fake(state: Partial<State> = {}, over: Partial<PanelBackend> = {}): Pan
     openWeb: vi.fn(async () => undefined),
     phoneUsed: vi.fn(async () => false),
     openEverywhere: vi.fn(async () => undefined),
+    recentVideos: vi.fn(async () => []),
+    watch: vi.fn(async () => undefined),
     openSettings: vi.fn(async () => undefined),
     openAccessibilitySettings: vi.fn(async () => undefined),
     quit: vi.fn(async () => undefined),
@@ -154,16 +157,17 @@ describe('the Lexpad everywhere row', () => {
     expect(root.querySelector('#everywhere')?.textContent).toBe('Lexpad on your phone…');
   });
 
-  it('sits right above the footer, after the recent words and the notebook', async () => {
+  it('sits right above the footer, after the recent words, the notebook and the Player row', async () => {
     await draw(fake());
     const row = root.querySelector('#everywhere')!;
     expect(row.nextElementSibling?.classList.contains('foot')).toBe(true);
-    expect(row.previousElementSibling?.classList.contains('notebook')).toBe(true);
-    // Tab order is the document order: recent words, the row, Open Lexpad, Settings…, Quit.
+    expect(row.previousElementSibling?.id).toBe('watch');
+    expect(row.previousElementSibling?.previousElementSibling?.classList.contains('notebook')).toBe(true);
+    // Tab order is the document order: recent words, the rows, Open Lexpad, Settings…, Quit.
     const order = [...root.querySelectorAll<HTMLElement>('button, input, select')]
       .filter((b) => !(b as HTMLButtonElement).disabled)
       .map((b) => b.id || b.textContent?.trim() || b.tagName);
-    expect(order.slice(-5)).toEqual(['notebook', 'everywhere', 'Open Lexpad', 'Settings…', 'Quit']);
+    expect(order.slice(-6)).toEqual(['notebook', 'watch', 'everywhere', 'Open Lexpad', 'Settings…', 'Quit']);
     expect(order.indexOf('everywhere')).toBeGreaterThan(order.findIndex((t) => t.startsWith('candid')));
   });
 
@@ -267,5 +271,75 @@ describe('the one-time hint after the last window closed', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+const film: RecentEntry = {
+  key: 'k1',
+  fileId: 'f1',
+  name: 'Tears.of.Steel.2012.1080p.mkv',
+  position: 254,
+  duration: 734,
+  watched: false,
+  updated: 1,
+  missing: false,
+};
+
+const { fileId: _gone, ...movedFile } = film;
+const moved: RecentEntry = { ...movedFile, missing: true };
+
+describe('the Player row', () => {
+  it('says "Watch a video…" with ⌘O on a Mac, above the phone row, and opens the dialog', async () => {
+    const backend = fake();
+    await draw(backend);
+    const rows = [...root.querySelectorAll('.every')].map((r) => r.id);
+    expect(rows).toEqual(['watch', 'everywhere']);
+    const row = root.querySelector<HTMLButtonElement>('#watch')!;
+    expect(row.querySelector('.every-label')?.textContent).toBe('Watch a video…');
+    expect(row.querySelector('kbd')?.textContent).toBe('⌘O');
+    row.click();
+    expect(backend.watch).toHaveBeenCalledWith(null);
+  });
+
+  it('says Ctrl+O on Windows', async () => {
+    await draw(fake(), false);
+    expect(root.querySelector('#watch kbd')?.textContent).toBe('Ctrl+O');
+  });
+
+  it('continues the last video with the minutes left, and plays that file', async () => {
+    const backend = fake({}, { recentVideos: vi.fn(async () => [film]) });
+    await draw(backend);
+    const row = root.querySelector<HTMLButtonElement>('#watch')!;
+    expect(row.querySelector('.every-label')?.textContent).toBe('Continue Tears of Steel · 8 min left');
+    expect(row.querySelector('.watch-title')?.textContent).toBe('Tears of Steel');
+    expect(row.querySelector('kbd')).toBeNull();
+    expect(row.querySelector('.every-chev svg')).not.toBeNull();
+    row.click();
+    expect(backend.watch).toHaveBeenCalledWith('f1');
+  });
+
+  it('offers the dialog when the last video moved or failed to load', async () => {
+    await draw(fake({}, { recentVideos: vi.fn(async () => [moved]) }));
+    expect(root.querySelector('#watch .every-label')?.textContent).toBe('Watch a video…');
+    root.replaceChildren();
+    await draw(fake({}, { recentVideos: vi.fn(async () => Promise.reject(new Error('no engine'))) }));
+    expect(root.querySelector('#watch .every-label')?.textContent).toBe('Watch a video…');
+  });
+
+  it('is there signed out too, where there is no phone row', async () => {
+    await draw(fake({ connected: false, user: null, notebooks: [] }));
+    expect(root.querySelector('#watch .every-label')?.textContent).toBe('Watch a video…');
+    expect(root.querySelector('#everywhere')).toBeNull();
+    // Right above the footer.
+    expect(root.querySelector('#watch')?.nextElementSibling?.className).toBe('foot');
+  });
+
+  it('comes after the notebook and before the phone row when tabbing', async () => {
+    await draw(fake());
+    const order = [...root.querySelectorAll<HTMLElement>('input, select, button')].map(
+      (e) => e.id || e.className,
+    );
+    expect(order.indexOf('notebook')).toBeLessThan(order.indexOf('watch'));
+    expect(order.indexOf('watch') + 1).toBe(order.indexOf('everywhere'));
   });
 });

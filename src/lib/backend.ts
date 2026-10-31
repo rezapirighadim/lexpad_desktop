@@ -3,6 +3,7 @@
  * A refusal arrives as one of the `Failure` words.
  */
 import { invoke } from '@tauri-apps/api/core';
+import type { RecentEntry } from './media/api.js';
 import type { AppInfo, Card, Failure, Permission, RecentWord, Settings, State, User } from './types.js';
 
 const KNOWN: ReadonlySet<string> = new Set([
@@ -38,6 +39,13 @@ export interface Backend {
   openSettings(): Promise<void>;
   /** Puts the card away and opens the web app's report page with this payload (base64url). */
   openReport(fragment: string): Promise<void>;
+  /**
+   * Whether the video-app hint is due for the app in front (the core
+   * decides and records it): the app's name for the card, or null.
+   */
+  videoHint(appName: string): Promise<string | null>;
+  /** The hint's "Open…": puts the card away and opens the Player's file dialog. */
+  openPlayerPick(): Promise<void>;
 }
 
 export interface SettingsBackend {
@@ -73,6 +81,10 @@ export interface PanelBackend {
   phoneUsed(): Promise<boolean>;
   /** Settings → Lexpad everywhere, in Lexpad's window (or the browser). */
   openEverywhere(): Promise<void>;
+  /** The Player's Continue watching list, newest first. */
+  recentVideos(): Promise<RecentEntry[]>;
+  /** Puts the panel away and opens the Player: to play `fileId`, or to the open dialog. */
+  watch(fileId: string | null): Promise<void>;
   openSettings(): Promise<void>;
   openAccessibilitySettings(): Promise<void>;
   quit(): Promise<void>;
@@ -106,5 +118,9 @@ export const tauriBackend: Backend & SettingsBackend & PanelBackend = {
   openWeb: (wordId) => invoke<void>('open_web', { wordId }),
   phoneUsed: () => invoke<boolean>('phone_used'),
   openEverywhere: () => invoke<void>('open_everywhere'),
+  recentVideos: () => invoke<RecentEntry[]>('media_recent'),
+  watch: (fileId) => invoke<void>('panel_watch', { fileId }),
+  videoHint: (appName) => invoke<string | null>('video_hint', { appName }),
+  openPlayerPick: () => invoke<void>('open_player_pick'),
   quit: () => invoke<void>('quit'),
 };
