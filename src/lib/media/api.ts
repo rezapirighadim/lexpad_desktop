@@ -37,6 +37,8 @@ export interface Dropped {
   videos: FileRef[];
   subtitles: FileRef[];
   unsupported: string[];
+  /** How they came (a drop on the Player, or from outside it); absent from the open dialog. */
+  via?: 'drop' | 'open_with';
 }
 
 export type Encoder = 'videoToolbox' | 'nvenc' | 'qsv' | 'amf' | 'mediaFoundation' | 'openH264';
@@ -47,6 +49,8 @@ export interface Engine {
   caps?: { h264: Encoder | null; hwaccel: string | null; zscale: boolean };
   licence: string;
   baseUrl: string;
+  /** The engine makes the sound louder itself (`boost`), for volume above 100% on macOS. */
+  audioBoost?: boolean;
 }
 
 export type Hdr = 'pq' | 'hlg' | 'dolbyVisionOnly';
@@ -138,7 +142,7 @@ export interface Plan {
     tonemap: boolean;
     deinterlace: boolean;
   };
-  audio?: { index: number; copy: boolean; delayMs: number; downmix: boolean };
+  audio?: { index: number; copy: boolean; delayMs: number; downmix: boolean; gain?: number };
   mime: string;
   timeOffset: number;
   reasons: string[];
@@ -370,7 +374,7 @@ export const media = {
   /** `at`: the file's seconds; absent resumes where it was left. */
   open: (
     fileId: string,
-    opts: { audio?: number; audioDelayMs?: number; at?: number } = {},
+    opts: { audio?: number; audioDelayMs?: number; at?: number; boost?: boolean } = {},
   ): Promise<Playback> => invoke('media_open', { fileId, ...opts }),
   /** `at`: the element's seconds. */
   seek: (session: string, at: number): Promise<Run> => invoke('media_seek', { session, at }),
@@ -380,7 +384,8 @@ export const media = {
     audio: number | undefined,
     audioDelayMs: number,
     at: number,
-  ): Promise<Playback> => invoke('media_set_audio', { session, audio, audioDelayMs, at }),
+    boost?: boolean,
+  ): Promise<Playback> => invoke('media_set_audio', { session, audio, audioDelayMs, at, boost }),
   close: (session: string): Promise<void> => invoke('media_close', { session }),
   subtitles: (fileId: string): Promise<Subtitles> => invoke('media_subtitles', { fileId }),
   /** An embedded track (`stream` of the video) or a subtitle file (`fileId` alone). */

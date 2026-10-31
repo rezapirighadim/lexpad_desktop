@@ -778,10 +778,18 @@ pub fn run() {
             tauri::RunEvent::ExitRequested { api, code, .. } => {
                 if code.is_none() {
                     api.prevent_exit();
-                } else {
-                    EXITING.store(true, std::sync::atomic::Ordering::SeqCst);
+                } else if !EXITING.swap(true, std::sync::atomic::Ordering::SeqCst) {
                     main_window::remember(app);
                     player_window::remember(app);
+                    // The Player's page closes first, so the minutes watched
+                    // and its other last counts are kept and sent; the app
+                    // quits once it has (a second ExitRequested, let through).
+                    // A restart (the updater) cannot be held, so it is not.
+                    if code != Some(tauri::RESTART_EXIT_CODE)
+                        && player_window::close_before_quit(app, code.unwrap_or(0))
+                    {
+                        api.prevent_exit();
+                    }
                 }
             }
             // The first window, by the launch table, after the grace for a

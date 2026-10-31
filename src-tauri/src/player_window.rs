@@ -375,6 +375,34 @@ pub fn close_requested(app: &AppHandle) {
     }
 }
 
+/// How long quitting waits for the Player's page to close (it saves where
+/// the video was and sends its last counts: the minutes watched since its
+/// last report, the subtitle moves). Its own close is capped at about a
+/// second (`closeAfter` in the page); this is the most a quit is delayed.
+pub const QUIT_WAIT: std::time::Duration = std::time::Duration::from_millis(1_500);
+
+/// Lexpad is quitting with the Player open (the tray's or the menu's Quit,
+/// a shutdown): its page is asked to close first, as its close button would,
+/// and the app quits with `code` once the window is gone or `QUIT_WAIT` has
+/// passed. False when there is no Player: quit at once.
+pub fn close_before_quit(app: &AppHandle, code: i32) -> bool {
+    let Some(win) = app.get_webview_window(LABEL) else {
+        return false;
+    };
+    if win.close().is_err() {
+        return false;
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let start = std::time::Instant::now();
+        while start.elapsed() < QUIT_WAIT && app.get_webview_window(LABEL).is_some() {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        app.exit(code);
+    });
+    true
+}
+
 /// The Player's window is gone.
 pub fn destroyed() {
     if let Ok(mut g) = CLOSING.lock() {

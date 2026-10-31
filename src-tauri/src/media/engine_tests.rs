@@ -301,6 +301,7 @@ async fn real_media_report() {
                         Options {
                             audio: Some(a.index),
                             audio_delay_ms: 0,
+                            ..Options::default()
                         },
                         &caps,
                     )
@@ -569,4 +570,120 @@ async fn soft_subs_of_a_real_film() {
             );
         }
     }
+}
+
+/// `mean_volume` and `max_volume` (dBFS) of a file's audio, by FFmpeg's volumedetect.
+async fn loudness(tools: &Tools, file: &Path) -> (f64, f64) {
+    let out = tokio::process::Command::new(&tools.ffmpeg)
+        .args(["-hide_banner", "-nostats", "-i"])
+        .arg(file)
+        .args(["-map", "0:a", "-af", "volumedetect", "-f", "null", "-"])
+        .output()
+        .await
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    let read = |key: &str| -> f64 {
+        err.lines()
+            .find_map(|l| l.split(key).nth(1))
+            .and_then(|v| v.trim().trim_end_matches(" dB").parse().ok())
+            .unwrap_or_else(|| panic!("no {key} in {err}"))
+    };
+    (read("mean_volume:"), read("max_volume:"))
+}
+
+/// The run's whole output, pulled to its end.
+async fn pull_all(run: &super::stream::Run) -> Vec<u8> {
+    pull_some(run, usize::MAX).await
+}
+
+/// Volume above 100% on macOS (WKWebView): a boosted run's sound is twice
+/// as loud (+6 dB) where there is room, and never above the limiter's
+/// -1 dBFS where the doubled peaks would clip; a Direct MP4 becomes an
+/// audio transcode while boost is on, and plain again when it is off.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_boosted_run_is_twice_as_loud_and_never_clips() {
+    let Some(tools) = tools_or_skip() else {
+        return;
+    };
+    let caps = tools::caps(&tools).await;
+    let dir = std::env::temp_dir().join(format!("lexpad-boost-{}", uuid::Uuid::new_v4().simple()));
+    std::fs::create_dir_all(&dir).unwrap();
+    // 4 s quiet (0.1, -20 dBFS peak) then 4 s loud (0.7, -3 dBFS peak), H.264-free
+    // so the clip is made by every build: MPEG-4 video copied is not needed here,
+    // only the audio is measured, so the video is FFmpeg's own mpeg4 in MP4.
+    for (name, amp) in [("quiet.mp4", 0.1), ("loud.mp4", 0.7)] {
+        let expr = format!("aevalsrc={amp}*sin(2*PI*440*t):s=48000:d=6");
+        make(
+            &tools,
+            &dir,
+            name,
+            &[
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=size=160x120:rate=25:duration=6",
+                "-f",
+                "lavfi",
+                "-i",
+                &expr,
+                "-c:v",
+                "mpeg4",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "192k",
+            ],
+        )
+        .await;
+    }
+    if caps.h264.is_none() {
+        eprintln!("no H.264 encoder works here: the boost run is skipped");
+        let _ = std::fs::remove_dir_all(&dir);
+        return;
+    }
+    for (name, boost) in [
+        ("quiet.mp4", false),
+        ("quiet.mp4", true),
+        ("loud.mp4", false),
+        ("loud.mp4", true),
+    ] {
+        let file = dir.join(name);
+        let json = tools::probe_json(&tools, &file).await.unwrap();
+        let info = Arc::new(probe::parse(&json).unwrap());
+        let session = Session::new(
+            "s".into(),
+            "f".into(),
+            file.clone(),
+            info,
+            tools.clone(),
+            caps,
+            Options {
+                boost,
+                ..Options::default()
+            },
+        )
+        .unwrap();
+        let gain = session.plan().audio.as_ref().unwrap().gain;
+        assert_eq!(gain, if boost { 2.0 } else { 1.0 });
+        let run = session.start_run(0.0).unwrap();
+        let bytes = pull_all(&run).await;
+        let out = dir.join(format!("{name}-{boost}.mp4"));
+        std::fs::write(&out, &bytes).unwrap();
+        let (mean, max) = loudness(&tools, &out).await;
+        eprintln!("{name} boost={boost}: mean {mean} dB, max {max} dB");
+        let (src_mean, src_max) = loudness(&tools, &file).await;
+        if !boost {
+            assert!((mean - src_mean).abs() < 0.5, "unboosted keeps the level");
+        } else if name == "quiet.mp4" {
+            assert!(
+                (mean - src_mean - 6.0).abs() < 0.6,
+                "quiet sound doubled: {src_mean} -> {mean}"
+            );
+            assert!((max - src_max - 6.0).abs() < 0.6);
+        } else {
+            assert!(max <= -0.5, "loud peaks limited, not clipped: max {max} dB");
+            assert!(mean > src_mean + 1.0, "still louder: {src_mean} -> {mean}");
+        }
+    }
+    let _ = std::fs::remove_dir_all(&dir);
 }

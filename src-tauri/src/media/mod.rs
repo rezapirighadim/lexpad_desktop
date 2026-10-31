@@ -46,6 +46,10 @@ use tools::Tools;
 /// The event a player window gets when files are dropped on it or opened
 /// with Lexpad, with a `Dropped`.
 pub const FILES_EVENT: &str = "media:files";
+/// `Dropped::via` for a drop on a player window.
+pub const VIA_DROP: &str = "drop";
+/// `Dropped::via` for files handed over from outside the Player.
+pub const VIA_OPEN_WITH: &str = "open_with";
 /// Extracting embedded subtitles walks the whole file: on a slow or
 /// sleeping drive that can take minutes, so it is stopped only when FFmpeg
 /// says nothing for this long (it reports twice a second while it reads)...
@@ -357,10 +361,11 @@ pub fn deliver<R: Runtime>(app: &AppHandle<R>, window: &str, paths: &[PathBuf]) 
     let Some(state) = app.try_state::<Arc<MediaState>>() else {
         return;
     };
-    let dropped = state.files.grant_all(paths);
+    let mut dropped = state.files.grant_all(paths);
     if dropped.videos.is_empty() && dropped.subtitles.is_empty() && dropped.unsupported.is_empty() {
         return;
     }
+    dropped.via = Some(VIA_DROP);
     let _ = app.emit_to(window, FILES_EVENT, dropped);
 }
 
@@ -372,10 +377,11 @@ pub fn open_from_system<R: Runtime>(app: &AppHandle<R>, paths: &[PathBuf]) -> bo
     let Some(state) = app.try_state::<Arc<MediaState>>() else {
         return false;
     };
-    let dropped = state.files.grant_all(paths);
+    let mut dropped = state.files.grant_all(paths);
     if dropped.videos.is_empty() && dropped.subtitles.is_empty() {
         return false;
     }
+    dropped.via = Some(VIA_OPEN_WITH);
     let window = player_window();
     if app.get_webview_window(window).is_some() {
         let _ = app.emit_to(window, FILES_EVENT, dropped);

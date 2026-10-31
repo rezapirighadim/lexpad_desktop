@@ -51,6 +51,12 @@ const MAX_HDR: (u32, u32) = (1920, 1080);
 const BITS_PER_PIXEL: f64 = 0.12;
 /// AAC bit rate for transcoded audio, stereo.
 const AAC_BITRATE: &str = "192k";
+/// How much louder a boosted run's sound is made (`Options::boost`): the
+/// Player's 200%, whose element volume then scales it back down (volume / 2).
+pub const BOOST_GAIN: f64 = 2.0;
+/// The boosted sound's ceiling, linear: -1 dBFS, so the peaks the gain
+/// pushes up are limited before the AAC encoder instead of clipping.
+const BOOST_LIMIT: f64 = 0.891;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -68,6 +74,12 @@ pub struct Options {
     pub audio: Option<usize>,
     /// Milliseconds the audio is moved: positive plays it later.
     pub audio_delay_ms: i64,
+    /// The sound made `BOOST_GAIN` times louder here, behind a limiter, for
+    /// the Player's volume above 100% where the webview's Web Audio cannot
+    /// hear a video (WKWebView gives a MediaElementAudioSourceNode only
+    /// silence for a Media Source stream). It re-encodes the audio, so a
+    /// `Direct` file becomes `AudioTranscode` while it is on.
+    pub boost: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -91,6 +103,8 @@ pub struct AudioPlan {
     pub delay_ms: i64,
     /// Down-mixed to stereo (from more channels).
     pub downmix: bool,
+    /// How much louder FFmpeg makes the sound: 1, or `BOOST_GAIN` (limited).
+    pub gain: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -231,11 +245,13 @@ pub fn decide(info: &MediaInfo, ext: &str, opts: Options, caps: &Caps) -> Result
         }
     };
     let audio_copy = audio.is_none_or(|a| {
-        let ok = aac_plays(a) && opts.audio_delay_ms == 0;
+        let ok = aac_plays(a) && opts.audio_delay_ms == 0 && !opts.boost;
         if !aac_plays(a) {
             reasons.push(format!("audio: {} is transcoded to AAC", a.codec));
         } else if opts.audio_delay_ms != 0 {
             reasons.push("audio: moved in time, so re-encoded".into());
+        } else if opts.boost {
+            reasons.push("audio: made louder (volume above 100%), so re-encoded".into());
         }
         ok
     });
@@ -293,6 +309,7 @@ pub fn decide(info: &MediaInfo, ext: &str, opts: Options, caps: &Caps) -> Result
         copy: audio_copy,
         delay_ms: opts.audio_delay_ms,
         downmix: !audio_copy && a.channels > 2,
+        gain: if opts.boost { BOOST_GAIN } else { 1.0 },
     });
     let codecs = match (&audio_plan, audio) {
         (Some(p), Some(a)) if p.copy => format!("{video_codec},{}", aac_codec(a)),
@@ -466,6 +483,17 @@ pub fn args(plan: &Plan, info: &MediaInfo, path: &str, start: f64, caps: &Caps) 
                 "aresample={rate}:async=1:first_pts={}",
                 (start.max(0.0) * in_rate as f64).round() as i64
             ));
+            if au.gain != 1.0 {
+                // Down-mixed first, so the limiter sees the channels as they
+                // are heard (FFmpeg's own -ac would sum them after it).
+                if au.downmix {
+                    af.push("aformat=channel_layouts=stereo".into());
+                }
+                af.push(format!("volume={:.3}", au.gain));
+                af.push(format!(
+                    "alimiter=limit={BOOST_LIMIT}:attack=5:release=50:level=disabled"
+                ));
+            }
             push(&mut a, &["-af", &af.join(",")]);
             push(
                 &mut a,
@@ -549,6 +577,7 @@ mod tests {
             Options {
                 audio: Some(2),
                 audio_delay_ms: 0,
+                ..Options::default()
             },
             &caps(),
         )
@@ -562,6 +591,7 @@ mod tests {
             Options {
                 audio: None,
                 audio_delay_ms: 250,
+                ..Options::default()
             },
             &caps(),
         )
@@ -586,6 +616,51 @@ mod tests {
         assert!(a.contains("first_pts=600000"));
         assert!(a.contains("-ac 2"));
         assert!(!a.contains("-hwaccel"));
+    }
+
+    #[test]
+    fn boost_re_encodes_the_audio_louder_behind_a_limiter() {
+        let boost = Options {
+            boost: true,
+            ..Options::default()
+        };
+        // A Direct MP4 becomes an audio transcode while boost is on.
+        let i = info("mov,mp4,m4a,3gp,3g2,mj2", json!([h264(), aac(1)]));
+        assert_eq!(
+            decide(&i, "mp4", Options::default(), &caps()).unwrap().mode,
+            Mode::Direct
+        );
+        let p = decide(&i, "mp4", boost, &caps()).unwrap();
+        assert_eq!(p.mode, Mode::AudioTranscode);
+        assert_eq!(p.time_offset, TIMELINE_OFFSET);
+        let au = p.audio.as_ref().unwrap();
+        assert!(!au.copy);
+        assert_eq!(au.gain, BOOST_GAIN);
+        let a = args(&p, &i, "/x.mp4", 0.0, &caps()).join(" ");
+        assert!(a.contains("-c:v copy"));
+        assert!(a.contains("volume=2.000,alimiter=limit=0.891:attack=5:release=50:level=disabled"));
+        assert!(!a.contains("aformat"));
+        // A remuxed MKV re-encodes its AAC too; plain, it stays copied.
+        let i = info("matroska,webm", json!([h264(), aac(1)]));
+        let plain = decide(&i, "mkv", Options::default(), &caps()).unwrap();
+        assert_eq!(plain.mode, Mode::Remux);
+        assert_eq!(plain.audio.as_ref().unwrap().gain, 1.0);
+        assert!(!args(&plain, &i, "/x.mkv", 0.0, &caps())
+            .join(" ")
+            .contains("volume="));
+        assert_eq!(
+            decide(&i, "mkv", boost, &caps()).unwrap().mode,
+            Mode::AudioTranscode
+        );
+        // 5.1 is down-mixed before the limiter, so the limit holds for stereo.
+        let i = info(
+            "matroska,webm",
+            json!([h264(), {"index": 1, "codec_type": "audio", "codec_name": "ac3", "channels": 6, "sample_rate": "48000"}]),
+        );
+        let p = decide(&i, "mkv", boost, &caps()).unwrap();
+        let a = args(&p, &i, "/x.mkv", 0.0, &caps()).join(" ");
+        let af = a.split("-af ").nth(1).unwrap();
+        assert!(af.find("aformat=channel_layouts=stereo").unwrap() < af.find("alimiter").unwrap());
     }
 
     #[test]
