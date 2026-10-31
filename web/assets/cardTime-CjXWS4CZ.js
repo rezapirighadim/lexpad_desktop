@@ -1,1 +1,0 @@
-import{r as e}from"./useConfig-CnafQiFS.js";function t(){return e.getState().plan.secondsPerCard??9}function n(){return e.getState().plan.secondsPerCard??24}function r(){return e.getState().plan.recall??.9}var i=60;function a(e){return e*t()<i}function o(e){return Math.max(1,Math.round(e*t()/i))}export{a as i,r as n,n as r,o as t};

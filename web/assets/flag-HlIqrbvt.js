@@ -1,1 +1,0 @@
-import{r as e}from"./rolldown-runtime-hePW80VL.js";import{x as t}from"./react--nwWWpNE.js";import{r as n}from"./useConfig-CnafQiFS.js";var r=e(t(),1);function i(){let e=n(e=>e.ensure),t=n(e=>e.todayV2);return(0,r.useEffect)(()=>{e()},[e]),t===!0}export{i as t};
