@@ -103,6 +103,7 @@ scripts/release-mas.sh           build, sign, check, package, validate, upload t
 scripts/mas-signing-setup.sh     the Mac App Store certificates and profile through the API (--apply, owner's yes first)
 scripts/mas-storekit-test.sh     the purchase bridge against StoreKit's local test store (headless)
 scripts/mas-smoke.sh             the sandboxed copy end to end; opens windows, so only with the screen free
+scripts/mas-asc-listing.py       the macOS version, listing text and review details in App Store Connect (--apply; never submits)
 ```
 
 ## Lexpad's window (0.2): the design

@@ -52,7 +52,8 @@ The main session (or you) opens <https://appstoreconnect.apple.com/apps/68222242
 
 1. If there is no macOS platform yet: in the left column, next to the platform name, click
    **+** (Add Platform) › **macOS**. Version: the desktop version (for example `0.3.27`).
-   (The main session may already have added it through the API.)
+   (After your yes in step 1 the main session can do this, and fill the
+   texts and the review details, with `scripts/mas-asc-listing.py --apply`. It submits nothing.)
 2. Click **macOS App › 0.3.27 (Prepare for Submission)**.
 3. **Screenshots** (Mac): drag in 3 to 10 PNGs of 2880 × 1800 (see section 6).
 4. **Promotional Text, Description, Keywords, Support URL, Marketing URL**: paste from
@@ -129,7 +130,7 @@ Privacy Policy: https://lexpad.app/privacy
 Support: hello@lexpad.app
 ```
 
-**Keywords** (100 characters max; 96 used)
+**Keywords** (100 characters max; 92 used)
 
 ```
 vocabulary,flashcards,spaced repetition,leitner,subtitles,video player,language learning,srs
