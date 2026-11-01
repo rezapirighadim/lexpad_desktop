@@ -17,8 +17,25 @@ export function untilText(resetsAt: string, now: number): string {
   return `in about ${hours} hour${hours === 1 ? '' : 's'}`;
 }
 
-/** The message for a refusal; `headword` is the word, for a card refusal. */
-export function limitText(n: LimitNotice, now: number, headword = ''): string {
+/**
+ * The line for a word the Player keeps on this computer and sends after
+ * the learner's midnight (`words_save` answers `daily_limit` and holds it):
+ * it then takes one of the next day's words, and the learner is told so.
+ */
+export function heldText(n: LimitNotice): string {
+  return `Saved after midnight; it uses one of tomorrow's ${n.perDay}.`;
+}
+
+/**
+ * The message for a refusal; `headword` is the word, for a card refusal.
+ * `held` adds `heldText` to a refused word that waits for midnight.
+ */
+export function limitText(n: LimitNotice, now: number, headword = '', held = false): string {
+  const text = refusalText(n, now, headword);
+  return held && n.kind === 'words' ? `${text} ${heldText(n)}` : text;
+}
+
+function refusalText(n: LimitNotice, now: number, headword: string): string {
   const when = untilText(n.resetsAt, now);
   const player = n.surface === 'player';
   if (n.plan === 'pro') {

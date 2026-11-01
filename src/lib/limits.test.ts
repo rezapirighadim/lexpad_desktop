@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { failureOf, noticeOf } from './backend.js';
-import { limitText, offersPro, untilText } from './limits.js';
+import { heldText, limitText, offersPro, untilText } from './limits.js';
 import type { LimitNotice } from './types.js';
 
 const now = Date.parse('2026-11-10T16:00:00Z');
@@ -65,5 +65,18 @@ describe('the daily numbers’ messages', () => {
     expect(noticeOf('duplicate')).toBeUndefined();
     expect(failureOf('{not json')).toBe('error');
     expect(noticeOf(JSON.stringify({ failure: 'daily_limit', notice: { kind: 'words' } }))).toBeUndefined();
+  });
+
+  it('says plainly that a word kept for after midnight uses one of tomorrow’s', () => {
+    expect(heldText(base)).toBe("Saved after midnight; it uses one of tomorrow's 5.");
+    expect(heldText({ ...base, plan: 'pro', perDay: 200 })).toBe(
+      "Saved after midnight; it uses one of tomorrow's 200.",
+    );
+    expect(limitText(base, now, '', true)).toBe(
+      "Not saved. You've kept today's 5 words from your films on Lexpad Free. More at midnight, in about 5 hours. Pro keeps 200 a day here. Saved after midnight; it uses one of tomorrow's 5.",
+    );
+    // Not held, or a card (the word is already saved): no such line.
+    expect(limitText(base, now)).not.toContain('tomorrow');
+    expect(limitText({ ...base, kind: 'cards' }, now, 'x', true)).not.toContain('tomorrow');
   });
 });
