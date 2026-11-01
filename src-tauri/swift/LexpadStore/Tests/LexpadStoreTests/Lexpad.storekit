@@ -51,6 +51,40 @@
           "subscriptionGroupID" : "22471175",
           "type" : "RecurringSubscription",
           "winbackOffers" : []
+        },
+        {
+          "adHocOffers" : [
+            {
+              "displayPrice" : "17.99",
+              "internalID" : "11110013",
+              "numberOfPeriods" : 1,
+              "offerID" : "yearly_return_1799",
+              "paymentMode" : "payUpFront",
+              "referenceName" : "yearly_return_1799",
+              "subscriptionPeriod" : "P1Y"
+            }
+          ],
+          "codeOffers" : [],
+          "displayPrice" : "29.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "11110003",
+          "introductoryOffer" : {
+            "displayPrice" : "17.99",
+            "internalID" : "11110012",
+            "numberOfPeriods" : 1,
+            "paymentMode" : "payUpFront",
+            "subscriptionPeriod" : "P1Y"
+          },
+          "localizations" : [
+            { "description" : "Test fixture only", "displayName" : "Pro yearly, welcome price (test)", "locale" : "en_US" }
+          ],
+          "productID" : "pro_yearly_welcome",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "pro_yearly_welcome",
+          "subscriptionGroupID" : "22471175",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : []
         }
       ]
     }

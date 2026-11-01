@@ -58,9 +58,21 @@ final class LexpadStoreTests: XCTestCase {
     }
 
     func testListsBuysFinishesAndRestores() async throws {
-        let listed = try await StoreKitHost.run("products", ["productIds": ["pro_monthly", "pro_yearly", "nope"]]) as! [String: Any]
+        let listed = try await StoreKitHost.run("products", ["productIds": ["pro_monthly", "pro_yearly", "pro_yearly_welcome", "nope"]]) as! [String: Any]
         let products = try XCTUnwrap(listed["products"] as? [[String: Any]])
-        XCTAssertEqual(Set(products.map { $0["id"] as! String }), ["pro_monthly", "pro_yearly"])
+        // An id the store does not return is simply absent.
+        XCTAssertEqual(Set(products.map { $0["id"] as! String }), ["pro_monthly", "pro_yearly", "pro_yearly_welcome"])
+        // Nobody has subscribed in the group yet: Apple would give the
+        // introductory offer, and every product says so.
+        for product in products {
+            XCTAssertEqual(product["isEligibleForIntroOffer"] as? Bool, true, product["id"] as? String ?? "")
+        }
+        let welcome = try XCTUnwrap(products.first { $0["id"] as? String == "pro_yearly_welcome" })
+        XCTAssertEqual((welcome["introductoryOffer"] as? [String: Any])?["price"] as? String, "17.99")
+        let promos = try XCTUnwrap(welcome["promotionalOffers"] as? [[String: Any]])
+        XCTAssertEqual(promos.map { $0["id"] as? String }, ["yearly_return_1799"])
+        // The answer crosses the C bridge as JSON: the flag stays a boolean.
+        XCTAssertTrue(encode(listed).contains(#""isEligibleForIntroOffer":true"#))
         let monthly = products.first { $0["id"] as? String == "pro_monthly" }!
         XCTAssertEqual(monthly["price"] as? String, "4.99")
         XCTAssertEqual((monthly["period"] as? [String: Any])?["unit"] as? String, "month")
@@ -91,6 +103,16 @@ final class LexpadStoreTests: XCTestCase {
             ($0["transactions"] as! [[String: Any]]).contains { $0["productId"] as? String == "pro_monthly" }
         }
         XCTAssertNotNil(held)
+
+        // Subscribed once in the group: Apple no longer gives this Apple ID
+        // the introductory offer, on any product of the group.
+        let after = await eventually {
+            try await StoreKitHost.run("products", ["productIds": ["pro_yearly", "pro_yearly_welcome"]]) as! [String: Any]
+        } until: {
+            let listed = $0["products"] as! [[String: Any]]
+            return listed.count == 2 && listed.allSatisfy { $0["isEligibleForIntroOffer"] as? Bool == false }
+        }
+        XCTAssertNotNil(after, "eligibility should turn false after a subscription in the group")
     }
 
     func testTheCBridgeAnswersAsJSON() {
