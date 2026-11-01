@@ -75,7 +75,27 @@ export type Failure =
   | 'cancelled'
   | 'timeout'
   | 'taken'
+  /** The surface's daily number of saved words is used up; nothing was saved. */
+  | 'daily_limit'
+  /** The surface's daily AI cards are used up; the word can be saved without a meaning. */
+  | 'cards_used_up'
   | 'error';
+
+/**
+ * What a daily number that refused says (the core's `LimitNotice`): the
+ * server's own numbers, never typed here.
+ */
+export interface LimitNotice {
+  kind: 'words' | 'cards';
+  surface: 'desktop' | 'player';
+  perDay: number;
+  left: number;
+  /** The learner's next midnight (RFC 3339). */
+  resetsAt: string;
+  plan: 'free' | 'pro';
+  /** Pro's number on this surface, for a Free account. */
+  proPerDay?: number;
+}
 
 export interface Settings {
   shortcut: string;
