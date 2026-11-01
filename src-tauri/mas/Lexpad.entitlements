@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The Mac App Store build's entitlements (docs/mac-app-store-plan.md, "Sandbox").
+  Every key here is needed by something the app does; nothing else is asked for.
+  scripts/release-mas.sh signs Lexpad.app with this file; the local test build
+  (scripts/release-mas.sh --local) drops the two identity keys, which only a provisioning
+  profile may grant.
+-->
+<plist version="1.0">
+<dict>
+  <!-- App Review Guideline 2.4.5(i): every Mac App Store app is sandboxed. -->
+  <key>com.apple.security.app-sandbox</key>
+  <true/>
+  <!-- The API (api.lexpad.app), lexpad.app's pages opened in the browser. -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+  <!-- Signing in (RFC 8252): a one-time listener on 127.0.0.1 for the
+       browser's redirect back (auth.rs). Nothing listens otherwise. -->
+  <key>com.apple.security.network.server</key>
+  <true/>
+  <!-- The video player plays the films and subtitles the learner chooses,
+       drops or opens with Lexpad; it only reads them. -->
+  <key>com.apple.security.files.user-selected.read-only</key>
+  <true/>
+  <!-- Exports the learner saves from Lexpad's window go to Downloads. -->
+  <key>com.apple.security.files.downloads.read-write</key>
+  <true/>
+  <!-- The Mac App Store identity, from the provisioning profile. -->
+  <key>com.apple.application-identifier</key>
+  <string>6Z95MR26LZ.app.lexpad.ios</string>
+  <key>com.apple.developer.team-identifier</key>
+  <string>6Z95MR26LZ</string>
+</dict>
+</plist>

@@ -76,12 +76,17 @@ pub fn take_pending() -> Option<String> {
 
 /// What the page is told before it runs (also the Player's, `player_window`).
 pub(crate) fn config_script(device_id: &str) -> String {
-    let config = json!({
+    let mut config = json!({
         "platform": "desktop",
         "apiUrl": config::API_ORIGIN,
         "appVersion": config::VERSION,
         "deviceId": device_id,
     });
+    // The Mac App Store build: the web app sells through Apple there
+    // (lexpad_front `isMacAppStore`), and nowhere else on the desktop.
+    if config::MAS {
+        config["distribution"] = json!("mas");
+    }
     format!("window.__LEXPAD_CONFIG = Object.freeze({config});")
 }
 
@@ -342,6 +347,7 @@ mod tests {
         // The id is a JSON string: its quote is escaped.
         assert!(script.contains(r#"d\"; alert(1); \""#));
         assert!(script.contains(r#""platform":"desktop""#));
+        assert_eq!(script.contains(r#""distribution":"mas""#), config::MAS);
     }
 
     fn mac() -> Screen {

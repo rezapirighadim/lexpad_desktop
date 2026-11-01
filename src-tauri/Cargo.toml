@@ -13,6 +13,12 @@ name = "lexpad_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
+# The Mac App Store build (docs/mac-app-store-plan.md, scripts/release-mas.sh,
+# tauri.mas.conf.json): sandboxed, Apple's in-app purchase through the Swift
+# StoreKit bridge (swift/LexpadStore, compiled by build.rs), the Services
+# menu's key instead of the global shortcut and Accessibility, SMAppService
+# for start on login, no update line. macOS only; the dmg never has it.
+mas = []
 # CI's placement smoke test (src/smoke.rs, `--smoke-test`). Never in a
 # shipped build.
 smoke-test = []
@@ -32,7 +38,10 @@ tauri-build = { version = "2", features = [] }
 # Pinned to the minor version: tray.rs reaches the inner tray-icon crate
 # (with_inner_tray_icon), which Tauri may update in a minor release.
 # macos-private-api: the panel window is transparent so it can have rounded
-# corners (the app is not for the Mac App Store; see README).
+# corners in the dmg. The Mac App Store build turns macOSPrivateApi off
+# (tauri.mas.conf.json; the tauri CLI drops this feature for that build and
+# scripts/release-mas.sh puts Cargo.toml back) and rounds the panel with
+# public AppKit instead (panel::round_corners).
 tauri = { version = "~2.12", features = ["tray-icon", "image-png", "macos-private-api"] }
 ico = "0.5"
 tauri-plugin-global-shortcut = "2"

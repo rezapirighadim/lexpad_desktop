@@ -40,8 +40,9 @@ pub enum Permission {
     /// macOS: Accessibility is not allowed yet. The popup explains and offers
     /// the type-a-word box.
     Missing,
-    /// Windows needs no permission for either path.
-    #[cfg_attr(target_os = "macos", allow(dead_code))]
+    /// Windows needs no permission for either path; nor does the Mac App
+    /// Store build, which never reads other apps (`config::MAS`).
+    #[cfg_attr(all(target_os = "macos", not(feature = "mas")), allow(dead_code))]
     NotNeeded,
 }
 
@@ -122,6 +123,11 @@ pub fn write_text(text: &str) -> bool {
 
 /// Whether reading selections is allowed, without asking.
 pub fn permission() -> Permission {
+    // The Mac App Store build is sandboxed: it never reads other apps through
+    // Accessibility, and the Services menu hands it the selection instead.
+    if crate::config::MAS {
+        return Permission::NotNeeded;
+    }
     #[cfg(target_os = "macos")]
     return macos::permission();
     #[cfg(not(target_os = "macos"))]
@@ -131,6 +137,9 @@ pub fn permission() -> Permission {
 /// Asks the system to list the app under Accessibility (macOS shows its own
 /// prompt). Returns whether it is allowed already.
 pub fn request_permission() -> bool {
+    if crate::config::MAS {
+        return true;
+    }
     #[cfg(target_os = "macos")]
     return macos::request_permission();
     #[cfg(not(target_os = "macos"))]

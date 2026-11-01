@@ -27,14 +27,28 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// the login items. Never in a shipped build.
 pub const PLAYER_TEST: bool = cfg!(feature = "player-test");
 
+/// The Mac App Store build (`--features mas`, with src-tauri/tauri.mas.conf.json;
+/// docs/mac-app-store-plan.md): sandboxed, sold through Apple's in-app
+/// purchase, updated by the App Store, and the selection reaches it through
+/// the Services menu's key (⌘⇧L) instead of Accessibility. Only on macOS.
+pub const MAS: bool = cfg!(all(feature = "mas", target_os = "macos"));
+
 /// The bundle identifier, for what must name it outside Tauri's config (the
 /// credential store's service, the system's notification settings page).
-/// It equals `identifier` in tauri.conf.json (or the test build's overlay).
+/// It equals `identifier` in tauri.conf.json (or the overlay of the test
+/// build or of the Mac App Store build). The Mac App Store build carries the
+/// iPhone app's identifier: it is the macOS platform of the same App Store
+/// record (Universal Purchase), so the same subscriptions serve both.
 pub const BUNDLE_ID: &str = if PLAYER_TEST {
     "app.lexpad.desktop.playertest"
+} else if MAS {
+    BUNDLE_ID_MAS
 } else {
     "app.lexpad.desktop"
 };
+
+/// The Mac App Store build's identifier (tauri.mas.conf.json).
+pub const BUNDLE_ID_MAS: &str = "app.lexpad.ios";
 
 /// Whether this build talks to anything but production. Such a build never
 /// registers itself to start at login: a test build pointing at a laptop's
@@ -55,9 +69,13 @@ pub fn device_name() -> &'static str {
 }
 
 /// Where this copy was installed from, on Windows: the Microsoft Store's MSIX
-/// package (it has a package identity) or the installer from lexpad.app. The
-/// Mac has one way in, so it says nothing.
+/// package (it has a package identity) or the installer from lexpad.app. On a
+/// Mac, `appstore` for the Mac App Store build (the API sells it through
+/// Apple: lexpad_back `everywhere.MacAppStore`), nothing for the dmg.
 pub fn install_source() -> Option<&'static str> {
+    if MAS {
+        return Some("appstore");
+    }
     #[cfg(windows)]
     {
         Some(if crate::msix::is_packaged() {
@@ -91,6 +109,16 @@ fn client_string(version: &str, os: &str, install: Option<&str>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_mac_app_store_copy_says_so() {
+        assert_eq!(
+            client_string("0.3.27", "macOS", Some("appstore")),
+            "Lexpad-Desktop/0.3.27 (macOS; appstore)"
+        );
+        assert_eq!(install_source() == Some("appstore"), MAS);
+        assert_eq!(BUNDLE_ID == BUNDLE_ID_MAS, MAS);
+    }
 
     #[test]
     fn the_user_agent_names_the_system_and_the_install() {

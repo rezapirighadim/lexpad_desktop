@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The bundled FFmpeg and FFprobe in the Mac App Store build (docs/ffmpeg.md):
+  started by Lexpad, they run inside Lexpad's own sandbox and may read only
+  what Lexpad may. These two keys exactly, as Apple asks of a helper tool.
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.app-sandbox</key>
+  <true/>
+  <key>com.apple.security.inherit</key>
+  <true/>
+</dict>
+</plist>

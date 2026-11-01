@@ -449,7 +449,9 @@ pub fn set_shortcut(
     shortcut: String,
 ) -> Result<String, String> {
     let old = state.settings.lock().map_err(|_| "lock")?.shortcut.clone();
-    if shortcut == old {
+    if shortcut == old || config::MAS {
+        // The Mac App Store build's key is the Services menu's, set in
+        // System Settings, never here.
         return Ok(old);
     }
     let gs = app.global_shortcut();
@@ -792,6 +794,13 @@ pub struct DesktopDto {
     focus: Option<crate::settings::Focus>,
     /// "When I open Lexpad".
     open_at: crate::settings::OpenAt,
+    /// `mas` in the Mac App Store build; absent in the dmg and on Windows.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    distribution: Option<&'static str>,
+    /// `services` in the Mac App Store build: the shortcut is the Services
+    /// menu's key, shown and changed in System Settings, not in Lexpad.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    shortcut_via: Option<&'static str>,
 }
 
 #[tauri::command]
@@ -820,6 +829,8 @@ pub async fn desktop_settings(state: State<'_, AppState>) -> Result<DesktopDto, 
         notification_access,
         focus: s.focus,
         open_at: s.open_at,
+        distribution: config::MAS.then_some("mas"),
+        shortcut_via: config::MAS.then_some("services"),
     })
 }
 

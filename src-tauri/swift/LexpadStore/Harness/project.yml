@@ -1,0 +1,53 @@
+# The StoreKit test harness for the Mac App Store bridge (scripts/mas-storekit-test.sh).
+# SKTestSession only serves products to a test bundle hosted in an app, so this is a
+# windowless host app (LSUIElement) that compiles the bridge, and a hosted unit test
+# bundle. Generated with XcodeGen into the build folder; never shipped.
+name: LexpadStoreHarness
+options:
+  deploymentTarget:
+    macOS: '13.0'
+settings:
+  base:
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: 'Apple Development'
+    DEVELOPMENT_TEAM: 6Z95MR26LZ
+    ENABLE_HARDENED_RUNTIME: NO
+    SWIFT_VERSION: '5.0'
+targets:
+  StoreKitHost:
+    type: application
+    platform: macOS
+    sources:
+      - path: Host
+      - path: ../Sources/LexpadStore
+      - path: ../Tests/LexpadStoreTests/Lexpad.storekit
+        buildPhase: resources
+    info:
+      path: Host/Info.plist
+      properties:
+        LSUIElement: true
+        CFBundleIdentifier: app.lexpad.storekithost
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.lexpad.storekithost
+  StoreKitHostTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: ../Tests/LexpadStoreTests/LexpadStoreTests.swift
+    dependencies:
+      - target: StoreKitHost
+    settings:
+      base:
+        TEST_HOST: '$(BUILT_PRODUCTS_DIR)/StoreKitHost.app/Contents/MacOS/StoreKitHost'
+        BUNDLE_LOADER: '$(TEST_HOST)'
+        PRODUCT_BUNDLE_IDENTIFIER: app.lexpad.storekithost.tests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  StoreKitHost:
+    build:
+      targets:
+        StoreKitHost: all
+        StoreKitHostTests: [test]
+    test:
+      targets: [StoreKitHostTests]
