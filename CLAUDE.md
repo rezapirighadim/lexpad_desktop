@@ -255,6 +255,14 @@ page written by us (designed separately); this repository holds the engine.
   `waiting: daily_limit` and `notBefore` = the learner's midnight (`word_queue::hold_until`), say
   `Queued { reason: daily_limit, notice }`, and send it after midnight like any other. The Player's
   own message is its page's (lexpad_front `features/player`), from that answer.
+- **Builds before this one are never refused.** They read any 429 as "AI is not available right
+  now" while nothing was saved, so the server refuses a desktop or Player request only from a build
+  at or after `surface_limits` `minVersions.desktop`, read per call from the core's
+  `User-Agent: Lexpad-Desktop/<version> (…)` (`config::user_agent`); older builds stay dry (counted,
+  never refused). Keep that agent's format. On the go-live day the flag is set to the first release
+  that carries this branch in all four builds (dmg, Windows exe, MS Store, Mac App Store), with the
+  window's web app built from lexpad_front #99 (it keeps a `try_again` word queued; lexpad_back
+  RUNBOOK "Daily limits per surface").
 
 ## The video player's windows (branch feat/video-player, 2026-10)
 
