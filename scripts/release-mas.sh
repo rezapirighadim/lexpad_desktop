@@ -126,6 +126,9 @@ if [ "$local_build" = 1 ]; then
   /usr/libexec/PlistBuddy -c 'Delete :com.apple.application-identifier' -c 'Delete :com.apple.developer.team-identifier' "$entitlements"
 fi
 
+# Everything in the app readable by everyone (App Store Connect error 90255):
+# the profile is kept private on this Mac (0600) and is copied in as it is.
+chmod -R u+rwX,go+rX "$app"
 echo "release-mas: signing with $app_identity"
 # Inside out: the helpers first (sandbox + inherit only), then the app.
 for tool in "$app/Contents/MacOS/ffmpeg" "$app/Contents/MacOS/ffprobe"; do
@@ -163,6 +166,7 @@ strings "$app/Contents/MacOS/lexpad-desktop" | grep -q "This copy of Lexpad does
   echo "release-mas: the binary is not the mas build" >&2
   exit 1
 }
+[ -z "$(find "$app" ! -perm -o=r -print)" ] || { echo "release-mas: files in the app others cannot read" >&2; exit 1; }
 echo "release-mas: Lexpad.app is sandboxed, signed and checked ($archs)"
 
 if [ "$local_build" = 1 ]; then
