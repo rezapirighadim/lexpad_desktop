@@ -376,23 +376,24 @@ func clip(_ text: String) -> String {
     return text.count <= 300 ? text : String(text.prefix(300))
 }
 
+/// The purchase option carrying the server's eligibility JWS, or nil when this
+/// build's SDK has no such option. StoreKit back-deploys the option to macOS 13
+/// (the build's minimum), and only SDKs from Xcode 26 on declare it, hence the
+/// compiler check and no OS check: an OS check here made every purchase of a
+/// product with an introductory offer (the yearly plan) fail below macOS 15.4.
 func introductoryOfferEligibility(_ compactJWS: String) -> Product.PurchaseOption? {
     #if compiler(>=6.2)
-    if #available(macOS 15.4, *) {
-        return .introductoryOfferEligibility(compactJWS: compactJWS)
-    }
-    return nil
+    return .introductoryOfferEligibility(compactJWS: compactJWS)
     #else
     return nil
     #endif
 }
 
+/// The purchase options for a server-signed promotional offer (back-deployed
+/// like the eligibility option), or nil when this build's SDK has none.
 func promotionalOffer(_ offerID: String, compactJWS: String) -> [Product.PurchaseOption]? {
     #if compiler(>=6.2)
-    if #available(macOS 15.4, *) {
-        return Product.PurchaseOption.promotionalOffer(offerID, compactJWS: compactJWS)
-    }
-    return nil
+    return Product.PurchaseOption.promotionalOffer(offerID, compactJWS: compactJWS)
     #else
     return nil
     #endif

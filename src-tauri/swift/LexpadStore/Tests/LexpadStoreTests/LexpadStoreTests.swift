@@ -36,6 +36,27 @@ final class LexpadStoreTests: XCTestCase {
         }
     }
 
+    /// The offer options are built on every macOS the build runs on (13 and
+    /// later): StoreKit back-deploys them, and a refusal here would make every
+    /// yearly purchase fail (`offer_unsupported`). The harness and build.rs
+    /// both compile for macOS 13, so an OS check slipping back in fails to
+    /// build or fails here.
+    func testBuildsTheOfferOptionsOnEveryMacOS() throws {
+        let account = "00000000-0000-0000-0000-000000000001"
+        let (_, intro) = try purchaseOptions([
+            "productId": "pro_yearly", "appAccountToken": account,
+            "introductoryOfferEligibility": "header.payload.signature",
+        ])
+        XCTAssertEqual(intro.count, 2, "the account and the eligibility")
+        let (_, promo) = try purchaseOptions([
+            "productId": "pro_yearly", "appAccountToken": account,
+            "promotionalOfferId": "winback", "promotionalOfferJws": "header.payload.signature",
+        ])
+        XCTAssertGreaterThan(promo.count, 1, "the account and the promotional offer")
+        XCTAssertNotNil(introductoryOfferEligibility("a.b.c"))
+        XCTAssertNotNil(promotionalOffer("winback", compactJWS: "a.b.c"))
+    }
+
     func testListsBuysFinishesAndRestores() async throws {
         let listed = try await StoreKitHost.run("products", ["productIds": ["pro_monthly", "pro_yearly", "nope"]]) as! [String: Any]
         let products = try XCTUnwrap(listed["products"] as? [[String: Any]])

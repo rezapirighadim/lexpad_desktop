@@ -202,6 +202,9 @@ with Apple) is met by the web sign-in page itself, which offers Apple next to Go
   sold by Apple: checkout answers Apple, promo codes are refused, purchase links in the bell are
   removed, reports name the install `appstore`. The switch is the same `selling.ios` as the
   iPhone (they sell the same products).
+- The introductory-offer eligibility and promotional-offer options are back-deployed by StoreKit to
+  macOS 13, the build's minimum, so they are guarded only by the compiler (Xcode 26 SDKs), never
+  by an OS check; `testBuildsTheOfferOptionsOnEveryMacOS` and the macOS 13 build target hold it.
 - StoreKit needs a window to attach its sheet to from macOS 15.2; the bridge passes Lexpad's
   key window (`purchase(confirmIn:)`).
 
