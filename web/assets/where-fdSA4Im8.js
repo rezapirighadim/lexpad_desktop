@@ -1,1 +1,0 @@
-import{t as e}from"./apple-BzUZLp9e.js";function t(){return!e()}export{t};
