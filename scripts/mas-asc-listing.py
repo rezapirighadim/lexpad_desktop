@@ -38,6 +38,7 @@ assert len(kw)<=100 and len(promo)<=170 and len(desc)<=4000 and len(notes)<=4000
 vers=c.call("GET",f"/v1/apps/{APP}/appStoreVersions",query={"filter[platform]":"MAC_OS"})["data"]
 if vers:
     v=vers[0]; print("existing mac version", v["attributes"]["versionString"], v["attributes"]["appStoreState"])
+    if "--apply" not in sys.argv: print("would set the listing text and review details"); sys.exit()
 else:
     if "--apply" not in sys.argv: print("would create MAC_OS 0.3.27"); sys.exit()
     v=c.call("POST","/v1/appStoreVersions",{"data":{"type":"appStoreVersions","attributes":{"platform":"MAC_OS","versionString":"0.3.27","releaseType":"MANUAL"},"relationships":{"app":m.rel("apps",APP)}}})["data"]

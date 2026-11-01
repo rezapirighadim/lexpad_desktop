@@ -81,10 +81,11 @@ an updated agreement, that is yours to read and accept (Business › Agreements)
 Plain English, no other platforms named (Guideline 2.3.10), numbers as lexpad.app shows them
 on 1 Nov 2026 (`landing/scripts/features.py`, `site/llms.txt`).
 
-**Promotional text** (170 characters max)
+**Promotional text** (170 characters max; App Store Connect refuses the ⌘ and ⇧ symbols in the
+listing, so the key is written out)
 
-> Select a word in any app and press ⌘⇧L. Lexpad writes the card and brings the word back
-> just before you would forget it. Watch your own films and click any word.
+> Select a word in any app and press Command-Shift-L. Lexpad writes the card and brings the
+> word back before you forget it. Watch your own films and click any word.
 
 **Description**
 
@@ -92,7 +93,7 @@ on 1 Nov 2026 (`landing/scripts/features.py`, `site/llms.txt`).
 Lexpad is a vocabulary notebook for the words you meet. Save a word from what you read or watch on your Mac, and Lexpad writes the card and brings the word back just before you would forget it.
 
 ADD A WORD FROM ANY APP
-• Select a word in Safari, Mail, Pages, Notes and most other apps, then press ⌘⇧L. Or right-click it and choose Services › Add to Lexpad.
+• Select a word in Safari, Mail, Pages, Notes and most other apps, then press Command-Shift-L. Or right-click it and choose Services › Add to Lexpad.
 • A small card shows the meaning while the word goes into your notebook.
 • Or type a word in the menu bar panel.
 
