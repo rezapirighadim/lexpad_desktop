@@ -209,11 +209,7 @@ export class Panel {
     form.append(input, enter);
     parts.push(form);
 
-    // The shortcut, as the learner set it.
-    const hint = el('p', 'hint');
-    hint.append('Select text anywhere and press ');
-    hint.append(el('kbd', '', prettyShortcut(state.shortcut, this.mac)));
-    parts.push(hint);
+    parts.push(this.shortcutLine(state));
     if (state.permission === 'missing') {
       const warn = el('p', 'warn');
       warn.append('To read what you select, allow Lexpad under Accessibility. ');
@@ -228,6 +224,42 @@ export class Panel {
     if (picker) parts.push(picker);
     parts.push(this.watchRow(watch), this.everywhereRow(phoneUsed));
     return parts;
+  }
+
+  /**
+   * The shortcut, as the learner set it. In the Mac App Store build it is the
+   * Services key, said only once the core's probe found the service live
+   * (services_live.rs): on a first launch macOS may need a moment, and a key
+   * that does nothing yet must not be promised.
+   */
+  private shortcutLine(state: State): HTMLElement {
+    const keys = el('kbd', '', prettyShortcut(state.shortcut, this.mac));
+    const line = el('p', 'hint');
+    line.id = 'shortcut-line';
+    if (state.shortcutVia !== 'services' || state.services === 'live' || state.services === undefined) {
+      line.append(state.shortcutVia === 'services' ? 'Press ' : 'Select text anywhere and press ');
+      line.append(keys);
+      if (state.shortcutVia === 'services') line.append(' in any app to add the word you selected.');
+      return line;
+    }
+    if (state.services === 'otherCopy') {
+      line.className = 'warn';
+      line.append('The Lexpad from lexpad.app is also open and takes ');
+      line.append(keys);
+      line.append('. Quit it, then press the keys again.');
+      return line;
+    }
+    if (state.services === 'notFound') {
+      line.className = 'warn';
+      line.append('macOS has not turned on ');
+      line.append(keys);
+      line.append(' for Lexpad yet. Quit Lexpad and open it again.');
+      return line;
+    }
+    line.append('Getting ');
+    line.append(keys);
+    line.append(' ready…');
+    return line;
   }
 
   /**

@@ -42,6 +42,11 @@ pub struct StateDto {
     /// with the update (see `settings::stale_accessibility`).
     permission_stale: bool,
     version: &'static str,
+    /// `services` in the Mac App Store build: ⌘⇧L is the Services key there.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    shortcut_via: Option<&'static str>,
+    /// Whether that service is live yet this run (services_live.rs); `live` elsewhere.
+    services: crate::services_live::ServiceState,
 }
 
 /// Reads the Accessibility permission, remembers the version that last had
@@ -127,7 +132,21 @@ pub async fn state(app: AppHandle, state: State<'_, AppState>) -> Result<StateDt
         permission,
         permission_stale,
         version: config::VERSION,
+        shortcut_via: config::MAS.then_some("services"),
+        services: services_now(),
     })
+}
+
+/// Where the Services entry stands (always live outside the Mac App Store build).
+fn services_now() -> crate::services_live::ServiceState {
+    #[cfg(target_os = "macos")]
+    {
+        crate::services_macos::live()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        crate::services_live::ServiceState::Live
+    }
 }
 
 /// Where the popup's word came from, for the activity headers (api.rs

@@ -156,6 +156,14 @@ What the learner sees:
   is no Accessibility row.
 - If another app already uses ⌘⇧L, macOS gives that app the key; the learner can pick another
   key for Add to Lexpad in System Settings.
+- **The first launch** (TestFlight 0.3.27, 1 Nov 2026: ⌘⇧L did nothing until Lexpad was opened
+  again). macOS had not listed the new app's service when it started, and the list it built then
+  lacked it. The core now asks for its own service with a private probe and asks macOS to
+  rebuild the list until the probe arrives, then once more (`services_live.rs`): what the second
+  launch did, in the first. On a fresh install (`scripts/mas-firstrun-test.sh`) it is live
+  within seconds, with no window. The panel says "Getting ⌘⇧L ready…" until then, then "Press
+  ⌘⇧L in any app"; while the dmg's copy runs it says that copy takes the key (its global
+  shortcut wins, and its service has the same name).
 
 ## No self-updater
 

@@ -47,7 +47,8 @@ src-tauri/src/tray.rs            the menu-bar / tray icon (1x+2x template on mac
 src-tauri/src/everywhere.rs      the tray's "Lexpad on your phone…" / "Lexpad everywhere…" row and menu item: GET /me/surfaces (android/ios everUsed), remembered once true (tested)
 src-tauri/src/panel.rs           the panel window: placing it from the icon's rect on any monitor (tested), showing, hiding
 src-tauri/src/capture/           reading the selection: macos.rs (AX, then ⌘C), windows.rs (UIA, then Ctrl+C)
-src-tauri/src/services_macos.rs  "Add to Lexpad" in the macOS Services menu
+src-tauri/src/services_macos.rs  "Add to Lexpad" in the macOS Services menu; in the Mac App Store build its first-launch probe
+src-tauri/src/services_live.rs   the probe's rules: when ⌘⇧L's service is live, the other copy, giving up (tested)
 src-tauri/src/api.rs             the API client: the only holder of tokens (tested with a local server)
 src-tauri/src/auth.rs            RFC 8252 sign-in: PKCE, state, loopback listener (tested)
 src-tauri/src/store.rs           the session in the Keychain / Credential Manager (keyring crate)
@@ -103,6 +104,7 @@ scripts/release-mas.sh           build, sign, check, package, validate, upload t
 scripts/mas-signing-setup.sh     the Mac App Store certificates and profile through the API (--apply, owner's yes first)
 scripts/mas-storekit-test.sh     the purchase bridge against StoreKit's local test store (headless)
 scripts/mas-smoke.sh             the sandboxed copy end to end; opens windows, so only with the screen free
+scripts/mas-firstrun-test.sh     a fresh install's first launch: ⌘⇧L's service live with no relaunch (no window)
 scripts/mas-asc-listing.py       the macOS version, listing text and review details in App Store Connect (--apply; never submits)
 ```
 
@@ -368,7 +370,12 @@ copy (docs/mac-app-store-plan.md). One codebase: `--features mas` plus
   `Related.swift`, `media/files.rs`). Never add an entitlement without its reason in the file
   and the plan.
 - **⌘⇧L is the Services key** (`NSKeyEquivalent`), not a global shortcut; no Accessibility, no
-  ⌘C. `set_shortcut` keeps the key; `desktop_settings` says `shortcutVia: services`.
+  ⌘C. `set_shortcut` keeps the key; `desktop_settings` says `shortcutVia: services`. On a first
+  launch after an install macOS may not list the new service yet (TestFlight 0.3.27 needed a
+  relaunch): the core probes its own service (`NSPerformService` with a one-run token, never a
+  card) and rebuilds the list (`NSUpdateDynamicServices`) until it answers (`services_live.rs`);
+  the panel says "Getting ⌘⇧L ready…" until then, and names the dmg's copy when it runs and
+  takes the key. `scripts/mas-firstrun-test.sh` checks it on a fresh install.
 - **Apple's in-app purchase only** (`appstore.rs`, `store_*` commands, granted to Lexpad's window).
   Nothing in the core decides a purchase; the window verifies with the API and finishes after 200. In the dmg and on Windows every `store_*` answers `unavailable`.
 - **No update line** (`latest_release` answers `install: appstore`, no versions), start on login

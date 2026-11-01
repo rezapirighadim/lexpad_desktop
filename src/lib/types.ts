@@ -56,6 +56,14 @@ export interface State {
   /** Accessibility was allowed in an earlier version, and macOS dropped it with the update. */
   permissionStale?: boolean;
   version: string;
+  /** `services` in the Mac App Store build: the shortcut is the Services menu's key. */
+  shortcutVia?: 'services';
+  /**
+   * Whether that service is live yet (the core's probe, services_live.rs):
+   * `pending` while macOS reads the new app's services on a first launch,
+   * `otherCopy` while the copy from lexpad.app runs and takes the key.
+   */
+  services?: 'pending' | 'live' | 'otherCopy' | 'notFound';
 }
 
 /** Where a word was met: the sentence (or none) and the app. */

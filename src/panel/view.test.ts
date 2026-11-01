@@ -348,3 +348,30 @@ describe('the Player row', () => {
     expect(order.indexOf('watch') + 1).toBe(order.indexOf('everywhere'));
   });
 });
+
+describe('the shortcut line in the Mac App Store build (⌘⇧L is the Services key)', () => {
+  const line = async (services: NonNullable<State['services']>): Promise<HTMLElement> => {
+    await draw(fake({ shortcutVia: 'services', services, permission: 'not_needed' }));
+    return root.querySelector<HTMLElement>('#shortcut-line')!;
+  };
+
+  it('promises the key only once the service is live', async () => {
+    expect((await line('pending')).textContent).toBe('Getting ⌘⇧L ready…');
+    expect((await line('live')).textContent).toBe('Press ⌘⇧L in any app to add the word you selected.');
+  });
+
+  it('says when the other copy of Lexpad takes the key', async () => {
+    const shown = await line('otherCopy');
+    expect(shown.className).toBe('warn');
+    expect(shown.textContent).toContain('The Lexpad from lexpad.app is also open');
+  });
+
+  it('says what to do when macOS never turned it on', async () => {
+    expect((await line('notFound')).textContent).toContain('Quit Lexpad and open it again.');
+  });
+
+  it('keeps the dmg and Windows line as it was', async () => {
+    await draw(fake());
+    expect(root.querySelector('#shortcut-line')!.textContent).toBe('Select text anywhere and press ⌘⇧L');
+  });
+});

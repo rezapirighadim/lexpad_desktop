@@ -42,6 +42,7 @@ mod player_window;
 mod popup;
 mod proxy;
 mod release;
+mod services_live;
 #[cfg(target_os = "macos")]
 mod services_macos;
 mod settings;
