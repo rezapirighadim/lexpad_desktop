@@ -60,6 +60,32 @@ What it costs:
 - The app name and subtitle are shared with the iPhone; description, keywords, screenshots and
   What's New are per platform.
 
+## Other platforms inside the app (Guideline 2.3.10)
+
+App Review Guideline 2.3.10, as published on 1 Nov 2026
+(<https://developer.apple.com/app-store/review/guidelines/#2.3.10>): "Make sure your app is
+focused on the iOS, iPadOS, macOS, tvOS, visionOS, or watchOS experience, and don't include
+names, icons, or imagery of other mobile platforms or alternative app marketplaces in your app
+or metadata, unless there is specific, approved interactive functionality."
+
+What that covers, and what the owner decided on 1 Nov 2026:
+
+- **Removed in the Mac App Store build:** Android and Google Play (another mobile platform and
+  its marketplace) and the Microsoft Store badge (another app marketplace). Lexpad everywhere
+  lists no Android row, the Player's end card shows no Google Play, the desktop phone card
+  recommends the iPhone app only (once it is in the App Store), and an Android device in the
+  signed-in list is a "Phone app" (lexpad_front `namesOtherMarketplaces`).
+- **Kept**, because the rule names other _mobile_ platforms and other _app marketplaces_, and
+  the owner wants the Mac app to keep recommending Lexpad's own surfaces: the iPhone app
+  (Apple's own platform, linked to the App Store), the web app, the browser extension for
+  Chrome, Edge and Firefox, and Windows where the app already mentions it.
+- The guard is `e2e/mac-app-store-platforms.spec.ts` in lexpad_front: it opens every page of the
+  Mac App Store build and fails on "Android", "Google Play", "Play Store", "Microsoft Store" or a
+  link to those stores, and checks that the iPhone and browser extension rows are still there.
+- The listing text names no other platform at all (metadata is held to the same rule).
+- Risk: a reviewer may still read the extension's browser names strictly. If App Review asks,
+  the extension rows can be hidden with the same switch in one small front change.
+
 ## What the Mac App Store build does differently from the dmg
 
 One codebase. The Mac App Store build is `--features mas` plus the overlay
@@ -234,8 +260,8 @@ with Apple) is met by the web sign-in page itself, which offers Apple next to Go
 | Selling outside IAP; links to web checkout; promo codes | 3.1.1          | front + back PRs hide and refuse them                                                                                                                                                                                                                                        |
 | Pro not offered as IAP although sold elsewhere          | 3.1.3(f)       | Pro is sold in the app                                                                                                                                                                                                                                                       |
 | Subscription disclosure                                 | 3.1.2          | the iPhone's sheet: length, price, renewal, cancel, Terms, Privacy, Restore                                                                                                                                                                                                  |
-| Naming other platforms ("get the Android app")          | 2.3.10         | front hides invite and site links in mas; the Today "Lexpad everywhere" cards still name phones (see "What is left")                                                                                                                                                         |
-| Reviewer cannot sign in                                 | 2.1            | reviewer@lexpad.app; the notes explain sign-in opens the browser                                                                                                                                                                                                             |
+| Naming other platforms ("get the Android app")          | 2.3.10         | Android, Google Play and the Microsoft Store are hidden in mas; an e2e scan guards it (section "Other platforms inside the app")                                                                                                                                             |
+| Reviewer cannot sign in                                 | 2.1            | apple-reviewer@lexpad.app (the iPhone's, owner 1 Nov 2026); the notes explain sign-in opens the browser                                                                                                                                                                      |
 | `network.server` questioned                             | 2.4.5          | review notes: loopback-only sign-in listener (RFC 8252)                                                                                                                                                                                                                      |
 | Generative AI content                                   | 1.1/1.2        | Report on every AI card (already there)                                                                                                                                                                                                                                      |
 | Metadata                                                | 2.3            | real screenshots of this build, numbers from lexpad.app, no unsupported services                                                                                                                                                                                             |

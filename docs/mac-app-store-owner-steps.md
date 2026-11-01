@@ -4,14 +4,15 @@ The plan is [mac-app-store-plan.md](mac-app-store-plan.md). The work is done up 
 below. Each step says who does it. Nothing here asks you to type a password into anything
 except Apple's own pages.
 
-## 1. Say yes to the record decision
+## 1. The record decision (approved 1 Nov 2026)
 
-The Mac app goes on the **same App Store record as the iPhone app** ("Lexpad: AI Vocabulary
+Approved by the owner on 1 Nov 2026, with the iPhone's review account
+`apple-reviewer@lexpad.app` for the Mac too. The Mac app goes on the **same App Store record as the iPhone app** ("Lexpad: AI Vocabulary
 Notebook"), with the same bundle id `app.lexpad.ios` and the same two subscriptions. One
 subscription then works on iPhone and Mac, and nobody can pay Apple twice for Pro. The
 server needs no change for Mac receipts.
 
-Who: you, one word ("yes") to the main session.
+Done.
 
 ## 2. Signing certificates and the profile (no clicks for you)
 
@@ -60,7 +61,7 @@ The main session (or you) opens <https://appstoreconnect.apple.com/apps/68222242
    section 5 (the main session may already have filled them through the API; check them).
 5. **Build**: click **+ Add Build**, pick the uploaded build, **Done**.
 6. **In-App Purchases and Subscriptions**: click **+**, tick `pro_monthly` and `pro_yearly`.
-7. **App Review Information**: Sign-in required: on. User name: `reviewer@lexpad.app`.
+7. **App Review Information**: Sign-in required: on. User name: `apple-reviewer@lexpad.app`.
    **Password: you type it here yourself.** Contact: Reza, hello@lexpad.app. Notes: paste
    from section 5.
 8. **Version Release**: "Manually release this version" (you decide when it goes live).
@@ -173,7 +174,7 @@ Store screenshots). The main session takes them when you say the screen is free:
 
 ## 7. What is left before Submit
 
-- [ ] Your yes to the record decision (step 1).
+- [x] Your yes to the record decision (step 1), 1 Nov 2026.
 - [ ] Certificates and profile (step 2), then the signed upload (step 3).
 - [ ] Merge order: back PR first (deploy with `scripts/deploy.sh`), then front PR, then the
       desktop PR with `web/` rebuilt from front's merged main.
@@ -183,8 +184,8 @@ Store screenshots). The main session takes them when you say the screen is free:
 - [ ] A sandbox purchase with a Sandbox Apple Account (App Store Connect › Users and Access ›
       Sandbox): you sign in to it when the purchase sheet asks; you type that password.
 - [ ] Screenshots (step 6) and the listing (step 4).
-- [ ] The Today "Lexpad everywhere" cards still name phones in the Mac App Store build
-      (Guideline 2.3.10): hide them there (small front follow-up).
+- [x] Guideline 2.3.10: the Mac App Store build hides Android, Google Play and the Microsoft
+      Store, and keeps the iPhone app, the web app, the extension and Windows (front PR #91).
 - [ ] The iPhone review: the subscriptions are still "Waiting for Review" with iPhone 1.0.81;
       the Mac version can be submitted while they are, but it is cleaner to wait for that review.
 - [ ] Press Submit only after you confirm.

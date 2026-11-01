@@ -53,7 +53,7 @@ print("listing text set; other locales:", [l["attributes"]["locale"] for l in lo
 ios=c.call("GET",f"/v1/apps/{APP}/appStoreVersions",query={"filter[platform]":"IOS"})["data"][0]
 ir=c.call("GET",f"/v1/appStoreVersions/{ios['id']}/appStoreReviewDetail")["data"]["attributes"]
 review={k:ir[k] for k in ["contactFirstName","contactLastName","contactPhone","contactEmail"]}
-review.update({"demoAccountName":"reviewer@lexpad.app","demoAccountRequired":True,"notes":notes})
+review.update({"demoAccountName":"apple-reviewer@lexpad.app","demoAccountRequired":True,"notes":notes})
 try:
     rd=c.call("GET",f"/v1/appStoreVersions/{v['id']}/appStoreReviewDetail")["data"]
 except m.ApiError:
