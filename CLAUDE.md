@@ -233,6 +233,29 @@ page written by us (designed separately); this repository holds the engine.
   `player_account` answers `userId` (null signed out), so the Player labels its events with the
   core's account.
 
+## Daily numbers (surface limits, owner 1-2 Nov 2026)
+
+- **What counts.** The server counts every word a desktop session saves: Free 5 a day, Pro 200, on
+  two separate numbers, the Player's and the rest of the app's (back PR lexpad_back#83,
+  `reports/specs/2026-11-01-surface-limits.md`). It tells them apart by `X-Lexpad-Surface`, so a
+  Player surface (`desktop.player…`) is sent on every call whatever the activity answer
+  (`Surface::counter`); every other surface stays behind the activity answer as before. The AI cards
+  made here have their own number at the same count. Nothing is enforced until the server says so:
+  before the release a refusal carries no `surfaceLimit` and everything reads as before.
+- **A refusal says why, with the server's numbers.** 429 `daily_limit` is `Failure::DailyLimit`
+  (nothing saved); 429 `ai_quota_exceeded` with `surfaceLimit` is `Failure::CardsUsedUp` (the word
+  goes in without a meaning). `Api::limit_notice(counter)` keeps the last refusal's numbers
+  (`LimitNotice`: kind, surface, per day, left, the learner's midnight, Free or Pro read against GET
+  /config `limits`, and Pro's number for a Free account). A window gets `{"failure","notice"}` as
+  JSON (`commands::refusal`; `failureOf` / `noticeOf` in `lib/backend.ts`), and
+  `src/lib/limits.ts` says it in the owner-approved words. "See Pro" (`open_plan`) opens Settings →
+  Plan in Lexpad's window, which sells the way this copy may (Paddle, or Apple's in-app purchase in
+  the Mac App Store copy): never a web page.
+- **A refused word from the Player is kept, never dropped.** `words_save` and the queue hold it with
+  `waiting: daily_limit` and `notBefore` = the learner's midnight (`word_queue::hold_until`), say
+  `Queued { reason: daily_limit, notice }`, and send it after midnight like any other. The Player's
+  own message is its page's (lexpad_front `features/player`), from that answer.
+
 ## The video player's windows (branch feat/video-player, 2026-10)
 
 - **Closing the Player.** Its page listens for a close (it saves where the video was), so Tauri
