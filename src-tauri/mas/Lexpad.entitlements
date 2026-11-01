@@ -4,7 +4,7 @@
   The Mac App Store build's entitlements (docs/mac-app-store-plan.md, "Sandbox").
   Every key here is needed by something the app does; nothing else is asked for.
   scripts/release-mas.sh signs Lexpad.app with this file; the local test build
-  (scripts/release-mas.sh --local) drops the two identity keys, which only a provisioning
+  (release-mas.sh with its local flag) drops the two identity keys, which only a provisioning
   profile may grant.
 -->
 <plist version="1.0">

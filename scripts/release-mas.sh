@@ -116,6 +116,8 @@ app=src-tauri/target/universal-apple-darwin/release/bundle/macos/Lexpad.app
 [ -d "$app" ] || { echo "release-mas: $app was not made" >&2; exit 1; }
 
 entitlements=src-tauri/mas/Lexpad.entitlements
+# codesign's parser is strict where plutil is not (a `--` in a comment).
+xmllint --noout src-tauri/mas/Lexpad.entitlements src-tauri/mas/ffmpeg.entitlements
 if [ "$local_build" = 1 ]; then
   # Only a provisioning profile may grant the identity keys; a local copy
   # without one must not ask for them, or macOS refuses to start it.

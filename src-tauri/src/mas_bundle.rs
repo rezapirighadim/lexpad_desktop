@@ -18,6 +18,22 @@ mod tests {
             .collect()
     }
 
+    /// codesign parses entitlements strictly (AMFI): a `--` inside an XML
+    /// comment is not XML and stops the signing, while plutil accepts it.
+    #[test]
+    fn the_bundle_files_are_strict_xml() {
+        for (name, text) in [
+            ("Info.mas.plist", MAS),
+            ("mas/Lexpad.entitlements", ENTITLEMENTS),
+            ("mas/ffmpeg.entitlements", HELPER),
+        ] {
+            for comment in text.split("<!--").skip(1) {
+                let body = comment.split("-->").next().unwrap_or("");
+                assert!(!body.contains("--"), "{name}: a comment holds `--`");
+            }
+        }
+    }
+
     #[test]
     fn the_mas_info_plist_keeps_everything_the_dmg_declares() {
         for s in strings(DMG) {
