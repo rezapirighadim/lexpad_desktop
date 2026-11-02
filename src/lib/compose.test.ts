@@ -60,21 +60,33 @@ describe('plan', () => {
   });
 
   it('offers a longer selection to pick from, and the box when there is nothing', () => {
-    expect(plan(capture({ text: 'one two three four five' }))).toEqual({
+    expect(plan(capture({ text: 'one two three four five six seven eight' }))).toEqual({
       kind: 'sentence',
-      text: 'one two three four five',
+      text: 'one two three four five six seven eight',
     });
     expect(plan(capture({ text: null }))).toEqual({ kind: 'type' });
     expect(plan(capture({ text: '12345' }))).toEqual({ kind: 'type' });
     expect(plan(null)).toEqual({ kind: 'type' });
   });
 
-  it('picks up to four words in a row', () => {
-    const words = wordsOf(' The  quick brown fox jumps. ');
-    expect(words).toEqual(['The', 'quick', 'brown', 'fox', 'jumps.']);
-    expect(pick(words, 4, 4)).toBe('jumps');
-    expect(pick(words, 3, 1)).toBe('quick brown fox');
-    expect(pick(words, 0, 4)).toBeUndefined();
+  it('takes a phrase of five to seven words as one word', () => {
+    for (const phrase of [
+      'once in a blue moon',
+      'the ball is in your court',
+      'every cloud has a silver lining',
+    ]) {
+      expect(plan(capture({ text: phrase }))).toEqual({ kind: 'word', headword: phrase, sentence: '' });
+    }
+  });
+
+  it('picks up to seven words in a row', () => {
+    const words = wordsOf(' Well, that is the last  straw for me. ');
+    expect(words).toEqual(['Well,', 'that', 'is', 'the', 'last', 'straw', 'for', 'me.']);
+    expect(pick(words, 7, 7)).toBe('me');
+    expect(pick(words, 3, 1)).toBe('that is the');
+    expect(pick(words, 0, 4)).toBe('Well, that is the last');
+    expect(pick(words, 1, 7)).toBe('that is the last straw for me');
+    expect(pick(words, 0, 7)).toBeUndefined();
   });
 });
 

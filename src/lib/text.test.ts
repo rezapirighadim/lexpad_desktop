@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { asHeadword, contextHint, pageAddress, sentenceAround } from './text.js';
+import { asHeadword, contextHint, MAX_CHARS, MAX_WORDS, pageAddress, sentenceAround } from './text.js';
 
 describe('asHeadword', () => {
   it('keeps a word or a short phrase and strips the punctuation around it', () => {
@@ -9,11 +9,28 @@ describe('asHeadword', () => {
     expect(asHeadword('take it for granted')).toBe('take it for granted');
   });
 
+  it('keeps idioms and phrases of five to seven words', () => {
+    expect(MAX_WORDS).toBe(7);
+    expect(asHeadword('once in a blue moon')).toBe('once in a blue moon');
+    expect(asHeadword('“the ball is in your court.”')).toBe('the ball is in your court');
+    expect(asHeadword('hit the nail on the head, ')).toBe('hit the nail on the head');
+    expect(asHeadword('don’t count your chickens before they hatch')).toBe(
+      'don’t count your chickens before they hatch',
+    );
+    expect(asHeadword('به هر حال باید از اینجا برویم')).toBe('به هر حال باید از اینجا برویم');
+  });
+
+  it('keeps a seven-word phrase of long words', () => {
+    // German compounds make long seven-word selections (81 characters here).
+    const seven = 'Versicherungen übernehmen grundsätzlich keine Verantwortung für Behandlungskosten';
+    expect(asHeadword(seven)).toBe(seven);
+  });
+
   it('refuses what is not a word: empty, numbers, long passages, many words', () => {
     expect(asHeadword('   ')).toBeUndefined();
     expect(asHeadword('2026')).toBeUndefined();
-    expect(asHeadword('one two three four five')).toBeUndefined();
-    expect(asHeadword('a'.repeat(61))).toBeUndefined();
+    expect(asHeadword('one two three four five six seven eight')).toBeUndefined();
+    expect(asHeadword('a'.repeat(MAX_CHARS + 1))).toBeUndefined();
   });
 });
 
