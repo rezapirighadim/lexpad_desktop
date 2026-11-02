@@ -16,7 +16,7 @@ import type { LimitNotice } from '../lib/types.js';
 import { compose, pick, plan, wordsOf } from '../lib/compose.js';
 import { reportFragment } from '../lib/report.js';
 import { notebookFor } from '../lib/script.js';
-import { asHeadword, contextHint, sentenceAround } from '../lib/text.js';
+import { asHeadword, contextHint, MAX_WORDS, sentenceAround } from '../lib/text.js';
 import type { Card, Notebook, Source, State } from '../lib/types.js';
 
 /** Right-to-left scripts, for the direction and the face. */
@@ -218,7 +218,7 @@ export class Popup {
     this.enter = () => {
       const headword = asHeadword(input.value);
       if (headword === undefined) {
-        note.textContent = 'Type a word or a phrase of up to four words.';
+        note.textContent = 'Type a word or a phrase of up to seven words.';
         return;
       }
       this.showCard(headword, { sentence: '', app: null });
@@ -293,7 +293,7 @@ export class Popup {
   /* ------------------------------------------- pick from a sentence */
 
   private showSentence(text: string): void {
-    this.frame('Pick the word', 'That is more than a word. Choose up to four in a row.');
+    this.frame('Pick the word', 'That is more than a word. Choose up to seven in a row.');
     const words = wordsOf(text);
     let from = -1;
     let to = -1;
@@ -309,12 +309,17 @@ export class Popup {
     };
     words.forEach((word, i) => {
       const b = button('token', word, () => {
-        if (from < 0 || i < from - 3 || i > to + 3 || (i >= from && i <= to && from === to)) {
+        if (
+          from < 0 ||
+          i < from - (MAX_WORDS - 1) ||
+          i > to + (MAX_WORDS - 1) ||
+          (i >= from && i <= to && from === to)
+        ) {
           from = i;
           to = i;
         } else if (i < from) from = i;
         else to = i;
-        if (to - from >= 4) from = to = i;
+        if (to - from >= MAX_WORDS) from = to = i;
         paint();
       });
       b.dir = RTL.test(word) ? 'rtl' : 'ltr';
@@ -331,7 +336,7 @@ export class Popup {
       const headword = from < 0 ? undefined : pick(words, from, to);
       if (headword === undefined) {
         note.className = 'note bad';
-        note.textContent = 'Choose a word, or up to four in a row.';
+        note.textContent = 'Choose a word, or up to seven in a row.';
         return;
       }
       // The selection is the sentence the word was met in.

@@ -4,9 +4,17 @@
  * as a word worth adding, and which sentence it was met in.
  */
 
-/** The longest selection the bubble offers to add. */
-export const MAX_WORDS = 4;
-const MAX_CHARS = 60;
+/**
+ * The longest selection the bubble offers to add: up to seven words, so
+ * idioms and phrases fit ("once in a blue moon", "the ball is in your court").
+ * Eight or more is a sentence, not a headword.
+ */
+export const MAX_WORDS = 7;
+/**
+ * Room for a seven-word phrase in long-word languages. The API takes
+ * headwords up to 200 characters; this keeps a pasted paragraph out.
+ */
+export const MAX_CHARS = 90;
 
 /** Trims a selection and says whether it looks like a word or short phrase. */
 export function asHeadword(selection: string): string | undefined {

@@ -95,6 +95,15 @@ fn is_id(id: &str) -> bool {
             .all(|b| b.is_ascii_digit() || b.is_ascii_uppercase())
 }
 
+/// The longest headword the card looks up: `MAX_CHARS` in src/lib/text.ts
+/// (the extension's rule), room for a seven-word phrase in long-word languages.
+const MAX_LOOKUP_CHARS: usize = 90;
+
+/// A headword the card may look up: not blank, not longer than the card allows.
+fn lookup_headword_ok(headword: &str) -> bool {
+    !headword.trim().is_empty() && headword.chars().count() <= MAX_LOOKUP_CHARS
+}
+
 /// Everything a window needs to draw itself. Reads the notebooks again each
 /// time, falling back to the last list when offline.
 impl StateDto {
@@ -202,7 +211,7 @@ pub async fn lookup(
     hint: Option<String>,
     from: Option<PickedIn>,
 ) -> Result<Value, String> {
-    if !is_id(&notebook_id) || headword.trim().is_empty() || headword.chars().count() > 60 {
+    if !is_id(&notebook_id) || !lookup_headword_ok(&headword) {
         return Err(err(Failure::Error));
     }
     let hint = hint.map(|h| capture::clip(&h, 200));
@@ -972,6 +981,20 @@ pub async fn latest_release() -> Result<crate::release::Release, String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_card_looks_up_phrases_of_up_to_seven_words() {
+        use super::lookup_headword_ok as ok;
+        assert!(ok("once in a blue moon"));
+        assert!(ok("don’t count your chickens before they hatch"));
+        // 81 characters: a seven-word German phrase, over the old 60.
+        assert!(ok(
+            "Versicherungen übernehmen grundsätzlich keine Verantwortung für Behandlungskosten"
+        ));
+        assert!(ok(&"ä".repeat(90)));
+        assert!(!ok(&"ä".repeat(91)));
+        assert!(!ok("   "));
+    }
+
     #[test]
     fn the_popup_says_where_its_word_came_from() {
         use crate::api::Surface;

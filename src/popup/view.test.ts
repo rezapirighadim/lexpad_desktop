@@ -248,9 +248,9 @@ describe('Popup', () => {
     root.querySelector<HTMLButtonElement>('.permission .btn')!.click();
     expect(backend.openAccessibilitySettings).toHaveBeenCalled();
 
-    input.value = 'one two three four five';
+    input.value = 'one two three four five six seven eight';
     press('Enter');
-    expect(root.querySelector('.note.bad')?.textContent).toContain('up to four words');
+    expect(root.querySelector('.note.bad')?.textContent).toContain('up to seven words');
     input.value = '  candid ';
     press('Enter');
     await flush();
@@ -264,7 +264,7 @@ describe('Popup', () => {
 
   it('lets a word be picked out of a longer selection, which becomes its sentence', async () => {
     const backend = fakeBackend({
-      capture: capture({ text: 'The committee reached a tentative agreement today.' }),
+      capture: capture({ text: 'The committee reached a tentative agreement late today.' }),
     });
     await new Popup(root, backend).open();
     const tokens = [...root.querySelectorAll<HTMLButtonElement>('.token')];
@@ -275,6 +275,7 @@ describe('Popup', () => {
       'a',
       'tentative',
       'agreement',
+      'late',
       'today.',
     ]);
     tokens[4]!.click();
@@ -283,7 +284,7 @@ describe('Popup', () => {
     await flush();
     expect(root.querySelector('.word')?.textContent).toBe('tentative');
     expect(root.querySelector('.from')?.textContent).toContain(
-      'The committee reached a tentative agreement today.',
+      'The committee reached a tentative agreement late today.',
     );
   });
 
