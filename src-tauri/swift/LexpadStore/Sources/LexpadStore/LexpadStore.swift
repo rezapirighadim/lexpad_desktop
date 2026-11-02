@@ -144,9 +144,12 @@ func products(_ ids: [String]) async throws -> [[String: Any]] {
     } catch {
         throw StoreFailure(code: "unavailable", message: error.localizedDescription, detail: clip(explain(error)))
     }
-    return found.compactMap { product in
-        guard product.type == .autoRenewable,
-              let period = product.subscription?.subscriptionPeriod else { return nil }
+    // Apple's answer per subscription group, asked once per group.
+    var eligibility: [String: Bool] = [:]
+    var described: [[String: Any]] = []
+    for product in found {
+        guard product.type == .autoRenewable, let subscription = product.subscription else { continue }
+        let period = subscription.subscriptionPeriod
         var item: [String: Any] = [
             "id": product.id,
             "displayName": product.displayName,
@@ -157,18 +160,28 @@ func products(_ ids: [String]) async throws -> [[String: Any]] {
             "priceLocale": product.priceFormatStyle.locale.identifier,
             "period": ["unit": name(of: period.unit), "value": period.value],
         ]
-        if let intro = product.subscription?.introductoryOffer {
+        if let intro = subscription.introductoryOffer {
             item["introductoryOffer"] = describe(intro)
         }
-        let promos: [[String: Any]] = (product.subscription?.promotionalOffers ?? []).compactMap { offer in
+        let promos: [[String: Any]] = subscription.promotionalOffers.compactMap { offer in
             guard let id = offer.id else { return nil }
-            var described = describe(offer)
-            described["id"] = id
-            return described
+            var entry = describe(offer)
+            entry["id"] = id
+            return entry
         }
         if !promos.isEmpty { item["promotionalOffers"] = promos }
-        return item
+        // Whether Apple gives this Apple ID the introductory offer in the
+        // product's group. Apple decides by Apple ID, the server by Lexpad
+        // account, so the web app shows an offer price only on the path Apple
+        // will really apply, and none while this is missing.
+        let group = subscription.subscriptionGroupID
+        if eligibility[group] == nil {
+            eligibility[group] = await Product.SubscriptionInfo.isEligibleForIntroOffer(for: group)
+        }
+        item["isEligibleForIntroOffer"] = eligibility[group] ?? false
+        described.append(item)
     }
+    return described
 }
 
 // MARK: - Buying

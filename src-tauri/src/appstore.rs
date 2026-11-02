@@ -267,6 +267,20 @@ mod tests {
         assert_eq!(parse_reply("{}").unwrap_err()["code"], "failed");
     }
 
+    /// The web app reads `isEligibleForIntroOffer` per product and shows no
+    /// Apple offer price without it, so the core passes it through untouched.
+    #[test]
+    fn a_products_reply_keeps_the_intro_offer_eligibility() {
+        let products = parse_reply(
+            r#"{"ok":{"products":[{"id":"pro_yearly_welcome","isEligibleForIntroOffer":false}]}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            products["products"][0]["isEligibleForIntroOffer"],
+            Value::Bool(false)
+        );
+    }
+
     #[test]
     fn options_are_an_object_or_nothing() {
         assert_eq!(options_of(None), json!({}));

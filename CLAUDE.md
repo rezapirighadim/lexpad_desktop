@@ -377,7 +377,11 @@ copy (docs/mac-app-store-plan.md). One codebase: `--features mas` plus
   the panel says "Getting ⌘⇧L ready…" until then, and names the dmg's copy when it runs and
   takes the key. `scripts/mas-firstrun-test.sh` checks it on a fresh install.
 - **Apple's in-app purchase only** (`appstore.rs`, `store_*` commands, granted to Lexpad's window).
-  Nothing in the core decides a purchase; the window verifies with the API and finishes after 200. In the dmg and on Windows every `store_*` answers `unavailable`.
+  Nothing in the core decides a purchase; the window verifies with the API and finishes after 200. In the dmg and on Windows every `store_*` answers `unavailable`. `store_products`
+  answers what the web app asks for (the plans and `pro_yearly_welcome`; an id StoreKit does not
+  return is absent) with `isEligibleForIntroOffer` on each product, StoreKit's answer for this
+  Apple ID in the product's group: the web app shows an Apple offer price only on the path Apple
+  will apply, and none without the field (welcome offer contract §1a).
 - **No update line** (`latest_release` answers `install: appstore`, no versions), start on login
   through `SMAppService`, no private API (the panel's corners are a layer mask).
 - **The dmg is untouched.** `scripts/release-mas.sh` restores Cargo.toml and Cargo.lock after the
