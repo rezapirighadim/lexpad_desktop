@@ -44,7 +44,10 @@ mod tests {
         }
         assert!(MAS.contains("<key>NSKeyEquivalent</key>"));
         assert!(MAS.contains("<key>NSIsRelatedItemType</key>"));
-        assert!(MAS.contains("<key>ITSAppUsesNonExemptEncryption</key>\n  <false/>"));
+        // A Windows checkout may turn the file's line ends into CRLF.
+        assert!(MAS
+            .replace('\r', "")
+            .contains("<key>ITSAppUsesNonExemptEncryption</key>\n  <false/>"));
     }
 
     #[test]
