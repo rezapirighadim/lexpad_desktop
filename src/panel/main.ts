@@ -35,3 +35,4 @@ void listen<number>('panel:hint', (e) => {
 void listen('session:changed', redraw);
 void listen('settings:changed', redraw);
 void listen('recent:changed', redraw);
+void listen('services:changed', redraw);

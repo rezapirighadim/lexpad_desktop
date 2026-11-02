@@ -121,6 +121,15 @@ pub fn os() -> &'static str {
 
 /// The newest versions on the site, for this computer and this copy.
 pub async fn latest() -> Result<Release, String> {
+    // The App Store updates the Mac App Store build (Guideline 2.4.5(vii)):
+    // it never reads lexpad.app's versions and is told of none.
+    if crate::config::MAS {
+        return Ok(Release {
+            os: os(),
+            install: Some("appstore"),
+            releases: Releases::default(),
+        });
+    }
     let releases = fetch(SITE_ORIGIN).await?;
     Ok(Release {
         os: os(),

@@ -16,6 +16,7 @@
 
 mod api;
 mod app_menu;
+mod appstore;
 mod auth;
 mod capture;
 mod commands;
@@ -25,7 +26,10 @@ mod e2e;
 #[cfg(test)]
 mod e2e_main;
 mod everywhere;
+#[cfg(all(feature = "mas", target_os = "macos"))]
+mod login_item_macos;
 mod main_window;
+mod mas_bundle;
 mod media;
 #[cfg(windows)]
 mod msix;
@@ -38,6 +42,7 @@ mod player_window;
 mod popup;
 mod proxy;
 mod release;
+mod services_live;
 #[cfg(target_os = "macos")]
 mod services_macos;
 mod settings;
@@ -53,7 +58,9 @@ mod word_queue;
 use std::sync::{Arc, Mutex};
 
 use tauri::{AppHandle, DragDropEvent, Listener as _, Manager, WindowEvent};
-use tauri_plugin_autostart::{MacosLauncher, ManagerExt as _};
+use tauri_plugin_autostart::MacosLauncher;
+#[cfg(not(all(feature = "mas", target_os = "macos")))]
+use tauri_plugin_autostart::ManagerExt as _;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt as _, ShortcutState};
 use tauri_plugin_opener::OpenerExt as _;
 
@@ -126,6 +133,21 @@ pub fn apply_start_on_login(app: &AppHandle, on: bool) {
     if config::is_development_build() || config::PLAYER_TEST {
         return;
     }
+    #[cfg(all(feature = "mas", target_os = "macos"))]
+    {
+        let _ = app;
+        if let Err(e) = login_item_macos::set(on) {
+            log::warn!("could not change start on login: {e}");
+        }
+    }
+    #[cfg(not(all(feature = "mas", target_os = "macos")))]
+    autolaunch_set(app, on);
+}
+
+/// The dmg's and Windows' login item: the Store's StartupTask in the MSIX,
+/// else the autostart plugin.
+#[cfg(not(all(feature = "mas", target_os = "macos")))]
+fn autolaunch_set(app: &AppHandle, on: bool) {
     #[cfg(windows)]
     if msix::is_packaged() {
         match msix::set_startup(on) {
@@ -151,11 +173,19 @@ pub fn apply_start_on_login(app: &AppHandle, on: bool) {
 
 /// Whether the app starts when the learner logs in, as the system has it.
 pub fn start_on_login_enabled(app: &AppHandle) -> bool {
-    #[cfg(windows)]
-    if msix::is_packaged() {
-        return msix::startup_enabled().unwrap_or(false);
+    #[cfg(all(feature = "mas", target_os = "macos"))]
+    {
+        let _ = app;
+        login_item_macos::enabled()
     }
-    app.autolaunch().is_enabled().unwrap_or(false)
+    #[cfg(not(all(feature = "mas", target_os = "macos")))]
+    {
+        #[cfg(windows)]
+        if msix::is_packaged() {
+            return msix::startup_enabled().unwrap_or(false);
+        }
+        app.autolaunch().is_enabled().unwrap_or(false)
+    }
 }
 
 /// Opens Lexpad: its own window, or the web app in the browser when the
@@ -572,7 +602,12 @@ pub fn run() {
                 smoke::start(handle);
                 return Ok(());
             }
-            if let Err(e) = handle.global_shortcut().register(shortcut.as_str()) {
+            // The Mac App Store build has no global shortcut: it may not read
+            // other apps, so ⌘⇧L is the Services menu's "Add to Lexpad" key
+            // (Info.mas.plist NSKeyEquivalent), which hands it the selection.
+            if config::MAS {
+                let _ = &shortcut;
+            } else if let Err(e) = handle.global_shortcut().register(shortcut.as_str()) {
                 log::warn!("shortcut {shortcut} not available: {e}");
             }
             panel::create(&handle)?;
@@ -599,6 +634,9 @@ pub fn run() {
             services_macos::register(&handle);
             notify::init(&handle);
             notify::start(&handle);
+            // Apple's in-app purchase: renewals and unfinished purchases, from
+            // the start (the Mac App Store build; nothing elsewhere).
+            appstore::start(&handle);
             // Words saved while signed out or offline, sent when signed in.
             commands::flush_words(&handle);
 
@@ -705,6 +743,16 @@ pub fn run() {
             _ => {}
         })
         .invoke_handler(tauri::generate_handler![
+            appstore::store_can_make_payments,
+            appstore::store_products,
+            appstore::store_purchase,
+            appstore::store_finish,
+            appstore::store_unfinished,
+            appstore::store_current_entitlements,
+            appstore::store_sync,
+            appstore::store_manage_subscriptions,
+            appstore::store_app_transaction_id,
+            appstore::store_take_transactions,
             commands::state,
             commands::lookup,
             commands::add_word,

@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- The Mac App Store build's Info.plist (tauri.mas.conf.json). It is
+       src-tauri/Info.plist plus the Services key, the document types with the
+       subtitles as related items, and the export answer; appstore tests keep
+       the shared parts the same (src/mas_bundle.rs). -->
+  <!-- A menu-bar app: no Dock icon while idle. The Settings window brings one
+       back while it is open (see lib.rs). -->
+  <key>LSUIElement</key>
+  <true/>
+  <!-- Right-click a selection > Services > Add to Lexpad, or ⌘⇧L. The
+       provider object is registered at start-up (services_macos.rs). -->
+  <key>NSServices</key>
+  <array>
+    <dict>
+      <key>NSMenuItem</key>
+      <dict>
+        <key>default</key>
+        <string>Add to Lexpad</string>
+      </dict>
+      <!-- ⌘⇧L: the Mac App Store build cannot read another app's
+           selection with Accessibility, so the shortcut is this service's
+           key (an upper-case letter means Shift; Command is implied). The
+           learner can change it in System Settings › Keyboard › Keyboard
+           Shortcuts › Services › Text › Add to Lexpad. -->
+      <key>NSKeyEquivalent</key>
+      <dict>
+        <key>default</key>
+        <string>L</string>
+      </dict>
+      <key>NSMessage</key>
+      <string>addToLexpad</string>
+      <key>NSPortName</key>
+      <string>Lexpad</string>
+      <key>NSSendTypes</key>
+      <array>
+        <string>NSStringPboardType</string>
+        <string>public.utf8-plain-text</string>
+      </array>
+      <key>NSRequiredContext</key>
+      <dict/>
+    </dict>
+  </array>
+  <!-- What "Open with Lexpad" offers, at rank Alternate (Lexpad becomes the
+       default only when the learner asks). The subtitles are related items
+       (NSIsRelatedItemType): a sandboxed app may then read Film.srt beside an
+       opened Film.mkv (Related.swift, media/files.rs). The dmg gets the same
+       types from bundle.fileAssociations in tauri.macos.conf.json. -->
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>Video</string>
+      <key>CFBundleTypeRole</key>
+      <string>Viewer</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>CFBundleTypeExtensions</key>
+      <array>
+        <string>mp4</string>
+        <string>m4v</string>
+        <string>mov</string>
+        <string>mkv</string>
+        <string>webm</string>
+        <string>avi</string>
+        <string>wmv</string>
+        <string>asf</string>
+        <string>flv</string>
+        <string>f4v</string>
+        <string>ts</string>
+        <string>m2ts</string>
+        <string>mts</string>
+        <string>mpg</string>
+        <string>mpeg</string>
+        <string>vob</string>
+        <string>ogv</string>
+        <string>3gp</string>
+        <string>3g2</string>
+        <string>divx</string>
+        <string>rm</string>
+        <string>rmvb</string>
+        <string>mxf</string>
+      </array>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>public.mpeg-4</string>
+        <string>com.apple.quicktime-movie</string>
+        <string>org.matroska.mkv</string>
+        <string>org.webmproject.webm</string>
+        <string>public.avi</string>
+        <string>com.apple.m4v-video</string>
+        <string>public.mpeg-2-transport-stream</string>
+        <string>com.microsoft.windows-media-wmv</string>
+        <string>com.adobe.flash.video</string>
+        <string>public.mpeg</string>
+        <string>public.3gpp</string>
+        <string>public.3gpp2</string>
+      </array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>Subtitles</string>
+      <key>CFBundleTypeRole</key>
+      <string>Viewer</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>NSIsRelatedItemType</key>
+      <true/>
+      <key>CFBundleTypeExtensions</key>
+      <array>
+        <string>srt</string>
+        <string>vtt</string>
+        <string>webvtt</string>
+        <string>ass</string>
+        <string>ssa</string>
+      </array>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>app.lexpad.subrip</string>
+        <string>app.lexpad.ssa</string>
+        <string>org.w3.webvtt</string>
+      </array>
+    </dict>
+  </array>
+  <!-- Export compliance: the app uses only the encryption built into macOS
+       (HTTPS through the system's TLS and the Keychain), which is exempt. -->
+  <key>ITSAppUsesNonExemptEncryption</key>
+  <false/>
+  <!-- The video player's file types that macOS itself may not know (it
+       knows MKV and WebM only when another app declares them, and SubRip
+       and ASS not at all), imported so "Open with Lexpad" and "Use Lexpad
+       for video files" (default_player.rs) can name them. Imported, not
+       exported: Lexpad does not own these formats. The document types that
+       list them are bundle.fileAssociations in tauri.macos.conf.json, at
+       rank Alternate: Lexpad becomes the default only when the learner
+       asks for it. -->
+  <key>UTImportedTypeDeclarations</key>
+  <array>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>org.matroska.mkv</string>
+      <key>UTTypeDescription</key>
+      <string>Matroska video</string>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>public.movie</string>
+      </array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array>
+          <string>mkv</string>
+        </array>
+          <key>public.mime-type</key>
+          <string>video/x-matroska</string>
+      </dict>
+    </dict>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>org.webmproject.webm</string>
+      <key>UTTypeDescription</key>
+      <string>WebM video</string>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>public.movie</string>
+      </array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array>
+          <string>webm</string>
+        </array>
+          <key>public.mime-type</key>
+          <string>video/webm</string>
+      </dict>
+    </dict>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>app.lexpad.subrip</string>
+      <key>UTTypeDescription</key>
+      <string>SubRip subtitles</string>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>public.plain-text</string>
+      </array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array>
+          <string>srt</string>
+        </array>
+          <key>public.mime-type</key>
+          <string>application/x-subrip</string>
+      </dict>
+    </dict>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>app.lexpad.ssa</string>
+      <key>UTTypeDescription</key>
+      <string>ASS subtitles</string>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>public.plain-text</string>
+      </array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array>
+          <string>ass</string>
+          <string>ssa</string>
+        </array>
+      </dict>
+    </dict>
+  </array>
+</dict>
+</plist>

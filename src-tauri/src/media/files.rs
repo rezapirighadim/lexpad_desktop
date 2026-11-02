@@ -170,6 +170,16 @@ impl Files {
         let Some(dir) = video.parent() else {
             return Vec::new();
         };
+        // The sandboxed Mac App Store build cannot list a folder it was not
+        // given: it may read only the subtitles named like the film
+        // (Film.mkv → Film.srt), which macOS hands over as related items.
+        if crate::config::MAS && std::fs::read_dir(dir).is_err() {
+            return related_subtitles(video)
+                .into_iter()
+                .filter(|p| related_grant(video, p))
+                .filter_map(|p| self.grant(&p).map(|f| (p, f)))
+                .collect();
+        }
         let mut paths = media_in(dir);
         if let Ok(rd) = std::fs::read_dir(dir) {
             for e in rd.flatten() {
@@ -203,6 +213,40 @@ impl Files {
     }
 }
 
+/// The subtitle files a film may have as related items: its own name with
+/// each subtitle extension, in lower and upper case (Film.srt, Film.SRT).
+pub fn related_subtitles(video: &Path) -> Vec<PathBuf> {
+    SUBTITLE_EXTS
+        .iter()
+        .flat_map(|ext| [ext.to_string(), ext.to_uppercase()])
+        .map(|ext| video.with_extension(ext))
+        .filter(|p| p != video)
+        .collect()
+}
+
+/// Asks macOS for a related item (swift/LexpadStore/Sources/LexpadStore/Related.swift).
+#[cfg(all(feature = "mas", target_os = "macos"))]
+fn related_grant(video: &Path, subtitle: &Path) -> bool {
+    use std::ffi::{c_char, CString};
+    use std::os::unix::ffi::OsStrExt;
+    extern "C" {
+        fn lexpad_related_grant(film: *const c_char, subtitle: *const c_char) -> i32;
+    }
+    let (Ok(f), Ok(s)) = (
+        CString::new(video.as_os_str().as_bytes()),
+        CString::new(subtitle.as_os_str().as_bytes()),
+    ) else {
+        return false;
+    };
+    // SAFETY: two NUL-terminated paths that outlive the call.
+    unsafe { lexpad_related_grant(f.as_ptr(), s.as_ptr()) == 1 }
+}
+
+#[cfg(not(all(feature = "mas", target_os = "macos")))]
+fn related_grant(_video: &Path, subtitle: &Path) -> bool {
+    subtitle.is_file()
+}
+
 /// Videos and subtitle files directly in `dir`, hidden files left out.
 fn media_in(dir: &Path) -> Vec<PathBuf> {
     let Ok(rd) = std::fs::read_dir(dir) else {
@@ -225,6 +269,16 @@ fn media_in(dir: &Path) -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_films_related_subtitles_share_its_name() {
+        let got = related_subtitles(Path::new("/m/Film.2024.mkv"));
+        assert!(got.contains(&PathBuf::from("/m/Film.2024.srt")));
+        assert!(got.contains(&PathBuf::from("/m/Film.2024.SRT")));
+        assert!(got.contains(&PathBuf::from("/m/Film.2024.ass")));
+        assert_eq!(got.len(), SUBTITLE_EXTS.len() * 2);
+        assert!(got.iter().all(|p| p.parent() == Some(Path::new("/m"))));
+    }
 
     #[test]
     fn grants_sorts_and_refuses() {

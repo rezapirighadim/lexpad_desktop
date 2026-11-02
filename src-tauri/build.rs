@@ -1,4 +1,5 @@
 fn main() {
+    swift_store();
     // The media engine finds its development FFmpeg by target triple
     // (src-tauri/binaries/ffmpeg-<triple>, as Tauri names sidecars).
     println!(
@@ -49,6 +50,18 @@ fn main() {
             "schedule_reminders",
             "open_notification_settings",
             "latest_release",
+            // Apple's in-app purchase, in the Mac App Store build (appstore.rs);
+            // elsewhere each answers "unavailable".
+            "store_can_make_payments",
+            "store_products",
+            "store_purchase",
+            "store_finish",
+            "store_unfinished",
+            "store_current_entitlements",
+            "store_sync",
+            "store_manage_subscriptions",
+            "store_app_transaction_id",
+            "store_take_transactions",
             // The video player's media engine (src/media/commands.rs).
             "media_engine",
             "media_pick",
@@ -104,4 +117,72 @@ fn main() {
         ]),
     ))
     .expect("failed to run tauri-build");
+}
+
+/// The Mac App Store build's Swift: the StoreKit 2 bridge (src/appstore.rs) and
+/// the subtitles beside a film (Related.swift, media/files.rs), in
+/// swift/LexpadStore, compiled with swiftc into a static library for the
+/// target's architecture and linked with StoreKit. Only with `--features mas`
+/// on macOS; the dmg and Windows carry no Swift at all.
+fn swift_store() {
+    let mas = std::env::var_os("CARGO_FEATURE_MAS").is_some();
+    let target = std::env::var("TARGET").expect("cargo sets TARGET");
+    println!("cargo:rerun-if-changed=swift/LexpadStore/Sources");
+    if !mas || !target.ends_with("apple-darwin") {
+        return;
+    }
+    // The oldest macOS the Mac App Store build runs on: StoreKit 2's
+    // AppTransaction and SMAppService (start on login) need macOS 13. It is
+    // tauri.mas.conf.json's minimumSystemVersion.
+    const MACOS_MIN: &str = "13.0";
+    let arch = target.split('-').next().expect("a target triple");
+    let out = std::path::PathBuf::from(std::env::var("OUT_DIR").expect("cargo sets OUT_DIR"));
+    let xcrun = |args: &[&str]| -> String {
+        let o = std::process::Command::new("xcrun")
+            .args(args)
+            .output()
+            .expect("xcrun (Xcode's command line tools) is needed for the mas feature");
+        assert!(o.status.success(), "xcrun {args:?} failed");
+        String::from_utf8(o.stdout)
+            .expect("utf-8")
+            .trim()
+            .to_string()
+    };
+    let sdk = xcrun(&["--sdk", "macosx", "--show-sdk-path"]);
+    let status = std::process::Command::new("xcrun")
+        .args([
+            "swiftc",
+            "-parse-as-library",
+            "-emit-library",
+            "-static",
+            "-O",
+            "-whole-module-optimization",
+            "-module-name",
+            "LexpadStore",
+            "-target",
+            &format!("{arch}-apple-macos{MACOS_MIN}"),
+            "-sdk",
+            &sdk,
+            "swift/LexpadStore/Sources/LexpadStore/LexpadStore.swift",
+            "swift/LexpadStore/Sources/LexpadStore/Related.swift",
+            "-o",
+        ])
+        .arg(out.join("libLexpadStore.a"))
+        .status()
+        .expect("swiftc");
+    assert!(status.success(), "swiftc failed for the StoreKit bridge");
+    // The Swift runtime is part of macOS since 10.14.4; the toolchain's
+    // folder holds the small static compatibility libraries swiftc asks for.
+    let swiftc = xcrun(&["--find", "swiftc"]);
+    let toolchain = std::path::Path::new(&swiftc)
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("the toolchain")
+        .join("lib/swift/macosx");
+    println!("cargo:rustc-link-search=native={}", out.display());
+    println!("cargo:rustc-link-search=native={}", toolchain.display());
+    println!("cargo:rustc-link-search=native={sdk}/usr/lib/swift");
+    println!("cargo:rustc-link-lib=static=LexpadStore");
+    println!("cargo:rustc-link-lib=framework=StoreKit");
+    println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/lib/swift");
 }

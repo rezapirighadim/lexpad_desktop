@@ -144,10 +144,63 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         .skip_taskbar(true)
         .visible_on_all_workspaces(true)
         .shadow(true);
+    // The Mac App Store build keeps the webview opaque: a transparent
+    // WKWebView needs WebKit's private drawsBackground key, which App Review
+    // (Guideline 2.5.1) does not allow. The window's own layer rounds the
+    // corners instead (`round_corners`), with public AppKit only.
     #[cfg(target_os = "macos")]
-    let builder = builder.transparent(true);
-    builder.build()?;
+    let builder = if crate::config::MAS {
+        builder
+    } else {
+        builder.transparent(true)
+    };
+    let _win = builder.build()?;
+    #[cfg(target_os = "macos")]
+    if crate::config::MAS {
+        round_corners(&_win);
+    }
     Ok(())
+}
+
+/// The panel's radius in points: the page's `.panel` border-radius
+/// (src/panel/panel.css), which the window draws itself in the Mac App Store build.
+#[cfg(target_os = "macos")]
+const CORNER_RADIUS: f64 = 12.0;
+
+/// Clips the panel's content view to rounded corners and lets the system's
+/// shadow follow them: a clear, non-opaque window over a layer-backed view
+/// whose layer masks to its bounds. Public AppKit and Core Animation only.
+#[cfg(target_os = "macos")]
+fn round_corners(win: &tauri::WebviewWindow) {
+    use objc2::msg_send;
+    use objc2::runtime::{AnyClass, AnyObject};
+    let Ok(ptr) = win.ns_window() else {
+        return;
+    };
+    let window = ptr.cast::<AnyObject>();
+    if window.is_null() {
+        return;
+    }
+    // SAFETY: an NSWindow* from Tauri, used on the thread that built it.
+    unsafe {
+        let window = &*window;
+        let Some(color) = AnyClass::get(c"NSColor") else {
+            return;
+        };
+        let clear: *mut AnyObject = msg_send![color, clearColor];
+        let _: () = msg_send![window, setOpaque: false];
+        let _: () = msg_send![window, setBackgroundColor: clear];
+        let view: *mut AnyObject = msg_send![window, contentView];
+        if let Some(view) = view.as_ref() {
+            let _: () = msg_send![view, setWantsLayer: true];
+            let layer: *mut AnyObject = msg_send![view, layer];
+            if let Some(layer) = layer.as_ref() {
+                let _: () = msg_send![layer, setCornerRadius: CORNER_RADIUS];
+                let _: () = msg_send![layer, setMasksToBounds: true];
+            }
+        }
+        let _: () = msg_send![window, invalidateShadow];
+    }
 }
 
 /// A left click on the icon: opens the panel there, or closes it.

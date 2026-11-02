@@ -372,6 +372,12 @@ CI builds no macOS (see above), so the workflow has no Apple secrets and needs n
    that the app is signed with the stable identity ("macOS signing"), runs the placement smoke
    test, and prints the `.dmg`'s SHA-256. The Mac must be awake and unlocked (the smoke test
    opens windows).
+   3b. **Mac App Store** (since 0.3.27): from the same tagged commit,
+   `LEXPAD_MAS_UPLOAD=1 scripts/release-mas.sh` (`LEXPAD_MAS_BUILD=<n>` when a version is
+   uploaded again). It builds `--features mas` with `src-tauri/tauri.mas.conf.json`, signs
+   inside out, checks the sandbox, packages, validates with Apple and uploads. Then the macOS
+   version in App Store Connect (docs/mac-app-store-owner-steps.md, step 4); the owner confirms
+   Submit. The site's `.dmg` above is unchanged.
 4. Make the GitHub Release (below in CLAUDE.md, "GitHub Release") first: since 0.3.20 the landing serves the
    installers from it (they are 61 to 119 MB with the Player's FFmpeg, over Cloudflare's 25 MiB per file). In
    `lexpad_landing`, write the release's asset URLs, bytes and SHA-256s into `scripts/desktop-downloads.json`, the
@@ -391,9 +397,10 @@ Still to do before a public release (marked `TODO(signing)` in the workflow for 
   (`bundle.windows.signCommand`), or SmartScreen warns on install.
 - **Updater.** Off in 0.1 (no `tauri-plugin-updater`). Turn it on with a signing key pair and an
   update endpoint before 1.0.
-- **Mac App Store** is not planned: it forbids reading other apps' selections through the
-  Accessibility API, which is the point of the app. (The app also uses Tauri's
-  `macos-private-api` for the panel's transparent, rounded window, which the store refuses too.)
+- **Mac App Store**: a second macOS build since 0.3.27 (docs/mac-app-store-plan.md). It is
+  sandboxed, so it reads no selection through Accessibility: ⌘⇧L is the Services menu's "Add
+  to Lexpad" key there. It sells Pro through Apple's in-app purchase (StoreKit 2,
+  `src-tauri/swift/LexpadStore`) and keeps the panel's rounded corners without the private API.
 
 ### A player test build
 

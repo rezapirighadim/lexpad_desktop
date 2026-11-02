@@ -47,7 +47,8 @@ src-tauri/src/tray.rs            the menu-bar / tray icon (1x+2x template on mac
 src-tauri/src/everywhere.rs      the tray's "Lexpad on your phone…" / "Lexpad everywhere…" row and menu item: GET /me/surfaces (android/ios everUsed), remembered once true (tested)
 src-tauri/src/panel.rs           the panel window: placing it from the icon's rect on any monitor (tested), showing, hiding
 src-tauri/src/capture/           reading the selection: macos.rs (AX, then ⌘C), windows.rs (UIA, then Ctrl+C)
-src-tauri/src/services_macos.rs  "Add to Lexpad" in the macOS Services menu
+src-tauri/src/services_macos.rs  "Add to Lexpad" in the macOS Services menu; in the Mac App Store build its first-launch probe
+src-tauri/src/services_live.rs   the probe's rules: when ⌘⇧L's service is live, the other copy, giving up (tested)
 src-tauri/src/api.rs             the API client: the only holder of tokens (tested with a local server)
 src-tauri/src/auth.rs            RFC 8252 sign-in: PKCE, state, loopback listener (tested)
 src-tauri/src/store.rs           the session in the Keychain / Credential Manager (keyring crate)
@@ -91,6 +92,20 @@ scripts/media-samples.sh         the player's test matrix (synthetic clips and s
 scripts/player-bench.sh          start-up, seek latency, CPU and memory on this Mac, through the development page
 src-tauri/windows/media-open-with.nsh  the installer's "Open with Lexpad" and Default Apps entry (never the default by itself)
 docs/ffmpeg.md                   FFmpeg's licence (LGPL only), sources, builds, and how to update it
+docs/mac-app-store-plan.md       the Mac App Store build: decisions, differences from the dmg, review risks
+docs/mac-app-store-owner-steps.md  what the owner does for it, the listing text, what is left
+src-tauri/tauri.mas.conf.json    the Mac App Store overlay (app.lexpad.ios, no private API, macOS 13, Info.mas.plist)
+src-tauri/Info.mas.plist         Info.plist + the Services key ⌘⇧L, subtitles as related items, export answer (mas_bundle.rs tests it)
+src-tauri/mas/                   its entitlements (app, FFmpeg helpers) and privacy manifest
+src-tauri/src/appstore.rs        Apple's in-app purchase commands (store_*), the bridge to swift/LexpadStore (tested)
+src-tauri/swift/LexpadStore/     StoreKit 2 and related items in Swift, built by build.rs for `mas`; Harness/ for the StoreKit test
+src-tauri/src/login_item_macos.rs  start on login through SMAppService (mas only)
+scripts/release-mas.sh           build, sign, check, package, validate, upload the Mac App Store copy (--local: a sandboxed test copy)
+scripts/mas-signing-setup.sh     the Mac App Store certificates and profile through the API (--apply, owner's yes first)
+scripts/mas-storekit-test.sh     the purchase bridge against StoreKit's local test store (headless)
+scripts/mas-smoke.sh             the sandboxed copy end to end; opens windows, so only with the screen free
+scripts/mas-firstrun-test.sh     a fresh install's first launch: ⌘⇧L's service live with no relaunch (no window)
+scripts/mas-asc-listing.py       the macOS version, listing text and review details in App Store Connect (--apply; never submits)
 ```
 
 ## Lexpad's window (0.2): the design
@@ -339,6 +354,43 @@ The Player's page is the web app's `/player` route (lexpad_front `features/playe
   and moving and closing its own window.
 - **Engine requests** go in `NOTES-player-ui.md`, never as edits to `src-tauri/src/media/`.
 
+## The Mac App Store build (2026-11)
+
+Owner, 1 Nov 2026: every desktop release ships four builds; the fourth is the Mac App Store
+copy (docs/mac-app-store-plan.md). One codebase: `--features mas` plus
+`src-tauri/tauri.mas.conf.json`; every difference is behind `config::MAS` in the core and
+`isMacAppStore()` in lexpad_front (`__LEXPAD_CONFIG.distribution === "mas"`).
+
+- **Universal Purchase**: the copy is the macOS platform of the iPhone app's App Store record,
+  bundle id `app.lexpad.ios`, the same subscriptions; the API needs no receipt change. The
+  User-Agent says `(macOS; appstore)`, which the API sells through Apple (`selling.ios`).
+- **Sandboxed**: the entitlements in `src-tauri/mas/` (each has its reason); FFmpeg and FFprobe
+  are signed with `app-sandbox` + `inherit` only. Films come from the learner (chosen, dropped,
+  opened); a same-name subtitle beside a film is a related item (`Info.mas.plist`,
+  `Related.swift`, `media/files.rs`). Never add an entitlement without its reason in the file
+  and the plan.
+- **⌘⇧L is the Services key** (`NSKeyEquivalent`), not a global shortcut; no Accessibility, no
+  ⌘C. `set_shortcut` keeps the key; `desktop_settings` says `shortcutVia: services`. On a first
+  launch after an install macOS may not list the new service yet (TestFlight 0.3.27 needed a
+  relaunch): the core probes its own service (`NSPerformService` with a one-run token, never a
+  card) and rebuilds the list (`NSUpdateDynamicServices`) until it answers (`services_live.rs`);
+  the panel says "Getting ⌘⇧L ready…" until then, and names the dmg's copy when it runs and
+  takes the key. `scripts/mas-firstrun-test.sh` checks it on a fresh install.
+- **Apple's in-app purchase only** (`appstore.rs`, `store_*` commands, granted to Lexpad's window).
+  Nothing in the core decides a purchase; the window verifies with the API and finishes after 200. In the dmg and on Windows every `store_*` answers `unavailable`. `store_products`
+  answers what the web app asks for (the plans and `pro_yearly_welcome`; an id StoreKit does not
+  return is absent) with `isEligibleForIntroOffer` on each product, StoreKit's answer for this
+  Apple ID in the product's group: the web app shows an Apple offer price only on the path Apple
+  will apply, and none without the field (welcome offer contract §1a).
+- **No update line** (`latest_release` answers `install: appstore`, no versions), start on login
+  through `SMAppService`, no private API (the panel's corners are a layer mask).
+- **The dmg is untouched.** `scripts/release-mas.sh` restores Cargo.toml and Cargo.lock after the
+  tauri CLI drops `macos-private-api` for the mas build. `pnpm check` builds the default
+  features; before a Mac App Store release also run `cargo clippy --features mas --all-targets`,
+  `cargo test --features mas` and `scripts/mas-storekit-test.sh`.
+- No certificate, profile, key or key id is committed; they live in
+  `~/Library/Keychains/lexpad-signing.keychain-db` and `~/.appstoreconnect/`.
+
 ## Hard rules
 
 - **The core is the only part that touches tokens or the API.** The windows call commands and
@@ -370,7 +422,8 @@ The Player's page is the web app's `/player` route (lexpad_front `features/playe
   proxy lets them through. Background calls (the inbox poll, settings) say nothing.
 - **Every call says which copy it is, in its User-Agent and nothing else** (`config::user_agent`,
   since 0.3.11): `Lexpad-Desktop/<version> (macOS)`, `(Windows; store)` for the Microsoft
-  Store's MSIX (`msix::is_packaged`) or `(Windows; direct)` for the installer from lexpad.app.
+  Store's MSIX (`msix::is_packaged`) or `(Windows; direct)` for the installer from lexpad.app,
+  and `(macOS; appstore)` for the Mac App Store copy.
   The API keeps it with the session the sign-in opens, so the operator console can show
   "Desktop app · Windows · Store". No machine name, account or other detail goes in it.
 - **The selection is read only when the shortcut is pressed, and only the selection.**

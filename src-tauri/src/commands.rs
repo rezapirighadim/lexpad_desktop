@@ -42,6 +42,11 @@ pub struct StateDto {
     /// with the update (see `settings::stale_accessibility`).
     permission_stale: bool,
     version: &'static str,
+    /// `services` in the Mac App Store build: ⌘⇧L is the Services key there.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    shortcut_via: Option<&'static str>,
+    /// Whether that service is live yet this run (services_live.rs); `live` elsewhere.
+    services: crate::services_live::ServiceState,
 }
 
 /// Reads the Accessibility permission, remembers the version that last had
@@ -127,7 +132,21 @@ pub async fn state(app: AppHandle, state: State<'_, AppState>) -> Result<StateDt
         permission,
         permission_stale,
         version: config::VERSION,
+        shortcut_via: config::MAS.then_some("services"),
+        services: services_now(),
     })
+}
+
+/// Where the Services entry stands (always live outside the Mac App Store build).
+fn services_now() -> crate::services_live::ServiceState {
+    #[cfg(target_os = "macos")]
+    {
+        crate::services_macos::live()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        crate::services_live::ServiceState::Live
+    }
 }
 
 /// Where the popup's word came from, for the activity headers (api.rs
@@ -449,7 +468,9 @@ pub fn set_shortcut(
     shortcut: String,
 ) -> Result<String, String> {
     let old = state.settings.lock().map_err(|_| "lock")?.shortcut.clone();
-    if shortcut == old {
+    if shortcut == old || config::MAS {
+        // The Mac App Store build's key is the Services menu's, set in
+        // System Settings, never here.
         return Ok(old);
     }
     let gs = app.global_shortcut();
@@ -792,6 +813,13 @@ pub struct DesktopDto {
     focus: Option<crate::settings::Focus>,
     /// "When I open Lexpad".
     open_at: crate::settings::OpenAt,
+    /// `mas` in the Mac App Store build; absent in the dmg and on Windows.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    distribution: Option<&'static str>,
+    /// `services` in the Mac App Store build: the shortcut is the Services
+    /// menu's key, shown and changed in System Settings, not in Lexpad.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    shortcut_via: Option<&'static str>,
 }
 
 #[tauri::command]
@@ -820,6 +848,8 @@ pub async fn desktop_settings(state: State<'_, AppState>) -> Result<DesktopDto, 
         notification_access,
         focus: s.focus,
         open_at: s.open_at,
+        distribution: config::MAS.then_some("mas"),
+        shortcut_via: config::MAS.then_some("services"),
     })
 }
 
