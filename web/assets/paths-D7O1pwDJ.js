@@ -1,0 +1,1 @@
+var e=`/settings`;function t(t){return`${e}/${t}`}var n={smart:`smart`,limits:`limits`,hardWords:`hard-words`},r={boxes:`boxes`};export{t as i,n,e as r,r as t};
