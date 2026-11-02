@@ -18,21 +18,33 @@
 //!
 //! The rules are pure here (`ServiceState`, `next_step`), tested; the AppKit calls
 //! are in services_macos.rs.
+//!
+//! Only `ServiceState` exists on every target: it is part of the panel's
+//! state (commands.rs), which reports `live` outside macOS. The probe's rules
+//! are compiled for macOS, where services_macos.rs drives them, and for the
+//! tests, so they stay checked on every CI runner.
 
+#[cfg(any(target_os = "macos", test))]
 use std::time::Duration;
 
 /// How often the probe is sent until the service answers.
+#[cfg(any(target_os = "macos", test))]
 pub const PROBE_EVERY: Duration = Duration::from_millis(1500);
 /// How many probes, then nothing more this run (the list is rebuilt every
 /// `REFRESH_EVERY` probes meanwhile). 80 × 1.5 s is two minutes.
+#[cfg(any(target_os = "macos", test))]
 pub const PROBE_MAX: u32 = 80;
 /// While the probe is not answered, ask macOS to rebuild the list again every
 /// this many probes (the install may still be settling). On a fresh install
 /// (scripts/mas-firstrun-test.sh, 1 Nov 2026) the list built as the app
 /// started did not have it yet, and the first rebuild after it did.
+#[cfg(any(target_os = "macos", test))]
 pub const REFRESH_EVERY: u32 = 3;
 
-/// Where the service stands this run.
+/// Where the service stands this run. Outside macOS only `Live` is ever
+/// made (commands.rs `services_now`); the other states are still the same
+/// serialized type the web layer reads everywhere, so they stay defined.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ServiceState {
@@ -47,6 +59,7 @@ pub enum ServiceState {
 }
 
 /// What the probe loop does next.
+#[cfg(any(target_os = "macos", test))]
 #[derive(Debug, PartialEq, Eq)]
 pub enum Step {
     /// Send a probe (and rebuild the list first when `refresh`).
@@ -60,6 +73,7 @@ pub enum Step {
 }
 
 /// The next step after `tries` probes.
+#[cfg(any(target_os = "macos", test))]
 pub fn next_step(tries: u32, answered: bool, other_copy: bool) -> Step {
     if answered {
         return Step::Done;
@@ -76,6 +90,7 @@ pub fn next_step(tries: u32, answered: bool, other_copy: bool) -> Step {
 }
 
 /// The state the loop reports for a step.
+#[cfg(any(target_os = "macos", test))]
 pub fn live_for(step: &Step, other_copy: bool) -> ServiceState {
     match step {
         Step::Done => ServiceState::Live,
@@ -87,6 +102,7 @@ pub fn live_for(step: &Step, other_copy: bool) -> ServiceState {
 }
 
 /// Whether a service call is this run's probe (and so opens nothing).
+#[cfg(any(target_os = "macos", test))]
 pub fn is_probe(text: Option<&str>, token: &str) -> bool {
     !token.is_empty() && text.map(str::trim) == Some(token)
 }
