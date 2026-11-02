@@ -4,7 +4,17 @@
  */
 import { invoke } from '@tauri-apps/api/core';
 import type { RecentEntry } from './media/api.js';
-import type { AppInfo, Card, Failure, Permission, RecentWord, Settings, State, User } from './types.js';
+import type {
+  AppInfo,
+  Card,
+  Failure,
+  LimitNotice,
+  Permission,
+  RecentWord,
+  Settings,
+  State,
+  User,
+} from './types.js';
 
 const KNOWN: ReadonlySet<string> = new Set([
   'signed_out',
@@ -16,12 +26,45 @@ const KNOWN: ReadonlySet<string> = new Set([
   'cancelled',
   'timeout',
   'taken',
+  'daily_limit',
+  'cards_used_up',
   'error',
 ]);
 
+/**
+ * A refusal by a daily number arrives as a small JSON object
+ * (`{"failure": …, "notice": {…}}`, commands.rs `refusal`); every other
+ * one as the failure word itself.
+ */
+function parsed(cause: unknown): { failure?: unknown; notice?: unknown } | undefined {
+  if (typeof cause !== 'string' || !cause.startsWith('{')) return undefined;
+  try {
+    const v: unknown = JSON.parse(cause);
+    return typeof v === 'object' && v !== null ? (v as { failure?: unknown; notice?: unknown }) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The failure a rejected command carries; anything unexpected is `error`. */
 export function failureOf(cause: unknown): Failure {
-  return typeof cause === 'string' && KNOWN.has(cause) ? (cause as Failure) : 'error';
+  const word = parsed(cause)?.failure ?? cause;
+  return typeof word === 'string' && KNOWN.has(word) ? (word as Failure) : 'error';
+}
+
+/** The numbers of a refusal by a daily number, when it carries them. */
+export function noticeOf(cause: unknown): LimitNotice | undefined {
+  const n = parsed(cause)?.notice as Partial<LimitNotice> | undefined;
+  if (
+    !n ||
+    (n.kind !== 'words' && n.kind !== 'cards') ||
+    (n.surface !== 'desktop' && n.surface !== 'player') ||
+    typeof n.perDay !== 'number' ||
+    typeof n.resetsAt !== 'string' ||
+    (n.plan !== 'free' && n.plan !== 'pro')
+  )
+    return undefined;
+  return n as LimitNotice;
 }
 
 /** Everything the popup needs from the core. Swapped for a fake in tests. */
@@ -46,6 +89,8 @@ export interface Backend {
   videoHint(appName: string): Promise<string | null>;
   /** The hint's "Open…": puts the card away and opens the Player's file dialog. */
   openPlayerPick(): Promise<void>;
+  /** A limit message's "See Pro": puts the card away and opens Settings → Plan in Lexpad. */
+  openPlan(): Promise<void>;
 }
 
 export interface SettingsBackend {
@@ -122,5 +167,6 @@ export const tauriBackend: Backend & SettingsBackend & PanelBackend = {
   watch: (fileId) => invoke<void>('panel_watch', { fileId }),
   videoHint: (appName) => invoke<string | null>('video_hint', { appName }),
   openPlayerPick: () => invoke<void>('open_player_pick'),
+  openPlan: () => invoke<void>('open_plan'),
   quit: () => invoke<void>('quit'),
 };

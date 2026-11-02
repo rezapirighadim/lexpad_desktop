@@ -26,6 +26,12 @@ pub enum Failure {
     AiUnavailable,
     Duplicate,
     NoNotebook,
+    /// The surface's daily number of saved words is used up: nothing was
+    /// saved (429 `daily_limit`). Its numbers are `Api::limit_notice`.
+    DailyLimit,
+    /// The surface's daily AI cards are used up (429 `ai_quota_exceeded`
+    /// with `surfaceLimit`): the word can still be saved without a meaning.
+    CardsUsedUp,
     Error,
 }
 
@@ -37,6 +43,8 @@ impl Failure {
             Failure::AiUnavailable => "ai_unavailable",
             Failure::Duplicate => "duplicate",
             Failure::NoNotebook => "no_notebook",
+            Failure::DailyLimit => "daily_limit",
+            Failure::CardsUsedUp => "cards_used_up",
             Failure::Error => "error",
         }
     }
@@ -75,6 +83,17 @@ pub enum Surface {
 }
 
 impl Surface {
+    /// Which of the desktop session's two daily numbers it counts on
+    /// (owner N3, 2 Nov 2026): the Player's, or the rest of the app's. The
+    /// server tells them apart by the header, so a Player surface is always
+    /// sent, whatever the activity answer; it is a fixed name, nothing typed.
+    pub fn counter(self) -> &'static str {
+        match self {
+            Surface::Player | Surface::PlayerTranscript => "player",
+            _ => "desktop",
+        }
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             Surface::Shortcut => "desktop.shortcut",
@@ -142,6 +161,9 @@ struct Gate {
     url: String,
     /// The last answer and until when it holds; None until one arrives.
     cache: std::sync::Mutex<Option<(bool, Instant)>>,
+    /// The last `limits` the same answer carried (the plan numbers), for a
+    /// limit message's "Pro gives you {n} a day here".
+    limits: std::sync::Mutex<Option<Value>>,
     /// One read at a time; a caller that waited on it finds the answer fresh.
     flight: Mutex<()>,
     /// A background refresh has been started and not finished.
@@ -149,6 +171,10 @@ struct Gate {
 }
 
 impl Gate {
+    fn limits(&self) -> Option<Value> {
+        self.limits.lock().expect("limits lock").clone()
+    }
+
     fn mark_stale(&self) {
         if let Some((_, until)) = self.cache.lock().expect("activity lock").as_mut() {
             *until = Instant::now();
@@ -173,6 +199,9 @@ impl Gate {
                 return None;
             }
             let body: Value = res.json().await.ok()?;
+            if let Some(l) = body.get("limits") {
+                *self.limits.lock().expect("limits lock") = Some(l.clone());
+            }
             Some(body.get("activity").and_then(Value::as_bool) == Some(true))
         }
         .await;
@@ -195,6 +224,10 @@ impl Gate {
 }
 
 pub struct Api {
+    /// The last refusal by a daily number, per counter ("desktop", "player"),
+    /// for the window that asked to say how many, until when and what Pro
+    /// gives (`limit_notice`).
+    refusals: std::sync::Mutex<std::collections::HashMap<&'static str, LimitNotice>>,
     http: reqwest::Client,
     /// For the main window's calls (`forward`): no limit on the whole
     /// exchange, because Lex's answers stream for as long as they take, but
@@ -221,6 +254,7 @@ impl Api {
             .build()
             .expect("HTTP client");
         Self {
+            refusals: std::sync::Mutex::new(std::collections::HashMap::new()),
             http,
             stream_http,
             base: format!("{}/api/v1", api_origin.trim_end_matches('/')),
@@ -237,6 +271,7 @@ impl Api {
                     .expect("HTTP client"),
                 url: format!("{}/api/v1/config", api_origin.trim_end_matches('/')),
                 cache: std::sync::Mutex::new(None),
+                limits: std::sync::Mutex::new(None),
                 flight: Mutex::new(()),
                 kicked: std::sync::atomic::AtomicBool::new(false),
             }),
@@ -454,8 +489,9 @@ impl Api {
         idempotent: bool,
         surface: Option<Surface>,
     ) -> Result<Value, Failure> {
+        let counter = surface.map_or("desktop", Surface::counter);
         let surface = match surface {
-            Some(s) if self.activity_now() => Some(s),
+            Some(s) if s.counter() == "player" || self.activity_now() => Some(s),
             _ => None,
         };
         let mut token = self.token().await?;
@@ -487,12 +523,31 @@ impl Api {
                 return res.json().await.map_err(|_| Failure::Error);
             }
             let problem: Value = res.json().await.unwrap_or(Value::Null);
-            return Err(failure(
-                status,
-                problem.get("code").and_then(Value::as_str).unwrap_or(""),
-            ));
+            let code = problem.get("code").and_then(Value::as_str).unwrap_or("");
+            let limit = problem.get("surfaceLimit");
+            let f = failure(status, code, limit.is_some());
+            if let (Failure::DailyLimit | Failure::CardsUsedUp, Some(l)) = (f, limit) {
+                let config = self.activity.limits();
+                if let Some(n) = LimitNotice::from_refusal(f, l, config.as_ref()) {
+                    self.refusals
+                        .lock()
+                        .expect("refusals lock")
+                        .insert(counter, n);
+                }
+            }
+            return Err(f);
         }
         Err(Failure::SignedOut)
+    }
+
+    /// The numbers of the last refusal by a daily number on this counter
+    /// ("desktop" or "player"), for the message.
+    pub fn limit_notice(&self, counter: &str) -> Option<LimitNotice> {
+        self.refusals
+            .lock()
+            .expect("refusals lock")
+            .get(counter)
+            .cloned()
     }
 
     /// Sends a request from the main window (already checked by `proxy`)
@@ -637,6 +692,65 @@ impl Api {
     }
 }
 
+/// What a window needs to say a daily number refused: the response's own
+/// numbers (`surfaceLimit`), the plan they are (Free or Pro, from the plan
+/// numbers in GET /config), and Pro's number on that surface for a Free
+/// account. Nothing here is typed by hand.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LimitNotice {
+    /// "words" (nothing saved) or "cards" (saved without a meaning).
+    pub kind: &'static str,
+    /// "desktop" or "player".
+    pub surface: String,
+    pub per_day: u32,
+    pub left: u32,
+    /// The learner's next midnight, as the server sent it (RFC 3339).
+    pub resets_at: String,
+    /// "free" or "pro".
+    pub plan: &'static str,
+    /// Pro's number on this surface, for a Free account; absent on Pro.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pro_per_day: Option<u32>,
+}
+
+impl LimitNotice {
+    /// Reads a refusal's `surfaceLimit` with the plan numbers of GET /config
+    /// `limits` (`free`/`pro` `desktopDaily`, `playerDaily`). A refusal whose
+    /// number is Pro's and not Free's is a Pro account's.
+    pub fn from_refusal(f: Failure, limit: &Value, config: Option<&Value>) -> Option<Self> {
+        let surface = limit.get("surface")?.as_str()?.to_owned();
+        let num = |v: Option<&Value>| {
+            v.and_then(Value::as_u64)
+                .and_then(|n| u32::try_from(n).ok())
+        };
+        let per_day = num(limit.get("perDay"))?;
+        let left = num(limit.get("left")).unwrap_or(0);
+        let resets_at = limit.get("resetsAt")?.as_str()?.to_owned();
+        let field = match surface.as_str() {
+            "player" => "playerDaily",
+            _ => "desktopDaily",
+        };
+        let plan_number =
+            |plan: &str| num(config.and_then(|c| c.get(plan)).and_then(|p| p.get(field)));
+        let (free, pro) = (plan_number("free"), plan_number("pro"));
+        let is_pro = pro == Some(per_day) && free != Some(per_day);
+        Some(LimitNotice {
+            kind: if f == Failure::DailyLimit {
+                "words"
+            } else {
+                "cards"
+            },
+            surface,
+            per_day,
+            left,
+            resets_at,
+            plan: if is_pro { "pro" } else { "free" },
+            pro_per_day: if is_pro { None } else { pro },
+        })
+    }
+}
+
 /// The phone apps among the API's surfaces.
 const PHONE_SURFACES: [&str; 2] = ["android", "ios"];
 
@@ -656,11 +770,15 @@ pub fn phone_used_in(body: &Value) -> bool {
         })
 }
 
-/// The API's refusal, as a failure the popup can phrase. Limits are never
-/// announced: a refused AI call is only "not available right now".
-fn failure(status: u16, code: &str) -> Failure {
+/// The API's refusal, as a failure the popup can phrase. A daily number
+/// that refused says so with its numbers (`surfaceLimit`, since the
+/// surface-limits release); any other refused AI call is only "not
+/// available right now".
+fn failure(status: u16, code: &str, surface_limit: bool) -> Failure {
     match (status, code) {
         (409, _) | (_, "duplicate_headword") => Failure::Duplicate,
+        (429, "daily_limit") => Failure::DailyLimit,
+        (429, "ai_quota_exceeded") if surface_limit => Failure::CardsUsedUp,
         (429 | 503, _) | (_, "email_unverified" | "ai_disabled" | "ai_quota_exceeded") => {
             Failure::AiUnavailable
         }
@@ -890,11 +1008,23 @@ mod tests {
 
     #[tokio::test]
     async fn failures_are_phrased_like_the_extension() {
-        assert_eq!(failure(409, ""), Failure::Duplicate);
-        assert_eq!(failure(429, "ai_quota_exceeded"), Failure::AiUnavailable);
-        assert_eq!(failure(403, "email_unverified"), Failure::AiUnavailable);
-        assert_eq!(failure(401, ""), Failure::SignedOut);
-        assert_eq!(failure(500, ""), Failure::Error);
+        assert_eq!(failure(409, "", false), Failure::Duplicate);
+        assert_eq!(
+            failure(429, "ai_quota_exceeded", false),
+            Failure::AiUnavailable
+        );
+        assert_eq!(
+            failure(403, "email_unverified", false),
+            Failure::AiUnavailable
+        );
+        assert_eq!(failure(401, "", false), Failure::SignedOut);
+        assert_eq!(failure(500, "", false), Failure::Error);
+        // The surface-limits release: a daily number says so.
+        assert_eq!(failure(429, "daily_limit", true), Failure::DailyLimit);
+        assert_eq!(
+            failure(429, "ai_quota_exceeded", true),
+            Failure::CardsUsedUp
+        );
         let api = Api::new("http://127.0.0.1:9", Arc::new(Memory::default()));
         assert_eq!(api.notebooks().await.unwrap_err(), Failure::SignedOut);
     }
@@ -1441,7 +1571,9 @@ mod tests {
         );
         // No notebook in its language: stays, with that reason.
         match queue.send_one(&api, &german.id, None).await.unwrap() {
-            Saved::Queued { pending, reason } => {
+            Saved::Queued {
+                pending, reason, ..
+            } => {
                 assert_eq!((pending, reason.as_str()), (2, "no_notebook_for_language"))
             }
             other => panic!("{other:?}"),
@@ -1521,5 +1653,162 @@ mod tests {
             "offline"
         );
         assert_eq!(queue.list()[0].waiting.as_deref(), Some(TOO_OLD));
+    }
+
+    /// A server for the daily numbers: /config with the plan numbers and the
+    /// activity headers off; the words endpoint refuses with `refuse`
+    /// (status, body). Records each POST with its surface header.
+    async fn limits_server(
+        refuse: (u16, &'static str),
+    ) -> (String, Arc<std::sync::Mutex<Vec<String>>>) {
+        let seen: Arc<std::sync::Mutex<Vec<String>>> = Arc::default();
+        let s = seen.clone();
+        let base = serve_head(move |line, head, _| {
+            if line.starts_with("POST /api/v1/auth/refresh") {
+                return (200, SESSION.into());
+            }
+            if line.starts_with("GET /api/v1/config") {
+                return (
+                    200,
+                    r#"{"activity":false,"limits":{"surfaceLimitsLive":true,
+                        "free":{"desktopDaily":5,"playerDaily":5},
+                        "pro":{"desktopDaily":200,"playerDaily":200,"unlimited":["appCardsDaily"],"dailyCeiling":1000}}}"#
+                        .into(),
+                );
+            }
+            if line.starts_with("GET /api/v1/notebooks") {
+                return (200, r#"{"items":[{"id":"w1","targetLang":"en","isDefault":true}]}"#.into());
+            }
+            let surface = head
+                .lines()
+                .find_map(|l| l.strip_prefix("x-lexpad-surface: "))
+                .unwrap_or("-");
+            s.lock().unwrap().push(format!("{} {surface}", line.split(" HTTP").next().unwrap_or(line)));
+            (refuse.0, refuse.1.into())
+        })
+        .await;
+        (base, seen)
+    }
+
+    const PLAYER_FULL: &str = r#"{"type":"about:blank","title":"x","status":429,"code":"daily_limit",
+        "surfaceLimit":{"surface":"player","perDay":5,"unlimited":false,"left":0,"resetsAt":"2026-11-10T21:00:00Z"}}"#;
+
+    #[tokio::test]
+    async fn the_players_daily_number_says_what_refused_it() {
+        let (base, seen) = limits_server((429, PLAYER_FULL)).await;
+        let api = Api::new(&base, signed_in());
+        api.refresh_activity().await;
+        let got = api
+            .add_word("w1", &json!({ "headword": "hello" }), Some(Surface::Player))
+            .await;
+        assert_eq!(got.unwrap_err(), Failure::DailyLimit);
+        // The Player's surface goes even with the activity headers off: it
+        // picks the counter.
+        assert_eq!(
+            *seen.lock().unwrap(),
+            ["POST /api/v1/notebooks/w1/words desktop.player"]
+        );
+        assert_eq!(
+            api.limit_notice("player"),
+            Some(LimitNotice {
+                kind: "words",
+                surface: "player".into(),
+                per_day: 5,
+                left: 0,
+                resets_at: "2026-11-10T21:00:00Z".into(),
+                plan: "free",
+                pro_per_day: Some(200),
+            })
+        );
+        assert_eq!(api.limit_notice("desktop"), None);
+    }
+
+    #[tokio::test]
+    async fn the_rest_of_the_app_sends_no_surface_while_activity_is_off() {
+        let (base, seen) = limits_server((429, PLAYER_FULL)).await;
+        let api = Api::new(&base, signed_in());
+        api.refresh_activity().await;
+        let _ = api
+            .add_word(
+                "w1",
+                &json!({ "headword": "hello" }),
+                Some(Surface::Shortcut),
+            )
+            .await;
+        assert_eq!(*seen.lock().unwrap(), ["POST /api/v1/notebooks/w1/words -"]);
+        assert_eq!(Surface::Shortcut.counter(), "desktop");
+        assert_eq!(Surface::PlayerTranscript.counter(), "player");
+    }
+
+    #[test]
+    fn a_refusal_at_pros_number_is_a_pro_account() {
+        let config = json!({"free":{"desktopDaily":5},"pro":{"desktopDaily":200}});
+        let limit = json!({"surface":"desktop","perDay":200,"unlimited":false,"left":0,"resetsAt":"2026-11-10T21:00:00Z"});
+        let n = LimitNotice::from_refusal(Failure::DailyLimit, &limit, Some(&config)).unwrap();
+        assert_eq!((n.plan, n.pro_per_day), ("pro", None));
+        let cards = json!({"surface":"desktop","perDay":5,"unlimited":false,"left":0,"resetsAt":"2026-11-10T21:00:00Z"});
+        let n = LimitNotice::from_refusal(Failure::CardsUsedUp, &cards, Some(&config)).unwrap();
+        assert_eq!(
+            (n.kind, n.plan, n.pro_per_day),
+            ("cards", "free", Some(200))
+        );
+        // Without the plan numbers, nothing is guessed about Pro.
+        let n = LimitNotice::from_refusal(Failure::DailyLimit, &cards, None).unwrap();
+        assert_eq!((n.plan, n.pro_per_day), ("free", None));
+        assert!(LimitNotice::from_refusal(Failure::DailyLimit, &json!({}), None).is_none());
+    }
+
+    #[tokio::test]
+    async fn used_up_ai_cards_are_told_apart_from_an_ai_outage() {
+        let body = r#"{"status":429,"code":"ai_quota_exceeded",
+            "surfaceLimit":{"surface":"desktop","perDay":5,"unlimited":false,"left":0,"resetsAt":"2026-11-10T21:00:00Z"}}"#;
+        let (base, _) = limits_server((429, body)).await;
+        let api = Api::new(&base, signed_in());
+        api.refresh_activity().await;
+        let got = api
+            .lookup("w1", "hello", None, Some(Surface::Shortcut))
+            .await;
+        assert_eq!(got.unwrap_err(), Failure::CardsUsedUp);
+        assert_eq!(api.limit_notice("desktop").map(|n| n.kind), Some("cards"));
+        let (base, _) = limits_server((429, r#"{"status":429,"code":"ai_quota_exceeded"}"#)).await;
+        let api = Api::new(&base, signed_in());
+        let got = api
+            .lookup("w1", "hello", None, Some(Surface::Shortcut))
+            .await;
+        assert_eq!(got.unwrap_err(), Failure::AiUnavailable);
+    }
+
+    #[tokio::test]
+    async fn a_word_the_daily_number_refused_waits_for_midnight_then_goes() {
+        use crate::word_queue::{at_ms, NewWord, PickedIn, WordQueue, DAILY_LIMIT};
+        let (base, seen) = limits_server((429, PLAYER_FULL)).await;
+        let api = Api::new(&base, signed_in());
+        api.refresh_activity().await;
+        let queue = WordQueue::load(None);
+        let now = at_ms("2026-11-10T20:00:00Z").unwrap();
+        let word = NewWord {
+            headword: "hello".into(),
+            lang: Some("en".into()),
+            sentence: None,
+            memo: None,
+            from: Some(PickedIn::Subtitles),
+        }
+        .checked(Some("u".into()), now)
+        .unwrap();
+        queue.push(word).unwrap();
+        // Refused: kept, never dropped, held until the learner's midnight.
+        assert_eq!(queue.flush_at(&api, None, now).await, (0, 1));
+        let kept = &queue.list()[0];
+        assert_eq!(kept.waiting.as_deref(), Some(DAILY_LIMIT));
+        assert_eq!(kept.not_before, at_ms("2026-11-10T21:00:00Z"));
+        let posts = seen.lock().unwrap().len();
+        // Before midnight nothing is asked again.
+        assert_eq!(queue.flush_at(&api, None, now + 60_000).await, (0, 1));
+        assert_eq!(seen.lock().unwrap().len(), posts);
+        // After it, it is sent again.
+        queue
+            .flush_at(&api, None, at_ms("2026-11-10T21:00:01Z").unwrap())
+            .await;
+        assert_eq!(seen.lock().unwrap().len(), posts + 1);
     }
 }

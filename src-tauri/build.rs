@@ -38,6 +38,7 @@ fn main() {
             "video_hint",
             "open_player_pick",
             "open_report",
+            "open_plan",
             "quit",
             "api_fetch",
             "main_signed_in",

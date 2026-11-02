@@ -107,6 +107,22 @@ pub struct Pending {
     /// in a file from before, which reads as the subtitles.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub from: Option<PickedIn>,
+    /// Not sent before this moment (ms since the epoch): a word its
+    /// surface's daily number refused waits for the learner's midnight, then
+    /// goes like any other. Absent: as soon as it can.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub not_before: Option<u64>,
+}
+
+/// The reason a word waits for the learner's midnight (the server's
+/// `daily_limit`, `Failure::DailyLimit`).
+pub const DAILY_LIMIT: &str = "daily_limit";
+
+/// The moment, in ms since the epoch, of an RFC 3339 instant; none when it
+/// does not read.
+pub fn at_ms(rfc3339: &str) -> Option<u64> {
+    let t = chrono::DateTime::parse_from_rfc3339(rfc3339).ok()?;
+    u64::try_from(t.timestamp_millis()).ok()
 }
 
 /// Where in the player a word was picked. A fixed name, never anything about the file.
@@ -151,8 +167,15 @@ pub struct NewWord {
 pub enum Saved {
     /// In the notebook now.
     Added { id: String, notebook_id: String },
-    /// Waiting on this computer, and why.
-    Queued { pending: usize, reason: String },
+    /// Waiting on this computer, and why. A word a daily number refused
+    /// carries the numbers to say so (`notice`): it is not saved, and goes on
+    /// its own after the learner's midnight.
+    Queued {
+        pending: usize,
+        reason: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        notice: Option<crate::api::LimitNotice>,
+    },
 }
 
 fn clean(s: &str, max: usize) -> String {
@@ -195,6 +218,7 @@ impl NewWord {
             saved_at: now,
             account,
             waiting: None,
+            not_before: None,
             from: self.from,
         })
     }
@@ -308,6 +332,17 @@ impl WordQueue {
         Ok(items.len())
     }
 
+    /// Keeps a refused word until `until` (the learner's midnight).
+    pub fn hold_until(&self, id: &str, until: Option<u64>) {
+        if let Ok(mut items) = self.items.lock() {
+            if let Some(p) = items.iter_mut().find(|p| p.id == id) {
+                p.waiting = Some(DAILY_LIMIT.to_owned());
+                p.not_before = until;
+            }
+            let _ = self.save(&items);
+        }
+    }
+
     fn set_waiting(&self, id: &str, why: &str) {
         if let Ok(mut items) = self.items.lock() {
             if let Some(p) = items.iter_mut().find(|p| p.id == id) {
@@ -344,6 +379,7 @@ impl WordQueue {
             Ok(Saved::Queued {
                 pending: self.list().len(),
                 reason: reason.to_owned(),
+                notice: None,
             })
         };
         let Some(user) = api.user().await else {
@@ -372,6 +408,15 @@ impl WordQueue {
                 self.discard(&p.id)?;
                 Err(Failure::Duplicate.as_str().into())
             }
+            Err(Failure::DailyLimit) => {
+                let notice = api.limit_notice(p.surface().counter());
+                self.hold_until(&p.id, notice.as_ref().and_then(|n| at_ms(&n.resets_at)));
+                Ok(Saved::Queued {
+                    pending: self.list().len(),
+                    reason: DAILY_LIMIT.to_owned(),
+                    notice,
+                })
+            }
             Err(f) => queued(f.as_str()),
         }
     }
@@ -389,6 +434,9 @@ impl WordQueue {
         };
         let mut mine: Vec<Pending> = Vec::new();
         for p in self.list() {
+            if p.not_before.is_some_and(|t| now < t) {
+                continue;
+            }
             match may_join(&p, &user.id, now) {
                 Join::Send => mine.push(p),
                 Join::TooOld => {
@@ -421,6 +469,14 @@ impl WordQueue {
                 Err(f @ (Failure::Offline | Failure::SignedOut)) => {
                     self.set_waiting(&p.id, f.as_str());
                     break;
+                }
+                // Refused by its surface's daily number: kept, and sent after
+                // the learner's midnight.
+                Err(Failure::DailyLimit) => {
+                    let until = api
+                        .limit_notice(p.surface().counter())
+                        .and_then(|n| at_ms(&n.resets_at));
+                    self.hold_until(&p.id, until);
                 }
                 Err(f) => self.set_waiting(&p.id, f.as_str()),
             }

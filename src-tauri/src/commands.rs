@@ -72,6 +72,20 @@ fn err(f: Failure) -> String {
     f.as_str().to_owned()
 }
 
+/// A refusal for a window: the failure word, or, for a daily number that
+/// refused (`DailyLimit`, `CardsUsedUp`), a small JSON object with the word
+/// and the numbers to say it (`{"failure": …, "notice": {…}}`; the windows'
+/// `failureOf` and `noticeOf` read both).
+fn refusal(api: &crate::api::Api, f: Failure, surface: Option<Surface>) -> String {
+    if !matches!(f, Failure::DailyLimit | Failure::CardsUsedUp) {
+        return err(f);
+    }
+    match api.limit_notice(surface.map_or("desktop", Surface::counter)) {
+        Some(notice) => serde_json::json!({ "failure": f.as_str(), "notice": notice }).to_string(),
+        None => err(f),
+    }
+}
+
 /// Whether `id` is an API id (a ULID). A notebook id goes into an address,
 /// so anything else from a window is refused before it gets there.
 fn is_id(id: &str) -> bool {
@@ -192,16 +206,12 @@ pub async fn lookup(
         return Err(err(Failure::Error));
     }
     let hint = hint.map(|h| capture::clip(&h, 200));
+    let surface = call_surface(&state, from);
     state
         .api
-        .lookup(
-            &notebook_id,
-            &headword,
-            hint.as_deref(),
-            call_surface(&state, from),
-        )
+        .lookup(&notebook_id, &headword, hint.as_deref(), surface)
         .await
-        .map_err(err)
+        .map_err(|f| refusal(&state.api, f, surface))
 }
 
 /// Adds one word. The card is the API's own shape (WordCreate); the popup
@@ -232,7 +242,7 @@ pub async fn add_word(
         .api
         .add_word(&notebook_id, &word, surface)
         .await
-        .map_err(err)?;
+        .map_err(|f| refusal(&state.api, f, surface))?;
     // Remembered for the panel's "Added from this computer" list.
     if let Some(user) = state.api.user().await {
         let added = RecentWord {
@@ -652,6 +662,21 @@ pub fn open_report(
     Ok(())
 }
 
+/// The limit message's "See Pro": puts the card away and opens Settings →
+/// Plan in Lexpad's window. Never a web page: the Plan page sells in the way
+/// this copy may (Paddle in the dmg and Windows builds, Apple's in-app
+/// purchase in the Mac App Store's, Guideline 3.1.1).
+#[tauri::command]
+pub fn open_plan(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    *state.capture.lock().map_err(|_| "lock")? = None;
+    popup::hide(&app);
+    crate::main_window::open(&app, Some(PLAN_PATH.to_owned()));
+    Ok(())
+}
+
+/// The Plan page of the web app inside Lexpad's window.
+pub const PLAN_PATH: &str = "/settings/plan";
+
 #[tauri::command]
 pub fn quit(app: AppHandle) {
     app.exit(0);
@@ -1005,6 +1030,8 @@ mod tests {
             format!("{}/settings/account", crate::config::APP_ORIGIN)
         );
         assert!(super::app_path("/words/01M43H5KGS4XJQX824GWWRSRVS?x=1").is_some());
+        // "See Pro" opens the Plan page inside Lexpad's window, never a web page.
+        assert!(super::app_path(super::PLAN_PATH).is_some());
         for bad in [
             "settings",
             "//evil.example/x",
@@ -1083,6 +1110,25 @@ pub async fn words_save(
                         })
                     }
                     Err(Failure::Duplicate) => return Err(err(Failure::Duplicate)),
+                    // Its surface's daily number is used up: not saved now.
+                    // Kept on this computer and sent after the learner's
+                    // midnight; the window says it was not saved.
+                    Err(Failure::DailyLimit) => {
+                        let notice = state.api.limit_notice(pending.surface().counter());
+                        let until = notice
+                            .as_ref()
+                            .and_then(|n| crate::word_queue::at_ms(&n.resets_at));
+                        let mut held = pending;
+                        held.waiting = Some(crate::word_queue::DAILY_LIMIT.to_owned());
+                        held.not_before = until;
+                        let n = queue.push(held)?;
+                        let _ = app.emit("words:pending", n);
+                        return Ok(Saved::Queued {
+                            pending: n,
+                            reason: crate::word_queue::DAILY_LIMIT.to_owned(),
+                            notice,
+                        });
+                    }
                     Err(f) => f.as_str(),
                 },
                 None => "no_notebook_for_language",
@@ -1097,6 +1143,7 @@ pub async fn words_save(
     Ok(Saved::Queued {
         pending: n,
         reason: reason.to_owned(),
+        notice: None,
     })
 }
 

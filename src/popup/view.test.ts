@@ -48,6 +48,9 @@ function fakeBackend(state: Partial<State>, over: Partial<Backend> = {}): Backen
     openReport: vi.fn(async () => undefined),
     videoHint: vi.fn(async () => null),
     openPlayerPick: vi.fn(async () => undefined),
+    openPlan: vi.fn(async () => {
+      calls.push('plan');
+    }),
     ...over,
   };
 }
@@ -372,5 +375,104 @@ describe('the hint when a video app is in front', () => {
     await new Popup(root, backend).open();
     expect(root.querySelector('input.typed')).not.toBeNull();
     expect(root.querySelector('.video-hint')).toBeNull();
+  });
+
+  describe('daily numbers (surface limits)', () => {
+    const at = '2026-11-10T21:00:00Z';
+    const refusal = (failure: string, notice: Record<string, unknown>): string =>
+      JSON.stringify({ failure, notice: { surface: 'desktop', left: 0, resetsAt: at, ...notice } });
+
+    it('says a word was not saved when the desktop app’s words are used up, and offers Pro', async () => {
+      vi.useFakeTimers({ now: Date.parse('2026-11-10T16:00:00Z') });
+      const backend = fakeBackend(
+        { capture: capture({ text: 'candid' }) },
+        {
+          addWord: vi.fn(async () =>
+            Promise.reject(
+              refusal('daily_limit', { kind: 'words', perDay: 5, plan: 'free', proPerDay: 200 }),
+            ),
+          ),
+        },
+      );
+      await new Popup(root, backend).open();
+      await vi.advanceTimersByTimeAsync(0);
+      press('Enter');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(root.querySelector('.limit .note')?.textContent).toBe(
+        "Not saved. You've added today's 5 words from the desktop app on Lexpad Free. You can add more at midnight, in about 5 hours, or in the Lexpad app. Pro gives you 200 a day here.",
+      );
+      const add = [...root.querySelectorAll<HTMLButtonElement>('button')].find(
+        (b) => b.textContent === 'Not saved',
+      );
+      expect(add?.disabled).toBe(true);
+      expect(root.querySelector('.done')).toBeNull();
+      const seePro = [...root.querySelectorAll<HTMLButtonElement>('.limit button')].find(
+        (b) => b.textContent === 'See Pro',
+      );
+      seePro!.click();
+      expect(backend.calls).toContain('plan');
+      // It stays until it is closed: no timer puts it away.
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(backend.calls).not.toContain('hide');
+    });
+
+    it('tells Pro it reached the most for one day, with no button to buy', async () => {
+      vi.useFakeTimers({ now: Date.parse('2026-11-10T20:20:00Z') });
+      const backend = fakeBackend(
+        { capture: capture({ text: 'candid' }) },
+        {
+          addWord: vi.fn(async () =>
+            Promise.reject(refusal('daily_limit', { kind: 'words', perDay: 200, plan: 'pro' })),
+          ),
+        },
+      );
+      await new Popup(root, backend).open();
+      await vi.advanceTimersByTimeAsync(0);
+      press('Enter');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(root.querySelector('.limit .note')?.textContent).toBe(
+        'Not saved. 200 words today from the desktop app is the most for one day. More at midnight, in 40 minutes.',
+      );
+      expect([...root.querySelectorAll('.limit button')].map((b) => b.textContent)).toEqual(['Close']);
+    });
+
+    it('saves the word without a meaning when the AI cards are used up, and says so after', async () => {
+      vi.useFakeTimers({ now: Date.parse('2026-11-10T16:00:00Z') });
+      const backend = fakeBackend(
+        { capture: capture({ text: 'candid' }) },
+        {
+          lookup: vi.fn(async () =>
+            Promise.reject(
+              refusal('cards_used_up', { kind: 'cards', perDay: 5, plan: 'free', proPerDay: 200 }),
+            ),
+          ),
+        },
+      );
+      await new Popup(root, backend).open();
+      await vi.advanceTimersByTimeAsync(0);
+      press('Enter');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(backend.addWord).toHaveBeenCalled();
+      expect(root.querySelector('.done')?.textContent).toBe('Added to your notebook');
+      expect(root.querySelector('.limit .note')?.textContent).toBe(
+        "“candid” is saved without a meaning. You've used today's 5 AI cards in the desktop app. They come back at midnight, in about 5 hours. Pro gives you 200 a day here.",
+      );
+    });
+
+    it('keeps today’s words when the server sends no daily number', async () => {
+      const backend = fakeBackend(
+        { capture: capture({ text: 'candid' }) },
+        { lookup: vi.fn(async () => Promise.reject('ai_unavailable')) },
+      );
+      await new Popup(root, backend).open();
+      await flush();
+      expect(root.querySelector('.note')?.textContent).toBe(
+        'The meaning is not available right now. Add the word and fill it in later in Lexpad.',
+      );
+      press('Enter');
+      await flush();
+      expect(root.querySelector('.done')?.textContent).toBe('Added to your notebook');
+      expect(root.querySelector('.limit')).toBeNull();
+    });
   });
 });

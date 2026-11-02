@@ -780,6 +780,7 @@ pub fn run() {
             commands::video_hint,
             commands::open_player_pick,
             commands::open_report,
+            commands::open_plan,
             commands::quit,
             commands::api_fetch,
             commands::main_signed_in,

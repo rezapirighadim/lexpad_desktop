@@ -10,7 +10,9 @@
  */
 import { PERMISSION_MISSING, PERMISSION_POLL_MS, PERMISSION_STALE } from '../lib/accessibility.js';
 import type { Backend } from '../lib/backend.js';
-import { failureOf } from '../lib/backend.js';
+import { failureOf, noticeOf } from '../lib/backend.js';
+import { limitText, offersPro } from '../lib/limits.js';
+import type { LimitNotice } from '../lib/types.js';
 import { compose, pick, plan, wordsOf } from '../lib/compose.js';
 import { reportFragment } from '../lib/report.js';
 import { notebookFor } from '../lib/script.js';
@@ -391,6 +393,8 @@ export class Popup {
 
     let fetched: Card | undefined;
     let adding = false;
+    /** Set when the lookup found the desktop app's AI cards used up today. */
+    let cardsOut: LimitNotice | undefined;
 
     const target = (): { notebook: Notebook | undefined; moved: boolean } => {
       const chosen = this.notebooks().find((n) => n.id === select.value) ?? this.chosen();
@@ -461,6 +465,9 @@ export class Popup {
           this.showSignedOut();
           return;
         }
+        // The desktop app's AI cards are used up today: the word still goes
+        // in, and once it has, the card says so with the numbers.
+        if (reason === 'cards_used_up') cardsOut = noticeOf(cause);
         meta.textContent = '';
         body.replaceChildren(
           el(
@@ -498,6 +505,12 @@ export class Popup {
         done.append(document.createTextNode(moved ? `Added to ${notebook.title}` : 'Added to your notebook'));
         root.append(done);
         this.enter = undefined;
+        if (cardsOut && !fetched) {
+          // Saved without a meaning because today's AI cards are used up:
+          // the card says so and stays until it is closed.
+          root.append(this.limitNote(cardsOut, headword));
+          return;
+        }
         this.closeTimer = window.setTimeout(() => void this.close(), moved ? MOVED_MS : DONE_MS);
       } catch (cause) {
         if (generation !== this.generation) return;
@@ -510,6 +523,14 @@ export class Popup {
           return;
         }
         note.className = 'note bad';
+        const notice = reason === 'daily_limit' ? noticeOf(cause) : undefined;
+        if (notice) {
+          // Today's words from the desktop app are used up: nothing was saved.
+          add.textContent = 'Not saved';
+          add.disabled = true;
+          note.replaceWith(this.limitNote(notice, headword));
+          return;
+        }
         if (reason === 'duplicate') {
           note.textContent = 'This word is already in your notebook.';
           add.textContent = 'Already added';
@@ -528,5 +549,20 @@ export class Popup {
       if (!add.disabled) void doAdd();
     };
     void lookUp();
+  }
+
+  /**
+   * A daily number's message (lib/limits.ts) and, for a Free account that
+   * Pro gives more, "See Pro", which opens Settings → Plan in Lexpad.
+   */
+  private limitNote(n: LimitNotice, headword: string): HTMLElement {
+    const box = el('div', 'limit');
+    box.setAttribute('role', 'status');
+    box.append(el('div', 'note', limitText(n, Date.now(), headword)));
+    const actions = el('div', 'actions');
+    if (offersPro(n)) actions.append(button('btn primary', 'See Pro', () => void this.backend.openPlan()));
+    actions.append(button('btn', 'Close', () => void this.close()));
+    box.append(actions);
+    return box;
   }
 }
