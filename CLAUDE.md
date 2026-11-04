@@ -429,6 +429,13 @@ copy (docs/mac-app-store-plan.md). One codebase: `--features mas` plus
   `commands.rs`, listed in `build.rs` and granted in the window's capability file; nothing else
   is callable. No `fetch` from a window to the network: the CSP's `connect-src` is IPC and the
   local `lexmedia` scheme (the video player's media, served by the core) only.
+- **Pictures and films on the asset domain may be shown, never fetched** (4 Nov 2026, Settings →
+  Guides and Today box videos, uiux/2026-11-04-settings-guides §D8). `img-src` and `media-src` allow
+  `https://assets.lexpad.app` (posters, list pictures, guide films; plain `<img>`/`<video>` loads,
+  no credentials); `connect-src` does not, so a window still cannot `fetch` the network. One
+  `tauri.conf.json` CSP serves all four builds (dmg, Windows exe, MS Store msix, Mac App Store: the
+  MAS config does not override `security`). The server's `guides` flag gets `minVersion.desktop`
+  only once this build is live in all four stores.
 - **The app never sees a password.** Signing in is RFC 8252: the system browser, a loopback
   redirect on `127.0.0.1:<random port>/callback`, PKCE S256 and a random state (`auth.rs`). The
   web app's `/connect-desktop` asks the API for a one-time code bound to the challenge and the
