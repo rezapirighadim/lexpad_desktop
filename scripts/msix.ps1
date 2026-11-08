@@ -39,6 +39,9 @@ try {
     if (-not (Test-Path $from)) { throw "$tool not found beside $exePath (scripts/ffmpeg/fetch-prebuilt.sh win64 before tauri build)" }
     Copy-Item $from (Join-Path $layout $tool)
   }
+  # Player home's one-minute clip (bundle.resources in tauri.conf.json): the
+  # core reads it from its resource folder, which is the exe's own folder.
+  Copy-Item (Join-Path $root 'src-tauri/clip') (Join-Path $layout 'clip') -Recurse
   Copy-Item (Join-Path $root 'msix/Assets') (Join-Path $layout 'Assets') -Recurse
   $manifest = (Get-Content (Join-Path $root 'msix/AppxManifest.xml') -Raw).Replace('__VERSION__', $msixVersion)
   Set-Content -Path (Join-Path $layout 'AppxManifest.xml') -Value $manifest -Encoding utf8NoBOM

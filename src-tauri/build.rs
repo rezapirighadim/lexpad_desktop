@@ -95,7 +95,7 @@ fn main() {
             "words_discard",
             "words_send_one",
             // The Player's window and the two windows' ways to each other
-            // (player_window.rs, app_menu.rs), and the first launch (welcome.rs).
+            // (player_window.rs, app_menu.rs), and Player home (player_window.rs).
             "open_lexpad",
             "open_player",
             "open_window",
@@ -111,10 +111,9 @@ fn main() {
             "player_copy_text",
             "set_open_at",
             "open_at",
-            // The Start window (welcome.rs).
-            "welcome_state",
-            "start_open_video",
-            "start_signed_in",
+            "player_home",
+            "player_home_note_seen",
+            "player_open_clip",
         ]),
     ))
     .expect("failed to run tauri-build");

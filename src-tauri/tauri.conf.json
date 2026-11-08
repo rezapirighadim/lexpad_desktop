@@ -56,7 +56,7 @@
         "frame-ancestors": "'none'"
       },
       "freezePrototype": true,
-      "capabilities": ["popup", "panel", "settings", "main", "player-dev", "player", "welcome"]
+      "capabilities": ["popup", "panel", "settings", "main", "player-dev", "player"]
     }
   },
   "bundle": {
@@ -88,6 +88,11 @@
         "componentRefs": ["LexpadPlayerShortcut"]
       }
     },
-    "externalBin": ["binaries/ffmpeg", "binaries/ffprobe"]
+    "externalBin": ["binaries/ffmpeg", "binaries/ffprobe"],
+    "resources": {
+      "clip/Tears of Steel.mp4": "clip/Tears of Steel.mp4",
+      "clip/CREDITS.txt": "clip/CREDITS.txt",
+      "clip/subs/*": "clip/subs/"
+    }
   }
 }

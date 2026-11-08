@@ -58,6 +58,9 @@
     "allow-player-on-top",
     "allow-player-buttons",
     "allow-player-take-play",
+    "allow-player-home",
+    "allow-player-home-note-seen",
+    "allow-player-open-clip",
     "allow-player-context-menu",
     "allow-player-copy-text"
   ]

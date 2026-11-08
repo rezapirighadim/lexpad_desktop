@@ -1,0 +1,47 @@
+1
+00:00:04,000 --> 00:00:05,500
+T'es un salaud, Thom.
+
+2
+00:00:06,000 --> 00:00:08,000
+Celia, on doit poursuivre nos passions;
+
+3
+00:00:08,000 --> 00:00:11,500
+...toi t'as la robotique, et moi
+je veux juste être super dans l'espace.
+
+4
+00:00:11,800 --> 00:00:15,000
+Pourquoi est ce que t'admets pas
+que t'as peur de ma main robotique?
+
+5
+00:00:15,500 --> 00:00:17,000
+J'ai pas peur, c'est...
+
+6
+00:00:18,000 --> 00:00:19,000
+...d'accord! Parfait!
+
+7
+00:00:19,000 --> 00:00:22,000
+J'ai peur! j'ai des cauchemards
+que je suis poursuivi...
+
+8
+00:00:22,000 --> 00:00:23,000
+...par des pinces robotiques géantes...
+
+9
+00:00:24,000 --> 00:00:26,000
+Quoiqu'il en soit, Thom. C'est fini.
+
+10
+00:00:31,000 --> 00:00:34,500
+Mémoire Robot synchronisée et verrouillée.
+
+11
+00:00:42,000 --> 00:00:44,000
+C'est tout bizarre.
+
