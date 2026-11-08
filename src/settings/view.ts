@@ -268,6 +268,18 @@ export class SettingsView {
       s.append(el('p', 'dim', 'Sign in to choose the notebook new words go to.'));
       return s;
     }
+    if (state.notebooks.length === 0 && !state.notebooksKnown) {
+      // An empty copy kept from before (offline, a cold start, a server
+      // error) says nothing about the account.
+      s.append(
+        el(
+          'p',
+          'dim',
+          'Lexpad could not read your notebooks just now. Check your connection and open Settings again.',
+        ),
+      );
+      return s;
+    }
     if (state.notebooks.length === 0) {
       // A new account: Lexpad's first run makes the notebook (two languages
       // and a first word). A line with no way there was a dead end.

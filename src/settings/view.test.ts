@@ -9,6 +9,7 @@ function backend(state: Partial<State>, over: Partial<SettingsBackend> = {}): Se
     connected: true,
     user: { id: 'u', email: 'lena@example.test', displayName: 'Lena' },
     notebooks: [{ id: 'n1', title: 'English', targetLang: 'en', meaningLang: 'fa', isDefault: true }],
+    notebooksKnown: true,
     notebookId: 'n1',
     capture: null,
     shortcut: 'CommandOrControl+Shift+L',
@@ -62,6 +63,13 @@ describe('Settings', () => {
     const setup = [...root.querySelectorAll('button')].find((x) => x.textContent === 'Set up my notebook')!;
     setup.click();
     expect(b.openWeb).toHaveBeenCalledWith(null);
+  });
+
+  it('does not offer set-up when the empty list is only the kept copy', async () => {
+    const b = backend({ notebooks: [], notebookId: null, notebooksKnown: false });
+    await new SettingsView(root, b, true).render();
+    expect(root.textContent).not.toContain('Set up my notebook');
+    expect(root.textContent).toContain('Lexpad could not read your notebooks just now.');
   });
 
   it('shows the account, the shortcut and why Accessibility is asked for', async () => {

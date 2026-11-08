@@ -182,8 +182,10 @@ export class Panel {
 
     // A new account with no notebook yet: the first thing to do is Lexpad's
     // first run (two languages and a first word), which makes it. A word
-    // typed here would only reach a card that cannot keep it.
-    if (state.notebooks.length === 0) {
+    // typed here would only reach a card that cannot keep it. Only when the
+    // API said so on this read: an empty copy kept from before (offline, a
+    // cold start) says nothing about the account.
+    if (state.notebooksKnown && state.notebooks.length === 0) {
       const setup = el('div', 'connect');
       setup.id = 'setup';
       setup.append(

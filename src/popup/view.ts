@@ -430,9 +430,26 @@ export class Popup {
       this.enter = open;
     };
 
+    // No list of notebooks this time (offline, a server error, a cold start
+    // with nothing kept): the card says so rather than guess the account has none.
+    const unread = (): void => {
+      meta.textContent = '';
+      picker.remove();
+      body.replaceChildren(
+        el(
+          'div',
+          'note',
+          'Lexpad could not read your notebooks just now. Check your connection and try again.',
+        ),
+      );
+      actions.replaceChildren(button('btn', 'Close', () => void this.close()));
+      this.enter = undefined;
+    };
+
     const nowhere = (): void => {
       if (this.notebooks().length === 0) {
-        setUp();
+        if (this.state?.notebooksKnown === true) setUp();
+        else unread();
         return;
       }
       meta.textContent = '';
@@ -563,11 +580,13 @@ export class Popup {
           note.textContent = 'This word is already in your notebook.';
           add.textContent = 'Already added';
           add.disabled = true;
-        } else if (reason === 'no_notebook') {
+        } else if (reason === 'no_notebook' && this.notebooks().length === 0) {
           note.textContent = '';
           note.className = 'note';
           setUp();
-        } else if (reason === 'offline') note.textContent = 'You seem to be offline. Try again in a moment.';
+        } else if (reason === 'no_notebook')
+          note.textContent = 'This notebook is no longer there. Close the card and try again.';
+        else if (reason === 'offline') note.textContent = 'You seem to be offline. Try again in a moment.';
         else note.textContent = 'Could not add the word. Try again.';
       }
     };

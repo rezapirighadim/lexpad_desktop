@@ -17,6 +17,7 @@ function fake(state: Partial<State> = {}, over: Partial<PanelBackend> = {}): Pan
     connected: true,
     user: { id: 'u', email: 'lena@example.test', displayName: 'Lena' },
     notebooks: [en, de],
+    notebooksKnown: true,
     notebookId: 'n-en',
     capture: null,
     shortcut: 'CommandOrControl+Shift+L',
@@ -77,6 +78,12 @@ describe('the panel, signed in', () => {
     expect(root.querySelector('.account')?.textContent).toBe('lena@example.test');
     expect(document.activeElement).toBe(root.querySelector('.add input'));
     expect(root.querySelector('.hint kbd')?.textContent).toBe('⌘⇧L');
+  });
+
+  it('keeps the add box when an empty list is only the kept copy (offline, a cold start)', async () => {
+    await draw(fake({ notebooks: [], notebookId: null, notebooksKnown: false }));
+    expect(root.querySelector('#setup')).toBeNull();
+    expect(root.querySelector('.add input')).not.toBeNull();
   });
 
   it('says the Windows shortcut on Windows, and the one the learner chose', async () => {

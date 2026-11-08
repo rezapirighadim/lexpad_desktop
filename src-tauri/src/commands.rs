@@ -34,6 +34,11 @@ pub struct StateDto {
     pub(crate) connected: bool,
     user: Option<User>,
     pub(crate) notebooks: Vec<Value>,
+    /// Whether `notebooks` is the API's answer of this read. False when it is
+    /// the copy kept from an earlier read (offline, a server error, or none
+    /// yet after a cold start): an empty copy then says nothing about the
+    /// account, so no window offers to set up a first notebook from it.
+    pub(crate) notebooks_known: bool,
     pub(crate) notebook_id: Option<String>,
     capture: Option<Capture>,
     shortcut: String,
@@ -117,12 +122,14 @@ impl StateDto {
 pub async fn state(app: AppHandle, state: State<'_, AppState>) -> Result<StateDto, String> {
     let user = state.api.user().await;
     let mut notebooks = Vec::new();
+    let mut notebooks_known = false;
     let mut connected = user.is_some();
     if connected {
         match state.api.notebooks().await {
             Ok(list) => {
                 *state.notebooks.lock().map_err(|_| "lock")? = list.clone();
                 notebooks = list;
+                notebooks_known = true;
             }
             Err(Failure::SignedOut) => {
                 connected = false;
@@ -149,6 +156,7 @@ pub async fn state(app: AppHandle, state: State<'_, AppState>) -> Result<StateDt
         connected,
         user: if connected { user } else { None },
         notebooks,
+        notebooks_known,
         notebook_id,
         capture,
         shortcut: settings.shortcut,

@@ -384,7 +384,10 @@ The Player's page is the web app's `/player` route (lexpad_front `features/playe
   that has no notebook, `connect` opens Lexpad's window on that first run
   (`launch::opens_setup_after_sign_in`); the card, the panel and Settings say "Your notebook is not
   set up yet" with **Set up my notebook** (`open_web`), never a bare "Create a notebook in Lexpad
-  first." Lexpad's own window goes there anyway; the Player makes the notebook its card names.
+  first." Only when the API listed the notebooks on that read (`state` → `notebooksKnown`): an
+  empty copy kept from before (offline, a cold start, a server error) says nothing, and the card
+  says the notebooks could not be read instead. Lexpad's own window goes there anyway; the Player
+  makes the notebook its card names.
 - **Nothing in the background unasked**: start on login is off on a new install (no "Background
   Items Added" on the first run); an install that had it keeps it, and it is re-applied with
   `--login` at each start. The first time the last window closes, once per install
