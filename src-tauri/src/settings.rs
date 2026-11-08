@@ -134,13 +134,22 @@ pub enum Place {
 /// "When I open Lexpad": Player home (the default since 8 Nov 2026, owner
 /// QB1) or Today. "Where I left off" (`leftOff`, the old default) is read as
 /// the Player; `SettingsFile::load` migrates it and says so once.
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum OpenAt {
     Today,
     #[default]
-    #[serde(alias = "leftOff")]
     Player,
+}
+
+/// Read leniently: a word this version does not know (a newer version's, or
+/// a damaged file's) is the Player, never a failed file that would lose every
+/// other setting with it.
+impl<'de> Deserialize<'de> for OpenAt {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let v = serde_json::Value::deserialize(d)?;
+        Ok(v.as_str().and_then(OpenAt::parse).unwrap_or_default())
+    }
 }
 
 impl OpenAt {
@@ -310,9 +319,21 @@ impl SettingsFile {
 }
 
 /// A settings file's text, migrated, and whether the migration changed it.
+///
+/// A file that cannot be read as settings (not JSON, or a field of the wrong
+/// type) gives the defaults for this run and is never migrated: writing back
+/// would replace the learner's device id and every other setting with them.
 pub fn parse(text: &str) -> (Settings, bool) {
-    let raw: serde_json::Value = serde_json::from_str(text).unwrap_or(serde_json::Value::Null);
-    let mut settings: Settings = serde_json::from_value(raw.clone()).unwrap_or_default();
+    let Some(raw) = serde_json::from_str::<serde_json::Value>(text).ok() else {
+        log::warn!("the settings file is not JSON; using the defaults and leaving it as it is");
+        return (Settings::default(), false);
+    };
+    let Some(mut settings) = serde_json::from_value::<Settings>(raw.clone()).ok() else {
+        log::warn!(
+            "the settings file could not be read; using the defaults and leaving it as it is"
+        );
+        return (Settings::default(), false);
+    };
     let migrated = migrate(&raw, &mut settings);
     (settings, migrated)
 }
@@ -456,6 +477,50 @@ mod tests {
             let (s2, migrated2) = parse(&again);
             assert!(!migrated2);
             assert_eq!(s2, s);
+        }
+    }
+
+    #[test]
+    fn an_unknown_open_at_word_is_the_player_and_keeps_everything_else() {
+        let (s, migrated) = parse(r#"{"openAt":"nowhere","deviceId":"x"}"#);
+        assert_eq!(s.open_at, OpenAt::Player);
+        assert_eq!(s.device_id, "x");
+        // An old file (no openAtSet): migrated as an unchosen default, the device id kept.
+        assert!(migrated && !s.open_at_set);
+        let (s, migrated) = parse(r#"{"openAt":"nowhere","openAtSet":true,"deviceId":"x"}"#);
+        assert!(!migrated);
+        assert_eq!((s.open_at, s.device_id.as_str()), (OpenAt::Player, "x"));
+    }
+
+    #[test]
+    fn a_file_that_cannot_be_read_is_never_written_back() {
+        for text in [
+            r#"{"openAt":"nowhere","deviceId":"x","startOnLogin":"yes"}"#,
+            r#"{"deviceId":7}"#,
+            "{not json",
+        ] {
+            let (s, migrated) = parse(text);
+            assert!(!migrated, "{text}");
+            assert_eq!(
+                s,
+                Settings {
+                    device_id: s.device_id.clone(),
+                    ..Settings::default()
+                }
+            );
+            let dir =
+                std::env::temp_dir().join(format!("lexpad-settings-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir_all(&dir).unwrap();
+            let file = SettingsFile::new(&dir);
+            std::fs::write(&file.path, text).unwrap();
+            let (_, first) = file.load();
+            assert!(!first);
+            assert_eq!(
+                std::fs::read_to_string(&file.path).unwrap(),
+                text,
+                "rewritten: {text}"
+            );
+            std::fs::remove_dir_all(&dir).unwrap();
         }
     }
 
