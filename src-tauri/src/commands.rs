@@ -302,6 +302,7 @@ pub fn set_notebook(
 #[tauri::command]
 pub async fn connect(
     app: AppHandle,
+    window: tauri::Window,
     state: State<'_, AppState>,
     provider: Option<String>,
 ) -> Result<User, String> {
@@ -358,6 +359,18 @@ pub async fn connect(
     let _ = app.emit("session:changed", ());
     // Words saved before signing in go to the account now.
     flush_words(&app);
+    // Signed in from the card, the panel or Settings with an account that has
+    // no notebook yet: Lexpad opens on its first run (the two languages and a
+    // first word), the only place a notebook is made.
+    let caller = window.label().to_owned();
+    if crate::launch::opens_setup_after_sign_in(&caller, Some(0)) {
+        let count = state.api.notebooks().await.ok().map(|list| list.len());
+        if crate::launch::opens_setup_after_sign_in(&caller, count) {
+            popup::hide(&app);
+            panel::hide(&app, false);
+            crate::open_web(&app, None);
+        }
+    }
     Ok(user)
 }
 

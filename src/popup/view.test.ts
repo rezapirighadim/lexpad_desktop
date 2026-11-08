@@ -51,6 +51,9 @@ function fakeBackend(state: Partial<State>, over: Partial<Backend> = {}): Backen
     openPlan: vi.fn(async () => {
       calls.push('plan');
     }),
+    openWeb: vi.fn(async () => {
+      calls.push('web');
+    }),
     ...over,
   };
 }
@@ -71,6 +74,44 @@ afterEach(() => {
 });
 
 describe('Popup', () => {
+  it('sends an account with no notebook to set one up instead of a dead end', async () => {
+    const backend = fakeBackend({ notebooks: [], notebookId: null, capture: capture({ text: 'candid' }) });
+    const popup = new Popup(root, backend);
+    await popup.open();
+    await flush();
+
+    expect(backend.lookup).not.toHaveBeenCalled();
+    expect(root.textContent).toContain('Your notebook is not set up yet.');
+    expect(root.textContent).not.toContain('Create a notebook in Lexpad first.');
+    const buttons = [...root.querySelectorAll<HTMLButtonElement>('.actions button')].map(
+      (b) => b.textContent,
+    );
+    expect(buttons).toEqual(['Set up my notebook', 'Close']);
+
+    press('Enter');
+    await flush();
+    await flush();
+    expect(backend.openWeb).toHaveBeenCalledWith(null);
+    expect(backend.addWord).not.toHaveBeenCalled();
+    expect(backend.calls).toEqual(['web', 'hide']);
+  });
+
+  it('turns a "no notebook" refusal into the same way to set one up', async () => {
+    const backend = fakeBackend(
+      { capture: capture({ text: 'candid' }) },
+      { addWord: vi.fn(async () => Promise.reject('no_notebook')) },
+    );
+    const popup = new Popup(root, backend);
+    await popup.open();
+    await flush();
+    press('Enter');
+    await flush();
+    expect(root.textContent).toContain('Your notebook is not set up yet.');
+    root.querySelector<HTMLButtonElement>('.actions .btn.primary')!.click();
+    await flush();
+    expect(backend.openWeb).toHaveBeenCalledWith(null);
+  });
+
   it('is dragged by its header, and the buttons stay direct children of the card so they stick to its bottom', async () => {
     const backend = fakeBackend({ capture: capture({ text: 'candid' }) });
     const popup = new Popup(root, backend);

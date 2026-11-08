@@ -58,6 +58,20 @@ async function draw(backend: PanelBackend, mac = true): Promise<Panel> {
 }
 
 describe('the panel, signed in', () => {
+  it('leads a new account with no notebook to set one up, not to a box whose words could not be kept', async () => {
+    const backend = fake({ notebooks: [], notebookId: null });
+    await draw(backend);
+    expect(root.querySelector('.add input')).toBeNull();
+    expect(root.querySelector('#notebook')).toBeNull();
+    const setup = root.querySelector<HTMLElement>('#setup')!;
+    expect(setup.textContent).toContain('Pick the language you are learning and add your first word.');
+    // The Player and the phone rows stay.
+    expect(root.querySelector('#watch')).not.toBeNull();
+    expect(root.querySelector('#everywhere')).not.toBeNull();
+    setup.querySelector('button')!.click();
+    expect(backend.openWeb).toHaveBeenCalledWith(null);
+  });
+
   it('shows the account, focuses the add box and says the shortcut as the platform writes it', async () => {
     await draw(fake());
     expect(root.querySelector('.account')?.textContent).toBe('lena@example.test');

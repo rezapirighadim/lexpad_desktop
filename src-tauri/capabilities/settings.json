@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "settings",
-  "description": "The Settings window: account, shortcut, start on login, opening Lexpad's window, default notebook, permission, sign out.",
+  "description": "The Settings window: account, shortcut, start on login, opening Lexpad's window, default notebook (or, with none yet, opening Lexpad's first run), permission, sign out.",
   "windows": ["settings"],
   "permissions": [
     "core:event:allow-listen",
@@ -20,6 +20,7 @@
     "allow-set-open-in-browser",
     "allow-app-info",
     "allow-set-notifications",
-    "allow-open-notification-settings"
+    "allow-open-notification-settings",
+    "allow-open-web"
   ]
 }

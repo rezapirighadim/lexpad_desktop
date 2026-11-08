@@ -180,6 +180,20 @@ export class Panel {
   private connected(state: State, recent: RecentWord[], phoneUsed: boolean, watch: WatchRow): HTMLElement[] {
     const parts: HTMLElement[] = [this.header(state)];
 
+    // A new account with no notebook yet: the first thing to do is Lexpad's
+    // first run (two languages and a first word), which makes it. A word
+    // typed here would only reach a card that cannot keep it.
+    if (state.notebooks.length === 0) {
+      const setup = el('div', 'connect');
+      setup.id = 'setup';
+      setup.append(
+        el('p', '', 'Pick the language you are learning and add your first word. It takes a minute.'),
+        button('btn primary', 'Set up my notebook', () => void this.backend.openWeb(null)),
+      );
+      parts.push(setup, this.watchRow(watch), this.everywhereRow(phoneUsed));
+      return parts;
+    }
+
     // Add a word: Enter opens the card for it.
     const form = el('form', 'add');
     form.setAttribute('role', 'search');

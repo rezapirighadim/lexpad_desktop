@@ -80,6 +80,25 @@ pub fn focus_after_video(now: Option<Focus>) -> Focus {
     }
 }
 
+/// Whether a sign-in that just finished must open Lexpad's window on its
+/// first-run setup: it was started from the shortcut's card, the menu-bar
+/// panel or the small Settings window, and the account has no notebook yet
+/// (`notebooks`: how many the API listed, `None` when it could not say).
+///
+/// The web app's first run (two languages and a first word) is the only
+/// place a notebook is made, and only Lexpad's window reaches it. Signed in
+/// from one of these three, a new account had nowhere to put a word: the
+/// card said "Create a notebook in Lexpad first." and nothing opened (admin
+/// audit, 9 Nov 2026: a third of the desktop sign-ups ended with no
+/// notebook). Lexpad's own window already goes there; the Player makes the
+/// notebook its card names.
+pub fn opens_setup_after_sign_in(caller: &str, notebooks: Option<usize>) -> bool {
+    matches!(
+        caller,
+        crate::popup::LABEL | crate::panel::LABEL | crate::SETTINGS
+    ) && notebooks == Some(0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -183,5 +202,20 @@ mod tests {
         assert_eq!(focus_after_video(Some(Focus::Learn)), Focus::Both);
         assert_eq!(focus_after_video(Some(Focus::Watch)), Focus::Watch);
         assert_eq!(focus_after_video(Some(Focus::Both)), Focus::Both);
+    }
+
+    #[test]
+    fn a_new_account_signed_in_from_the_card_the_panel_or_settings_opens_setup() {
+        for caller in [crate::popup::LABEL, crate::panel::LABEL, crate::SETTINGS] {
+            assert!(opens_setup_after_sign_in(caller, Some(0)), "{caller}");
+            // An account that already has a notebook goes on where it was.
+            assert!(!opens_setup_after_sign_in(caller, Some(1)), "{caller}");
+            // The notebooks could not be read (offline, a server error): nothing is guessed.
+            assert!(!opens_setup_after_sign_in(caller, None), "{caller}");
+        }
+        // These already reach the first run, or make the notebook themselves.
+        for caller in [crate::main_window::LABEL, crate::player_window::LABEL] {
+            assert!(!opens_setup_after_sign_in(caller, Some(0)), "{caller}");
+        }
     }
 }

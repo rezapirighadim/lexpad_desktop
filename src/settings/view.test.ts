@@ -41,6 +41,7 @@ function backend(state: Partial<State>, over: Partial<SettingsBackend> = {}): Se
       appOrigin: 'https://app.lexpad.app',
       autostartEnabled: true,
     })),
+    openWeb: vi.fn(async () => undefined),
     ...over,
   };
 }
@@ -53,6 +54,16 @@ beforeEach(() => {
 });
 
 describe('Settings', () => {
+  it('offers a new account with no notebook the way to set one up', async () => {
+    const b = backend({ notebooks: [], notebookId: null });
+    await new SettingsView(root, b, true).render();
+    expect(root.textContent).toContain('Your notebook is not set up yet.');
+    expect(root.textContent).not.toContain('Create a notebook in Lexpad first.');
+    const setup = [...root.querySelectorAll('button')].find((x) => x.textContent === 'Set up my notebook')!;
+    setup.click();
+    expect(b.openWeb).toHaveBeenCalledWith(null);
+  });
+
   it('shows the account, the shortcut and why Accessibility is asked for', async () => {
     await new SettingsView(root, backend({}), true).render();
     expect(root.textContent).toContain('lena@example.test');

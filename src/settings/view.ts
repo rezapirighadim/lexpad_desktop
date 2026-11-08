@@ -269,7 +269,14 @@ export class SettingsView {
       return s;
     }
     if (state.notebooks.length === 0) {
-      s.append(el('p', 'dim', 'Create a notebook in Lexpad first.'));
+      // A new account: Lexpad's first run makes the notebook (two languages
+      // and a first word). A line with no way there was a dead end.
+      const row = el('div', 'row');
+      row.append(
+        el('div', 'grow', 'Your notebook is not set up yet.'),
+        button('btn primary', 'Set up my notebook', () => void this.backend.openWeb(null)),
+      );
+      s.append(row);
       return s;
     }
     const row = el('div', 'row');
