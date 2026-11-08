@@ -101,3 +101,13 @@ etaSeconds?: number }` while a transcode runs, so the processing screen can say 
   by its address but only silence from Media Source (every streamed mode), which is why the
   front stopped boost on macOS at 5d43ec28. The front now asks for the louder stream the first
   time the volume goes past 100% and plays it at volume / 2.
+
+## Player home (8 Nov 2026, Player spec B1)
+
+- Asked by the UI, not done here (engine requests only): frames at the size they are shown. Player
+  home draws the Continue watching frame up to ~900 px wide and the scene tiles ~170 px; the
+  engine makes every frame 320 px wide (`thumbs::WIDTH`). The page now asks
+  `/t/<file>/<ms>.jpg?w=<css px × device pixel ratio>`; today's engine ignores the query and
+  answers its 320 px frame, so nothing breaks. Wanted: honour `w` (snapped to a few sizes, at most
+  the film's own width, cached per size), so the hero is sharp. The spec also asks for letterbox
+  bars cropped (a film with black bars baked in): `cropdetect` once per file would do it.
