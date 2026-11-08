@@ -1,8 +1,9 @@
 //! Lexpad's two windows and how one reaches the other (spec
 //! `uiux/specs/2026-10-25-video-player.md` §24.3): ⌘1 / Ctrl+1 is Lexpad,
-//! ⌘2 / Ctrl+2 the Player, from anywhere in the app; Lexpad opens where the
-//! learner left off; and on macOS the menu bar mirrors the Player's keys in
-//! a Playback and a Subtitles menu, and the Window menu lists both windows.
+//! ⌘2 / Ctrl+2 the Player, from anywhere in the app; Lexpad opens on Player
+//! home unless the learner chose Today (`launch`); and on macOS the menu bar
+//! mirrors the Player's keys in a Playback and a Subtitles menu, and the
+//! Window menu lists both windows and Player home.
 //!
 //! One Dock tile on macOS, for both windows (decision in
 //! `docs/player-dock-icon.md`): a tile of its own would need the Player as a
@@ -14,17 +15,6 @@ use crate::main_window;
 use crate::player_window::{self, Door, Opened};
 use crate::settings::{OpenAt, Place};
 use crate::state::AppState;
-
-/// Where launching Lexpad goes while signed in (the Dock, a second launch;
-/// `welcome::first_window`): Settings' "When I open Lexpad" when it names a
-/// place, else the window last in front (§24.3).
-pub fn launch_place(open_at: OpenAt, last: Place) -> Place {
-    match open_at {
-        OpenAt::Today => Place::Learn,
-        OpenAt::Player => Place::Player,
-        OpenAt::LeftOff => last,
-    }
-}
 
 /// Remembers which window was last in front.
 pub fn note_focus(app: &AppHandle, label: &str) {
@@ -46,18 +36,20 @@ pub fn note_focus(app: &AppHandle, label: &str) {
     }
 }
 
-/// Settings → This computer → "When I open Lexpad".
+/// Settings → This computer → "When I open Lexpad". The only writer of
+/// `open_at_set`: a value set here is the learner's choice.
 #[tauri::command]
 pub fn set_open_at(app: AppHandle, open_at: String) -> Result<String, String> {
-    let value = match open_at.as_str() {
-        "leftOff" => OpenAt::LeftOff,
-        "today" => OpenAt::Today,
-        "player" => OpenAt::Player,
-        _ => return Err("not a place".into()),
-    };
+    let value = OpenAt::parse(&open_at).ok_or("not a place")?;
     app.state::<AppState>()
-        .update_settings(|s| s.open_at = value)?;
-    Ok(open_at)
+        .update_settings(|s| choose_open_at(s, value))?;
+    Ok(value.as_str().into())
+}
+
+/// What the Settings control writes: the place, and that it was chosen.
+pub fn choose_open_at(s: &mut crate::settings::Settings, value: OpenAt) {
+    s.open_at = value;
+    s.open_at_set = true;
 }
 
 /// What the learning window's Settings shows for it.
@@ -67,12 +59,7 @@ pub fn open_at(app: AppHandle) -> String {
         .try_state::<AppState>()
         .and_then(|s| s.settings.lock().ok().map(|s| s.open_at))
         .unwrap_or_default();
-    match at {
-        OpenAt::LeftOff => "leftOff",
-        OpenAt::Today => "today",
-        OpenAt::Player => "player",
-    }
-    .into()
+    at.as_str().into()
 }
 
 /// A menu command for the Player: brought forward (opened if need be), then told.
@@ -100,7 +87,7 @@ const PLAYER_ITEMS: &[(&str, &str, &str, Option<&str>)] = &[
     ("m.play", "Play or Pause", "playPause", None),
     ("m.back", "Back 5 Seconds", "back5", None),
     ("m.forward", "Forward 5 Seconds", "forward5", None),
-    ("m.replay", "Replay This Line", "replayLine", None),
+    ("m.replay", "Replay the Line", "replayLine", None),
     ("m.slower", "Slower", "slower", None),
     ("m.faster", "Faster", "faster", None),
     ("m.normal", "Normal Speed", "normalSpeed", None),
@@ -122,6 +109,8 @@ const PLAYER_ITEMS: &[(&str, &str, &str, Option<&str>)] = &[
     ("m.heard", "I Just Heard This Line…", "heard", None),
     ("m.transcript", "Transcript", "transcript", None),
     ("m.shortcuts", "Keyboard Shortcuts", "shortcuts", None),
+    // Player home (spec B2): the page's own key is ⇧⌘H / Ctrl+Shift+H too.
+    ("m.home", "Home", "home", Some("CmdOrCtrl+Shift+H")),
 ];
 
 /// The Player's right-click menu tags its items' ids with this, followed by
@@ -185,9 +174,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
                 app,
                 Some("About Lexpad"),
                 Some(AboutMetadata {
-                    // The Start window's film: CC BY 3.0 asks for the credit.
+                    // Player home's clip and picture: CC BY 3.0 asks for the credit.
                     credits: Some(
-                        "Start window picture: Tears of Steel (CC) Blender Foundation | mango.blender.org, CC BY 3.0."
+                        "Player home's clip and picture: Tears of Steel (CC) Blender Foundation | mango.blender.org, CC BY 3.0."
                             .into(),
                     ),
                     ..AboutMetadata::default()
@@ -267,6 +256,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
             &PredefinedMenuItem::separator(app)?,
             &item("m.lexpad", "Lexpad", Some("CmdOrCtrl+1"))?,
             &item("m.player", "Lexpad Player", Some("CmdOrCtrl+2"))?,
+            &player_item("m.home")?,
             &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::close_window(app, None)?,
         ],
@@ -294,11 +284,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lexpad_opens_where_it_was_left_unless_settings_say_otherwise() {
-        assert_eq!(launch_place(OpenAt::LeftOff, Place::Player), Place::Player);
-        assert_eq!(launch_place(OpenAt::LeftOff, Place::Learn), Place::Learn);
-        assert_eq!(launch_place(OpenAt::Today, Place::Player), Place::Learn);
-        assert_eq!(launch_place(OpenAt::Player, Place::Learn), Place::Player);
+    fn the_settings_control_marks_its_value_as_chosen() {
+        let mut s = crate::settings::Settings::default();
+        assert!(!s.open_at_set);
+        choose_open_at(&mut s, OpenAt::Today);
+        assert_eq!(s.open_at, OpenAt::Today);
+        assert!(s.open_at_set);
+        // Choosing the default is a choice too: a later default keeps away.
+        choose_open_at(&mut s, OpenAt::Player);
+        assert_eq!(s.open_at, OpenAt::Player);
+        assert!(s.open_at_set);
     }
 
     #[test]
@@ -326,6 +321,7 @@ mod tests {
             "heard",
             "transcript",
             "shortcuts",
+            "home",
         ];
         for (id, _, command, accel) in PLAYER_ITEMS {
             assert!(id.starts_with("m."));

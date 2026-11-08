@@ -8,7 +8,9 @@ import { PERMISSION_POLL_MS, PERMISSION_STALE } from '../lib/accessibility.js';
 import { failureOf } from '../lib/backend.js';
 import { acceleratorOf, isMac, prettyShortcut } from '../lib/shortcut.js';
 import type { AppInfo, Settings, State } from '../lib/types.js';
-import { FILM } from '../welcome/view.js';
+
+/** The film's credit, as src-tauri/clip/CREDITS.txt and the About box give it (CC BY 3.0). */
+export const FILM_CREDIT = 'Tears of Steel (CC) Blender Foundation | mango.blender.org';
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -361,8 +363,8 @@ export class SettingsView {
   private about(info: AppInfo): HTMLElement {
     const s = section('About');
     s.append(el('p', 'dim', `Lexpad for ${this.mac ? 'macOS' : 'Windows'}, version ${info.version}`));
-    // The Start window's film (CC BY 3.0 asks for the credit wherever it is used).
-    s.append(el('p', 'dim small', `Start window picture: ${FILM.credit.replace(/^Film: /, '')}, CC BY 3.0.`));
+    // Player home's clip and picture (CC BY 3.0 asks for the credit wherever it is used).
+    s.append(el('p', 'dim small', `Player home's clip and picture: ${FILM_CREDIT}, CC BY 3.0.`));
     return s;
   }
 }

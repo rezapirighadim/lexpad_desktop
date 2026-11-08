@@ -134,3 +134,13 @@ describe('Settings', () => {
     expect(root.querySelector('.keys')?.textContent).toBe('Ctrl+Shift+L');
   });
 });
+
+describe('the film credit', () => {
+  it('is the one the bundled clip ships with', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { FILM_CREDIT } = await import('./view.js');
+    const { resolve } = await import('node:path');
+    const credits = readFileSync(resolve(process.cwd(), 'src-tauri/clip/CREDITS.txt'), 'utf8');
+    expect(credits.split('\n')[0]).toBe(FILM_CREDIT);
+  });
+});
