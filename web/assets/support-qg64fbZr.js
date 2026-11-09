@@ -1,0 +1,1 @@
+var e=`hello@lexpad.app`;function t(t,n){let r=[`subject=${encodeURIComponent(t)}`];return n!==void 0&&r.push(`body=${encodeURIComponent(n)}`),`mailto:${e}?${r.join(`&`)}`}export{t as n,e as t};
