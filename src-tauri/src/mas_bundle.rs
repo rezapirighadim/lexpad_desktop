@@ -1,6 +1,8 @@
-//! Checks of the Mac App Store build's bundle files (tests only): its
+//! Checks of the Mac bundle files (tests only): the Mac App Store build's
 //! Info.plist is the dmg's plus the Mac App Store's keys, so nothing the dmg
-//! declares may be missing from it, and its configuration must stay sandboxed.
+//! declares may be missing from it, and its configuration must stay sandboxed;
+//! both builds ask for the microphone and speech recognition the Player's Say
+//! it back needs, and nothing more.
 
 #[cfg(test)]
 mod tests {
@@ -9,6 +11,18 @@ mod tests {
     const MAS_CONF: &str = include_str!("../tauri.mas.conf.json");
     const ENTITLEMENTS: &str = include_str!("../mas/Lexpad.entitlements");
     const HELPER: &str = include_str!("../mas/ffmpeg.entitlements");
+    const DMG_ENTITLEMENTS: &str = include_str!("../Lexpad.entitlements");
+    const MACOS_CONF: &str = include_str!("../tauri.macos.conf.json");
+    /// The microphone, under the sandbox and under the hardened runtime.
+    const AUDIO_INPUT: &str = "com.apple.security.device.audio-input";
+
+    fn keys(plist: &str) -> Vec<&str> {
+        plist
+            .split("<key>")
+            .skip(1)
+            .filter_map(|s| s.split("</key>").next())
+            .collect()
+    }
 
     fn strings(plist: &str) -> Vec<&str> {
         plist
@@ -26,6 +40,7 @@ mod tests {
             ("Info.mas.plist", MAS),
             ("mas/Lexpad.entitlements", ENTITLEMENTS),
             ("mas/ffmpeg.entitlements", HELPER),
+            ("Lexpad.entitlements", DMG_ENTITLEMENTS),
         ] {
             for comment in text.split("<!--").skip(1) {
                 let body = comment.split("-->").next().unwrap_or("");
@@ -96,18 +111,14 @@ mod tests {
         assert_eq!(conf["identifier"], crate::config::BUNDLE_ID_MAS);
         assert_eq!(conf["app"]["macOSPrivateApi"], false);
         assert_eq!(conf["bundle"]["macOS"]["minimumSystemVersion"], "13.0");
-        let keys: Vec<&str> = ENTITLEMENTS
-            .split("<key>")
-            .skip(1)
-            .filter_map(|s| s.split("</key>").next())
-            .collect();
         assert_eq!(
-            keys,
+            keys(ENTITLEMENTS),
             [
                 "com.apple.security.app-sandbox",
                 "com.apple.security.network.client",
                 "com.apple.security.files.user-selected.read-only",
                 "com.apple.security.files.downloads.read-write",
+                AUDIO_INPUT,
                 "com.apple.application-identifier",
                 "com.apple.developer.team-identifier",
             ]
@@ -115,17 +126,71 @@ mod tests {
         assert!(ENTITLEMENTS.contains("<string>6Z95MR26LZ.app.lexpad.ios</string>"));
         // App Review 2.4.5(i): no listening socket in this copy.
         assert!(!ENTITLEMENTS.contains("<key>com.apple.security.network.server</key>"));
-        let helper: Vec<&str> = HELPER
-            .split("<key>")
-            .skip(1)
-            .filter_map(|s| s.split("</key>").next())
-            .collect();
         assert_eq!(
-            helper,
+            keys(HELPER),
             [
                 "com.apple.security.app-sandbox",
                 "com.apple.security.inherit"
             ]
+        );
+    }
+
+    /// Say it back (spec `uiux/2026-11-09-player-line-tools/spec.md` §9, §F1):
+    /// WebKit fails with `not-allowed` without the microphone string and with
+    /// `service-not-allowed` without the speech one. Apple shows both in its
+    /// prompts, so they say only what happens (owner, 9 Nov 2026: no promise
+    /// about keeping or storing anything in privacy copy for now).
+    #[test]
+    fn both_mac_copies_explain_the_microphone_and_speech_recognition() {
+        let want = [
+            (
+                "NSMicrophoneUsageDescription",
+                "Say it back listens to you say a line, so Lexpad can show which words came through.",
+            ),
+            (
+                "NSSpeechRecognitionUsageDescription",
+                "Say it back turns what you say into text to check it against the subtitle line.",
+            ),
+        ];
+        for (name, plist) in [("Info.plist", DMG), ("Info.mas.plist", MAS)] {
+            let flat = plist.replace('\r', "");
+            for (key, text) in want {
+                assert!(
+                    flat.contains(&format!("<key>{key}</key>\n  <string>{text}</string>")),
+                    "{name}: {key}"
+                );
+            }
+            let lower = flat.to_lowercase();
+            for promise in [
+                "keeps nothing",
+                "never stores",
+                "never keeps",
+                "stores nothing",
+            ] {
+                assert!(!lower.contains(promise), "{name}: \"{promise}\"");
+            }
+        }
+    }
+
+    /// The dmg is signed with the hardened runtime, which keeps the microphone
+    /// closed without the entitlement; it asks for that and nothing else. The
+    /// Mac App Store build keeps its own file (merged over the macOS config).
+    #[test]
+    fn the_dmg_asks_for_the_microphone_only() {
+        assert_eq!(keys(DMG_ENTITLEMENTS), [AUDIO_INPUT]);
+        let flat: String = DMG_ENTITLEMENTS.split_whitespace().collect();
+        assert!(flat.contains(&format!("<key>{AUDIO_INPUT}</key><true/>")));
+        let flat: String = ENTITLEMENTS.split_whitespace().collect();
+        assert!(flat.contains(&format!("<key>{AUDIO_INPUT}</key><true/>")));
+        let macos: serde_json::Value = serde_json::from_str(MACOS_CONF).unwrap();
+        assert_eq!(
+            macos["bundle"]["macOS"]["entitlements"],
+            "Lexpad.entitlements"
+        );
+        let mas: serde_json::Value = serde_json::from_str(MAS_CONF).unwrap();
+        assert_eq!(
+            mas["bundle"]["macOS"]["entitlements"],
+            "mas/Lexpad.entitlements"
         );
     }
 }

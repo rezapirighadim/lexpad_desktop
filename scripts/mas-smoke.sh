@@ -57,6 +57,7 @@ p=$(pid_of || true)
 [ -n "$p" ] && ok "running (pid $p)" || bad "it did not start"
 [ -d "$container" ] && ok "sandboxed: $container" || bad "no container: not sandboxed"
 codesign -d --entitlements :- "$app" 2>/dev/null | grep -q app-sandbox && ok "sandbox entitlement" || bad "no sandbox entitlement"
+codesign -d --entitlements :- "$app" 2>/dev/null | grep -q device.audio-input && ok "microphone entitlement (Say it back)" || bad "no microphone entitlement"
 
 echo "mas-smoke: 2. sign in (in the browser, by you)"
 echo "  Click Sign in… in Lexpad's window, sign in with the demo account in the browser, then press Return here."

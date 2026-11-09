@@ -85,6 +85,8 @@ src-tauri/src/player_window.rs   the Lexpad Player's window (the web app's /play
 src-tauri/src/video_hint.rs      the shortcut card's hint when a video app is in front: the apps' names, once per app per 14 days, 3 in all (tested)
 src/panel/watch.ts               the panel's "Watch a video…" / "Continue {title}" row (tested); src/lib/videoTitle.ts is lexpad_front's title parser, keep them identical
 src-tauri/src/app_menu.rs        the two windows: where Lexpad opens, ⌘1 / ⌘2, the macOS menu bar's Playback, Subtitles and Window menus (tested)
+src-tauri/src/line_tools.rs      the Player's Say it back needs: the webview's microphone answer, the privacy settings by name (tested)
+src-tauri/Lexpad.entitlements    the dmg's one entitlement, the microphone (hardened runtime; mas_bundle.rs tests it)
 src-tauri/src/launch.rs          the launch table A–G (`first_window`, tested): Player home unless the learner chose Today
 src-tauri/src/clip.rs            Player home's one-minute clip: its languages, the two tracks it plays with, staging (tested)
 src-tauri/clip/                  the clip (Tears of Steel, CC BY 3.0, CREDITS.txt) and its official subtitles, bundled as resources
@@ -363,7 +365,16 @@ The Player's page is the web app's `/player` route (lexpad_front `features/playe
   Player its own taskbar button (AppUserModelID `Lexpad.Player`, `taskbar::own_button`).
 - **The menu bar mirrors the Player's keys** (File → Open Video… ⌘O, Playback, Subtitles) with
   no bare-key accelerators: a menu item with a plain key would be taken from every text field.
-  Each item sends its command to the Player (`player:menu`); the page owns the keys.
+  Each item sends its command to the Player (`player:menu`); the page owns the keys. Playback's
+  line tools (Type What You Hear, Type Every Line, Say It Back, Say Every Line Back) have no
+  accelerator at all: ⌥T / ⌥S would take "†" / "ß" from every text field. The page keeps the two
+  check marks and the Say rows true with `player_menu_state`
+  (`{typeEvery, sayEvery, say: "shown"|"hidden"}`); before it calls, and after the Player
+  closes, the checks are off and the Say rows are not in the menu. On Windows the command does nothing.
+- **Say it back's microphone** (`line_tools::page_permission`): the Player window answers its
+  webview's microphone request with Allow (WKUIDelegate on macOS, WebView2 `PermissionRequested`
+  on Windows), so only the system's own prompts and settings decide; every other kind is left to
+  the webview's default. Both Mac builds carry the usage strings and the audio-input entitlement.
 - **The Player's right-click menu is the system's** (`player_context_menu`): the page names the
   items and their keys (from its own key table), the core checks them (`check_context_menu`: two
   levels, `CTX_MAX_ITEMS`, short labels, commands of the form `name[:arg]`) and pops the native
@@ -523,7 +534,9 @@ copy (docs/mac-app-store-plan.md). One codebase: `--features mas` plus
   window, nothing else: no shell, no fs, no http from the windows. The only addresses the app
   opens are on `APP_ORIGIN`: the connect page, the web app's home and a word's page
   (`/words/<id>`, the id checked as an API id), a checked same-origin path for Lexpad's window,
-  and the system's Accessibility and Notifications settings, all built in Rust. A small window
+  and the system's Accessibility, Notifications, Microphone and Speech Recognition settings
+  (the last two for the Player's Say it back, `player_open_privacy`, by a name the page sends,
+  never an address), all built in Rust. A small window
   passes at most an id, never an address; Lexpad's window may hand the system browser an https
   or mailto link the learner clicked, nothing else. No remote
   code; the updater is off (TODO before 1.0).

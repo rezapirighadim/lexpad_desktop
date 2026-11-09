@@ -24,6 +24,10 @@
   <!-- Exports the learner saves from Lexpad's window go to Downloads. -->
   <key>com.apple.security.files.downloads.read-write</key>
   <true/>
+  <!-- The Player's Say it back: the microphone, for WebKit's speech
+       recognition (macOS still asks the learner first). -->
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
   <!-- The Mac App Store identity, from the provisioning profile. -->
   <key>com.apple.application-identifier</key>
   <string>6Z95MR26LZ.app.lexpad.ios</string>

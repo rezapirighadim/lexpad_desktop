@@ -114,6 +114,9 @@ fn main() {
             "player_home",
             "player_home_note_seen",
             "player_open_clip",
+            // The Player's line tools (line_tools.rs, app_menu.rs).
+            "player_open_privacy",
+            "player_menu_state",
         ]),
     ))
     .expect("failed to run tauri-build");

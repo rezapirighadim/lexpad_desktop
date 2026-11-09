@@ -3,12 +3,16 @@
 //! ⌘2 / Ctrl+2 the Player, from anywhere in the app; Lexpad opens on Player
 //! home unless the learner chose Today (`launch`); and on macOS the menu bar
 //! mirrors the Player's keys in a Playback and a Subtitles menu, and the
-//! Window menu lists both windows and Player home.
+//! Window menu lists both windows and Player home. Playback carries the
+//! Player's line tools too (spec `uiux/2026-11-09-player-line-tools/spec.md`
+//! §2.4), whose check marks and Say rows the page keeps true
+//! (`player_menu_state`).
 //!
 //! One Dock tile on macOS, for both windows (decision in
 //! `docs/player-dock-icon.md`): a tile of its own would need the Player as a
 //! helper app inside Lexpad.app, with its own bundle, signing and IPC.
 
+use serde::Deserialize;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::main_window;
@@ -88,6 +92,13 @@ const PLAYER_ITEMS: &[(&str, &str, &str, Option<&str>)] = &[
     ("m.back", "Back 5 Seconds", "back5", None),
     ("m.forward", "Forward 5 Seconds", "forward5", None),
     ("m.replay", "Replay the Line", "replayLine", None),
+    // The line tools (spec §2.4). No ⌥ accelerators either: in a menu of the
+    // whole app ⌥T and ⌥S would take "†" and "ß" from every text field in
+    // Lexpad's window; the Player's page answers those keys itself.
+    (TYPE_LINE, "Type What You Hear", "typeLine", None),
+    (TYPE_EVERY, "Type Every Line", "typeEvery", None),
+    (SAY_LINE, "Say It Back", "sayLine", None),
+    (SAY_EVERY, "Say Every Line Back", "sayEvery", None),
     ("m.slower", "Slower", "slower", None),
     ("m.faster", "Faster", "faster", None),
     ("m.normal", "Normal Speed", "normalSpeed", None),
@@ -112,6 +123,161 @@ const PLAYER_ITEMS: &[(&str, &str, &str, Option<&str>)] = &[
     // Player home (spec B2): the page's own key is ⇧⌘H / Ctrl+Shift+H too.
     ("m.home", "Home", "home", Some("CmdOrCtrl+Shift+H")),
 ];
+
+/// The line tools' menu ids (spec §2.4).
+const TYPE_LINE: &str = "m.typeLine";
+const TYPE_EVERY: &str = "m.typeEvery";
+const SAY_LINE: &str = "m.sayLine";
+const SAY_EVERY: &str = "m.sayEvery";
+
+/// Whether the Player's page offers Say it back where it is now (spec §8:
+/// not where the speech service is missing, for example). Hidden until the
+/// page says otherwise.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SayRows {
+    Shown,
+    #[default]
+    Hidden,
+}
+
+/// What the Playback menu's line tools show: the two check marks and whether
+/// the Say rows are there.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub struct LineTools {
+    pub type_every: bool,
+    pub say_every: bool,
+    pub say: SayRows,
+}
+
+impl LineTools {
+    /// Say Every Line Back is never shown checked while its row is away.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    fn say_every_checked(self) -> bool {
+        self.say_every && self.say == SayRows::Shown
+    }
+}
+
+/// The Playback menu's line-tool items, kept to change them later (macOS).
+#[cfg(target_os = "macos")]
+pub struct LineToolsMenu {
+    playback: tauri::menu::Submenu<tauri::Wry>,
+    type_every: tauri::menu::CheckMenuItem<tauri::Wry>,
+    say_line: tauri::menu::MenuItem<tauri::Wry>,
+    say_every: tauri::menu::CheckMenuItem<tauri::Wry>,
+    /// What the menu shows now.
+    now: std::sync::Mutex<LineTools>,
+}
+
+#[cfg(target_os = "macos")]
+impl LineToolsMenu {
+    fn apply(&self, want: LineTools) -> Result<(), String> {
+        let mut now = self.now.lock().map_err(|_| "lock")?;
+        let e = |e: tauri::Error| e.to_string();
+        if want.say != now.say {
+            match want.say {
+                SayRows::Shown => {
+                    // Right after Type Every Line, wherever that is now.
+                    let at = self
+                        .playback
+                        .items()
+                        .map_err(e)?
+                        .iter()
+                        .position(|i| i.id().as_ref() == TYPE_EVERY)
+                        .ok_or("no Type Every Line in Playback")?
+                        + 1;
+                    self.playback
+                        .insert_items(&[&self.say_line, &self.say_every], at)
+                        .map_err(e)?;
+                }
+                SayRows::Hidden => {
+                    self.playback.remove(&self.say_line).map_err(e)?;
+                    self.playback.remove(&self.say_every).map_err(e)?;
+                }
+            }
+        }
+        self.type_every.set_checked(want.type_every).map_err(e)?;
+        self.say_every
+            .set_checked(want.say_every_checked())
+            .map_err(e)?;
+        *now = want;
+        Ok(())
+    }
+
+    /// The marks back as the page last said: muda flips a check item's mark on
+    /// a click, but the page may refuse the switch (Free, no subtitles, a
+    /// translation, the mini player, the language question). When it accepts,
+    /// it sends `player_menu_state` again and the marks follow.
+    fn restore_marks(&self) -> Result<(), String> {
+        let now = *self.now.lock().map_err(|_| "lock")?;
+        let e = |e: tauri::Error| e.to_string();
+        let (type_every, say_every) = marks_of(now);
+        self.type_every.set_checked(type_every).map_err(e)?;
+        self.say_every.set_checked(say_every).map_err(e)
+    }
+}
+
+/// The two check marks the menu shows for a state.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn marks_of(state: LineTools) -> (bool, bool) {
+    (state.type_every, state.say_every_checked())
+}
+
+/// Whether a Playback item is one of the two check items, whose mark the page decides.
+fn is_line_check(id: &str) -> bool {
+    id == TYPE_EVERY || id == SAY_EVERY
+}
+
+/// After a click on Type Every Line or Say Every Line Back: the marks as the page last said.
+fn restore_line_marks(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    if let Some(menu) = app.try_state::<LineToolsMenu>() {
+        if let Err(e) = menu.restore_marks() {
+            log::warn!("could not restore the Playback menu's marks: {e}");
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = app;
+}
+
+/// The Player's page tells the menu bar what its line tools are now
+/// (`invoke('player_menu_state', { typeEvery, sayEvery, say })`, `say` being
+/// "shown" or "hidden"), whenever one of them changes. Windows has no menu
+/// bar, so there it does nothing.
+#[tauri::command]
+pub fn player_menu_state(
+    app: AppHandle,
+    type_every: bool,
+    say_every: bool,
+    say: SayRows,
+) -> Result<(), String> {
+    set_line_tools(
+        &app,
+        LineTools {
+            type_every,
+            say_every,
+            say,
+        },
+    )
+}
+
+/// Back to the first state when the Player closes: checks off, Say rows away.
+pub fn player_closed(app: &AppHandle) {
+    if let Err(e) = set_line_tools(app, LineTools::default()) {
+        log::warn!("could not reset the Playback menu: {e}");
+    }
+}
+
+fn set_line_tools(app: &AppHandle, want: LineTools) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    if let Some(menu) = app.try_state::<LineToolsMenu>() {
+        return menu.apply(want);
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = (app, want);
+    Ok(())
+}
 
 /// The Player's right-click menu tags its items' ids with this, followed by
 /// the Player command the item sends (`player_window::player_context_menu`).
@@ -145,6 +311,9 @@ pub fn handle(app: &AppHandle, id: &str) {
         _ => {
             if let Some((_, _, command, _)) = PLAYER_ITEMS.iter().find(|(i, ..)| *i == id) {
                 to_player(app, command);
+                if is_line_check(id) {
+                    restore_line_marks(app);
+                }
             }
         }
     }
@@ -154,17 +323,30 @@ pub fn handle(app: &AppHandle, id: &str) {
 /// copy and paste), Playback, Subtitles and Window (Lexpad ⌘1, Lexpad Player ⌘2).
 #[cfg(target_os = "macos")]
 pub fn build(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
-    use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
+    use tauri::menu::{AboutMetadata, CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
     let item =
         |id: &str, title: &str, accel: Option<&str>| MenuItem::with_id(app, id, title, true, accel);
-    let player_item = |id: &str| -> tauri::Result<MenuItem<tauri::Wry>> {
-        let (_, title, _, accel) = PLAYER_ITEMS
+    // An item's title and accelerator from PLAYER_ITEMS.
+    fn entry(id: &str) -> (&str, Option<&str>) {
+        PLAYER_ITEMS
             .iter()
             .find(|(i, ..)| *i == id)
-            .copied()
-            .unwrap_or((id, id, "", None));
+            .map(|(_, title, _, accel)| (*title, *accel))
+            .unwrap_or((id, None))
+    }
+    let player_item = |id: &str| -> tauri::Result<MenuItem<tauri::Wry>> {
+        let (title, accel) = entry(id);
         item(id, title, accel)
     };
+    let player_check = |id: &str| -> tauri::Result<CheckMenuItem<tauri::Wry>> {
+        let (title, accel) = entry(id);
+        CheckMenuItem::with_id(app, id, title, true, false, accel)
+    };
+    // The line tools: the Say rows are made now but join Playback only when
+    // the page offers Say it back (LineToolsMenu::apply).
+    let type_every = player_check(TYPE_EVERY)?;
+    let say_line = player_item(SAY_LINE)?;
+    let say_every = player_check(SAY_EVERY)?;
     let lexpad = Submenu::with_items(
         app,
         "Lexpad",
@@ -216,6 +398,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
             &player_item("m.back")?,
             &player_item("m.forward")?,
             &player_item("m.replay")?,
+            &player_item(TYPE_LINE)?,
+            &type_every,
             &PredefinedMenuItem::separator(app)?,
             &player_item("m.slower")?,
             &player_item("m.faster")?,
@@ -261,10 +445,18 @@ pub fn build(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
             &PredefinedMenuItem::close_window(app, None)?,
         ],
     )?;
-    Menu::with_items(
+    let menu = Menu::with_items(
         app,
         &[&lexpad, &file, &edit, &playback, &subtitles, &window],
-    )
+    )?;
+    app.manage(LineToolsMenu {
+        playback,
+        type_every,
+        say_line,
+        say_every,
+        now: std::sync::Mutex::new(LineTools::default()),
+    });
+    Ok(menu)
 }
 
 /// Windows has no menu bar: Ctrl+1 and Ctrl+2 are answered by each window's
@@ -322,6 +514,10 @@ mod tests {
             "transcript",
             "shortcuts",
             "home",
+            "typeLine",
+            "typeEvery",
+            "sayLine",
+            "sayEvery",
         ];
         for (id, _, command, accel) in PLAYER_ITEMS {
             assert!(id.starts_with("m."));
@@ -329,5 +525,84 @@ mod tests {
             // Only modified keys in the menu: a bare key would be taken from text fields.
             assert!(accel.is_none_or(|a| a.contains("Cmd")), "{id}");
         }
+    }
+
+    /// The line tools (spec `uiux/2026-11-09-player-line-tools/spec.md`
+    /// §2.4): right after Replay the Line, each sending its Player command,
+    /// with no accelerator at all (⌥T and ⌥S would take "†" and "ß" from
+    /// every text field).
+    #[test]
+    fn the_line_tools_follow_replay_with_no_accelerator() {
+        let want = [
+            ("m.typeLine", "Type What You Hear", "typeLine"),
+            ("m.typeEvery", "Type Every Line", "typeEvery"),
+            ("m.sayLine", "Say It Back", "sayLine"),
+            ("m.sayEvery", "Say Every Line Back", "sayEvery"),
+        ];
+        let replay = PLAYER_ITEMS
+            .iter()
+            .position(|(id, ..)| *id == "m.replay")
+            .unwrap();
+        for (n, (id, title, command)) in want.into_iter().enumerate() {
+            let (i, t, c, accel) = PLAYER_ITEMS[replay + 1 + n];
+            assert_eq!((i, t, c), (id, title, command));
+            assert_eq!(accel, None, "{id}");
+        }
+        // The two "every line" modes are the check items, the two Say rows
+        // the ones that come and go (LineToolsMenu).
+        assert_eq!((TYPE_EVERY, SAY_EVERY), ("m.typeEvery", "m.sayEvery"));
+        assert_eq!((SAY_LINE, SAY_EVERY), ("m.sayLine", "m.sayEvery"));
+    }
+
+    #[test]
+    fn a_click_on_a_line_check_puts_the_marks_back_as_the_page_said() {
+        assert!(is_line_check(TYPE_EVERY));
+        assert!(is_line_check(SAY_EVERY));
+        assert!(!is_line_check(SAY_LINE));
+        assert!(!is_line_check("m.replay"));
+        // The marks follow the last state the page sent, never muda's own flip.
+        let free = LineTools {
+            type_every: false,
+            say_every: false,
+            say: SayRows::Shown,
+        };
+        assert_eq!(marks_of(free), (false, false));
+        let typing = LineTools {
+            type_every: true,
+            say_every: false,
+            say: SayRows::Shown,
+        };
+        assert_eq!(marks_of(typing), (true, false));
+        let hidden = LineTools {
+            type_every: false,
+            say_every: true,
+            say: SayRows::Hidden,
+        };
+        assert_eq!(marks_of(hidden), (false, false));
+    }
+
+    #[test]
+    fn the_page_names_the_say_rows_shown_or_hidden() {
+        let parse = |s: &str| serde_json::from_str::<SayRows>(s);
+        assert_eq!(parse("\"shown\"").unwrap(), SayRows::Shown);
+        assert_eq!(parse("\"hidden\"").unwrap(), SayRows::Hidden);
+        assert!(parse("\"locked\"").is_err());
+        assert!(parse("\"Shown\"").is_err());
+        // Before the page says anything: no check marks, no Say rows.
+        let first = LineTools::default();
+        assert_eq!(first.say, SayRows::Hidden);
+        assert!(!first.type_every && !first.say_every);
+        // Say Every Line Back is not left checked on a row that is away.
+        let away = LineTools {
+            type_every: true,
+            say_every: true,
+            say: SayRows::Hidden,
+        };
+        assert!(!away.say_every_checked());
+        assert!(LineTools {
+            say: SayRows::Shown,
+            ..away
+        }
+        .say_every_checked());
     }
 }

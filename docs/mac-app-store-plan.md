@@ -118,13 +118,17 @@ One codebase. The Mac App Store build is `--features mas` plus the overlay
 - `com.apple.security.files.user-selected.read-only`: films and subtitles the learner opens.
 - `com.apple.security.files.downloads.read-write`: exports saved from Lexpad's window go to
   Downloads, as today.
+- `com.apple.security.device.audio-input`: the microphone for the Player's Say it back, which
+  runs WebKit's speech recognition (`webkitSpeechRecognition`) in the Player's webview; the
+  sandbox refuses the microphone without it. `Info.mas.plist` carries the two strings macOS shows
+  in its prompts, `NSMicrophoneUsageDescription` and `NSSpeechRecognitionUsageDescription`
+  (spec `uiux/2026-11-09-player-line-tools/spec.md` §9, §F1). The dmg asks for the same key in
+  `src-tauri/Lexpad.entitlements`, because the hardened runtime closes the microphone too.
 - `com.apple.application-identifier` and `com.apple.developer.team-identifier`: the App Store
   identity, matched by the provisioning profile.
 
 Not asked for (and why): Accessibility and Apple Events (not allowed in a sandbox and not
-needed), microphone and camera (the bundled web app does not use them today; when the Player's
-"say after the actor" ships, add `com.apple.security.device.audio-input` and
-`NSMicrophoneUsageDescription` in the same change), bookmarks (see "Known limits").
+needed), the camera (nothing uses it), bookmarks (see "Known limits").
 
 **Subtitles next to a film.** `Info.mas.plist` declares the subtitle types (srt, vtt, webvtt,
 ass, ssa) with `NSIsRelatedItemType`. When the sandbox will not let the core list the film's

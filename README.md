@@ -297,8 +297,11 @@ warning.
 
 Lexpad has its own Apple Developer Program membership (Individual, Reza Pirighadim, team
 `6Z95MR26LZ`). `scripts/release-mac.sh` signs `Lexpad.app` (deep, hardened runtime, secure
-timestamp, identifier `app.lexpad.desktop`, no entitlements: the app is not sandboxed, and
-Accessibility, the global shortcut, the clipboard and the network need none) with
+timestamp, identifier `app.lexpad.desktop`, with `src-tauri/Lexpad.entitlements`: only
+`com.apple.security.device.audio-input`, the microphone for the Player's Say it back, which the
+hardened runtime closes otherwise; the app is not sandboxed, and Accessibility, the global
+shortcut, the clipboard and the network need none; the script checks the key is in the signed
+app) with
 **Developer ID Application: Reza Pirighadim (6Z95MR26LZ)**, then notarizes the `.dmg` with
 `xcrun notarytool submit --key … --key-id … --issuer … --wait` and staples the ticket to it, so
 Gatekeeper opens it without a warning. The App Store Connect API key comes from the environment
