@@ -382,14 +382,14 @@ The Player's page is the web app's `/player` route (lexpad_front `features/playe
   "Opens your browser. Lexpad never sees your password."
 - **Every sign-in reaches a notebook** (admin audit, 9 Nov 2026: a third of the desktop sign-ups
   ended with none). The web app's first run (two languages and a first word) is the only place a
-  notebook is made. Signed in from the card, the panel or the small Settings window with an account
-  that has no notebook, `connect` opens Lexpad's window on that first run
-  (`launch::opens_setup_after_sign_in`); the card, the panel and Settings say "Your notebook is not
+  notebook is made. Signed in from the Player (where most sign-ins start since Player home), the
+  card, the panel or the small Settings window with an account that has no notebook, `connect`
+  opens Lexpad's window on that first run (`launch::opens_setup_after_sign_in`), and so does a Mac
+  sign-in finished after a restart (`resume_sign_in`, caller `launch::RESUMED`); the card, the panel and Settings say "Your notebook is not
   set up yet" with **Set up my notebook** (`open_web`), never a bare "Create a notebook in Lexpad
   first." Only when the API listed the notebooks on that read (`state` → `notebooksKnown`): an
   empty copy kept from before (offline, a cold start, a server error) says nothing, and the card
-  says the notebooks could not be read instead. Lexpad's own window goes there anyway; the Player
-  makes the notebook its card names.
+  says the notebooks could not be read instead. Lexpad's own window goes there anyway.
 - **Nothing in the background unasked**: start on login is off on a new install (no "Background
   Items Added" on the first run); an install that had it keeps it, and it is re-applied with
   `--login` at each start. The first time the last window closes, once per install

@@ -365,19 +365,26 @@ pub async fn connect(
         Err(_) => return Err("timeout".into()),
     };
     let user = trade_code(&app, &state, &code, &pkce.verifier, &redirect).await?;
-    // Signed in from the card, the panel or Settings with an account that has
-    // no notebook yet: Lexpad opens on its first run (the two languages and a
-    // first word), the only place a notebook is made.
-    let caller = window.label().to_owned();
-    if crate::launch::opens_setup_after_sign_in(&caller, Some(0)) {
-        let count = state.api.notebooks().await.ok().map(|list| list.len());
-        if crate::launch::opens_setup_after_sign_in(&caller, count) {
-            popup::hide(&app);
-            panel::hide(&app, false);
-            crate::open_web(&app, None);
-        }
-    }
+    open_setup_if_no_notebook(&app, &state, window.label()).await;
     Ok(user)
+}
+
+/// Signed in from the Player, the card, the panel or Settings (or after a
+/// restart) with an account that has no notebook yet: Lexpad's window opens
+/// on its first run (the two languages and a first word), the only place a
+/// notebook is made (`launch::opens_setup_after_sign_in`). Says whether it did.
+async fn open_setup_if_no_notebook(app: &AppHandle, state: &AppState, caller: &str) -> bool {
+    if !crate::launch::opens_setup_after_sign_in(caller, Some(0)) {
+        return false;
+    }
+    let count = state.api.notebooks().await.ok().map(|list| list.len());
+    if !crate::launch::opens_setup_after_sign_in(caller, count) {
+        return false;
+    }
+    popup::hide(app);
+    panel::hide(app, false);
+    crate::open_web(app, None);
+    true
 }
 
 /// Trades a one-time code and its verifier for this app's own session, and
@@ -418,7 +425,13 @@ pub fn resume_sign_in(app: AppHandle, code: String, verifier: String) {
             return;
         };
         match trade_code(&app, &state, &code, &verifier, auth::APP_REDIRECT).await {
-            Ok(_) => crate::open_web(&app, None),
+            // A new account goes to its first run, as a sign-in that did not
+            // need the restart does; any other opens Lexpad's window signed in.
+            Ok(_) => {
+                if !open_setup_if_no_notebook(&app, &state, crate::launch::RESUMED).await {
+                    crate::open_web(&app, None);
+                }
+            }
             Err(e) => log::warn!("the sign-in begun before Lexpad was quit failed: {e}"),
         }
     });
