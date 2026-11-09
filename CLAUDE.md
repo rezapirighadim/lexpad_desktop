@@ -50,7 +50,9 @@ src-tauri/src/capture/           reading the selection: macos.rs (AX, then ⌘C)
 src-tauri/src/services_macos.rs  "Add to Lexpad" in the macOS Services menu; in the Mac App Store build its first-launch probe
 src-tauri/src/services_live.rs   the probe's rules: when ⌘⇧L's service is live, the other copy, giving up (tested)
 src-tauri/src/api.rs             the API client: the only holder of tokens (tested with a local server)
-src-tauri/src/auth.rs            RFC 8252 sign-in: PKCE, state, loopback listener (tested)
+src-tauri/src/auth.rs            RFC 8252 sign-in: PKCE, state; lexpad://auth/callback on macOS (kept across a quit), loopback on Windows (tested)
+src-tauri/src/signin_macos.rs    whether this bundle registers `lexpad`, and passing a callback to the other Mac copy
+scripts/check-mac-dmg.sh         Gatekeeper's checks on a .dmg and its app (stapled tickets, every Mach-O signed); release-mac.sh runs it
 src-tauri/src/store.rs           the session in the Keychain / Credential Manager (keyring crate)
 src-tauri/src/commands.rs        everything a window may ask; capabilities/*.json say which window may ask what
 src-tauri/src/popup.rs           showing, placing and hiding the popup; it grows inside the work area
@@ -434,7 +436,19 @@ copy (docs/mac-app-store-plan.md). One codebase: `--features mas` plus
   web app's `/connect-desktop` asks the API for a one-time code bound to the challenge and the
   address (`POST /me/desktop-codes`) and redirects; the app checks the state in constant time and
   trades code + verifier at `POST /auth/desktop/token` for a delegated session of platform
-  `desktop`. That session cannot connect other clients, change the password or allow an
+  `desktop`. **On macOS both copies (the site's dmg and the Mac App Store copy) ask for
+  `lexpad://auth/callback`** (RFC 8252 §7.1; owner 9 Nov 2026; the Mac App Store copy may not
+  listen on a port, App Review 2.4.5(i), and has no `network.server`). The scheme is in
+  `Info.plist` and `Info.mas.plist` (each with its own URL name); macOS opens the URL in the
+  running app, or starts it; `tauri-plugin-deep-link` hands it to `auth::SchemeWait`, which takes
+  only that exact callback with the waiting state, once. The state and verifier are also kept in
+  the Keychain (`store::PendingKeyring`) until answered, cancelled or `CONNECT_TIMEOUT`, so a
+  Lexpad quit meanwhile finishes the sign-in when macOS starts it for the link
+  (`commands::resume_sign_in`). With both copies installed macOS gives the link to one of them;
+  one that is not waiting passes it to the other if that one runs (`signin_macos::to_other_copy`,
+  once, marked `fwd=1`). A run whose bundle does not register the scheme (development, the
+  player test build) uses the loopback, as Windows always does. The API takes the address only
+  because it is in `DESKTOP_APP_REDIRECT_URIS`, and the web app only that exact string. That session cannot connect other clients, change the password or allow an
   assistant, is listed under Signed-in devices as "Desktop app", and is revoked on sign-out.
 - **Tokens live in the operating system's credential store**, one entry per API origin (so a
   development build never touches the production session): the refresh token and who it

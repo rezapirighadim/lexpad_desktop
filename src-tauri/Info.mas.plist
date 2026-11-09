@@ -124,6 +124,23 @@
       </array>
     </dict>
   </array>
+  <!-- Signing in (auth.rs, RFC 8252 section 7.1): the browser comes back to
+       lexpad://auth/callback, which macOS opens in Lexpad. This copy may not
+       listen on a port, so it has no loopback listener. The dmg registers
+       the same scheme; its URL name differs. -->
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>
+      <string>app.lexpad.ios.signin</string>
+      <key>CFBundleTypeRole</key>
+      <string>Viewer</string>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>lexpad</string>
+      </array>
+    </dict>
+  </array>
   <!-- Export compliance: the app uses only the encryption built into macOS
        (HTTPS through the system's TLS and the Keychain), which is exempt. -->
   <key>ITSAppUsesNonExemptEncryption</key>

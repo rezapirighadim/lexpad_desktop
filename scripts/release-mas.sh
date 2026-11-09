@@ -160,6 +160,16 @@ plist="$app/Contents/Info.plist"
 [ "$(/usr/libexec/PlistBuddy -c 'Print :LSApplicationCategoryType' "$plist")" = "public.app-category.education" ]
 [ "$(/usr/libexec/PlistBuddy -c 'Print :NSServices:0:NSKeyEquivalent:default' "$plist")" = "L" ]
 [ "$(/usr/libexec/PlistBuddy -c 'Print :ITSAppUsesNonExemptEncryption' "$plist")" = "false" ]
+# Signing in comes back as lexpad://auth/callback (auth.rs): the scheme must be
+# registered, and nothing may listen (App Review 2.4.5(i), no network.server).
+[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' "$plist")" = "lexpad" ] || {
+  echo "release-mas: the lexpad URL scheme is not registered" >&2
+  exit 1
+}
+codesign -d --entitlements :- "$app" 2>/dev/null | grep -q "network.server" && {
+  echo "release-mas: the app asks for network.server" >&2
+  exit 1
+}
 plutil -lint "$app/Contents/Resources/PrivacyInfo.xcprivacy" >/dev/null || { echo "release-mas: no privacy manifest" >&2; exit 1; }
 # The core must be the App Store one (the core's own config::MAS).
 strings "$app/Contents/MacOS/lexpad-desktop" | grep -q "This copy of Lexpad does not sell" && {

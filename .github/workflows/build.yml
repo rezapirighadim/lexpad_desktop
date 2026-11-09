@@ -21,7 +21,10 @@
 #   running 20 seconds later, and the placement smoke test: a build with the
 #   `smoke-test` feature (never shipped; src-tauri/src/smoke.rs) opens the
 #   popup at points all over every monitor and the panel from an icon, and
-#   fails unless every window ends inside its monitor's work area.
+#   fails unless every window ends inside its monitor's work area. The tray
+#   icon is clicked with the real mouse (scripts/tray-check.ps1): the
+#   right-click menu has Open Lexpad and Quit Lexpad, Quit quits, and a
+#   left-click opens the panel.
 #   Before that, the Microsoft Store's MSIX (scripts/msix.ps1, unsigned: the
 #   Store signs it) as its own artifact, a test-signed copy installed and
 #   started from its package with start on login and the sign-in's loopback
@@ -176,6 +179,25 @@ jobs:
           Write-Host "Lexpad is running (pid $($p.Id))"
           Stop-Process -Id $p.Id -Force
 
+      # The tray icon with the real mouse: a right-click opens the menu with
+      # Open Lexpad and Quit Lexpad, Quit quits, a left-click opens the panel
+      # (scripts/tray-check.ps1; screenshots in the tray-check artifact).
+      - name: Tray check
+        timeout-minutes: 5
+        shell: powershell
+        run: |
+          $exe = Get-ChildItem "$env:LOCALAPPDATA\Lexpad" -Filter *.exe -Recurse |
+            Where-Object { $_.Name -notlike 'uninstall*' -and $_.Name -notin 'ffmpeg.exe', 'ffprobe.exe' } | Select-Object -First 1
+          ./scripts/tray-check.ps1 -Exe $exe.FullName
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tray-check
+          if-no-files-found: ignore
+          retention-days: 14
+          path: tray-check/
+
       # The video player's FFmpeg is installed beside Lexpad and runs, and
       # the installer added "Open with Lexpad" and a Default Apps entry
       # without making Lexpad the default (src-tauri/windows/media-open-with.nsh).
@@ -264,3 +286,34 @@ jobs:
           Write-Host "exit code $($p.ExitCode)"
           if (-not (Select-String -Path smoke.txt -Pattern '^SMOKE failures 0' -Quiet)) { Get-Content smoke-err.txt; exit 1 }
           exit $p.ExitCode
+
+  # The same tray check on the Windows 10 taskbar (Server 2022's shell), with
+  # the installer the release job made.
+  tray-windows-2022:
+    needs: release-windows
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: lexpad-desktop-Windows
+          path: installers
+      - name: Install
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem 'installers' -Recurse -Filter *-setup.exe | Select-Object -First 1
+          Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait
+      - name: Tray check
+        timeout-minutes: 5
+        shell: powershell
+        run: |
+          $exe = Get-ChildItem "$env:LOCALAPPDATA\Lexpad" -Filter *.exe -Recurse |
+            Where-Object { $_.Name -notlike 'uninstall*' -and $_.Name -notin 'ffmpeg.exe', 'ffprobe.exe' } | Select-Object -First 1
+          ./scripts/tray-check.ps1 -Exe $exe.FullName
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tray-check-windows-2022
+          if-no-files-found: ignore
+          retention-days: 14
+          path: tray-check/

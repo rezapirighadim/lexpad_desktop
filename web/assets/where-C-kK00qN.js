@@ -1,0 +1,1 @@
+import{t as e}from"./apple-NA0ScsG1.js";function t(){return!e()}export{t};

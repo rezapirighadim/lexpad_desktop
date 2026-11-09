@@ -1,0 +1,1 @@
+function e(e){let t=Math.max(0,Math.round(e)),n=Math.floor(t/60);return`${String(n)}:${String(t%60).padStart(2,`0`)}`}function t(e){let t=Math.max(0,e)/1e6;return`${t<10?t.toFixed(1):String(Math.round(t))} MB`}function n(e,t){return t>e}export{t as n,n as r,e as t};

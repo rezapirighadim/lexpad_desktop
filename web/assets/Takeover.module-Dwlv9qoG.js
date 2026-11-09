@@ -1,0 +1,1 @@
+var e={takeover:`GO-TIh`,burst:`Nn6Dui`,title:`_03S6xO`,line:`gdC7Q8`,done:`V-GgyJ press`};export{e as t};

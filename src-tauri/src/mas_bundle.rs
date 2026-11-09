@@ -36,7 +36,11 @@ mod tests {
 
     #[test]
     fn the_mas_info_plist_keeps_everything_the_dmg_declares() {
-        for s in strings(DMG) {
+        // The URL type's name is each copy's own (both_mac_copies_register_the_sign_in_scheme).
+        for s in strings(DMG)
+            .into_iter()
+            .filter(|s| *s != "app.lexpad.desktop.signin")
+        {
             assert!(
                 MAS.contains(&format!("<string>{s}</string>")),
                 "Info.mas.plist lacks {s}"
@@ -48,6 +52,27 @@ mod tests {
         assert!(MAS
             .replace('\r', "")
             .contains("<key>ITSAppUsesNonExemptEncryption</key>\n  <false/>"));
+    }
+
+    /// The sign-in's scheme (auth::APP_REDIRECT) is registered by both Mac
+    /// copies, each under its own URL name; the player test build keeps the
+    /// loopback (signin_macos::scheme_registered).
+    #[test]
+    fn both_mac_copies_register_the_sign_in_scheme() {
+        let scheme = crate::auth::APP_REDIRECT.split(':').next().unwrap();
+        let want = format!("<key>CFBundleURLSchemes</key><array><string>{scheme}</string></array>");
+        for (plist, name) in [
+            (MAS, "app.lexpad.ios.signin"),
+            (DMG, "app.lexpad.desktop.signin"),
+        ] {
+            let flat: String = plist.split_whitespace().collect();
+            assert!(flat.contains("<key>CFBundleURLTypes</key>"));
+            assert!(flat.contains(&want));
+            assert!(flat.contains(&format!(
+                "<key>CFBundleURLName</key><string>{name}</string>"
+            )));
+        }
+        assert!(!include_str!("../Info.playertest.plist").contains("CFBundleURLTypes"));
     }
 
     #[test]
@@ -81,7 +106,6 @@ mod tests {
             [
                 "com.apple.security.app-sandbox",
                 "com.apple.security.network.client",
-                "com.apple.security.network.server",
                 "com.apple.security.files.user-selected.read-only",
                 "com.apple.security.files.downloads.read-write",
                 "com.apple.application-identifier",
@@ -89,6 +113,8 @@ mod tests {
             ]
         );
         assert!(ENTITLEMENTS.contains("<string>6Z95MR26LZ.app.lexpad.ios</string>"));
+        // App Review 2.4.5(i): no listening socket in this copy.
+        assert!(!ENTITLEMENTS.contains("<key>com.apple.security.network.server</key>"));
         let helper: Vec<&str> = HELPER
             .split("<key>")
             .skip(1)
