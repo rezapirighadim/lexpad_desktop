@@ -406,7 +406,52 @@ export class Popup {
       return notebookFor(headword, chosen, this.notebooks());
     };
 
+    // A new account with no notebook yet: the card cannot keep the word, so
+    // it sends the learner to Lexpad's first run, which makes one (the two
+    // languages and a first word). It used to say "Create a notebook in
+    // Lexpad first." with only Close, a dead end (admin audit, 9 Nov 2026).
+    const setUp = (): void => {
+      meta.textContent = '';
+      picker.remove();
+      body.replaceChildren(
+        el(
+          'div',
+          'note',
+          'Your notebook is not set up yet. Pick your languages in Lexpad, then add this word.',
+        ),
+      );
+      const open = (): void => {
+        void this.backend.openWeb(null).finally(() => void this.close());
+      };
+      actions.replaceChildren(
+        button('btn primary', 'Set up my notebook', open),
+        button('btn', 'Close', () => void this.close()),
+      );
+      this.enter = open;
+    };
+
+    // No list of notebooks this time (offline, a server error, a cold start
+    // with nothing kept): the card says so rather than guess the account has none.
+    const unread = (): void => {
+      meta.textContent = '';
+      picker.remove();
+      body.replaceChildren(
+        el(
+          'div',
+          'note',
+          'Lexpad could not read your notebooks just now. Check your connection and try again.',
+        ),
+      );
+      actions.replaceChildren(button('btn', 'Close', () => void this.close()));
+      this.enter = undefined;
+    };
+
     const nowhere = (): void => {
+      if (this.notebooks().length === 0) {
+        if (this.state?.notebooksKnown === true) setUp();
+        else unread();
+        return;
+      }
       meta.textContent = '';
       body.replaceChildren(
         el('div', 'note', 'You have no notebook for this language. Make one in Lexpad and try again.'),
@@ -452,11 +497,6 @@ export class Popup {
     const lookUp = async (): Promise<void> => {
       const { notebook } = target();
       if (notebook === undefined) {
-        if (this.notebooks().length === 0) {
-          meta.textContent = '';
-          body.replaceChildren(el('div', 'note', 'Create a notebook in Lexpad first.'));
-          return;
-        }
         nowhere();
         return;
       }
@@ -540,7 +580,12 @@ export class Popup {
           note.textContent = 'This word is already in your notebook.';
           add.textContent = 'Already added';
           add.disabled = true;
-        } else if (reason === 'no_notebook') note.textContent = 'Create a notebook in Lexpad first.';
+        } else if (reason === 'no_notebook' && this.notebooks().length === 0) {
+          note.textContent = '';
+          note.className = 'note';
+          setUp();
+        } else if (reason === 'no_notebook')
+          note.textContent = 'This notebook is no longer there. Close the card and try again.';
         else if (reason === 'offline') note.textContent = 'You seem to be offline. Try again in a moment.';
         else note.textContent = 'Could not add the word. Try again.';
       }

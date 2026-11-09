@@ -49,6 +49,12 @@ export interface State {
   connected: boolean;
   user: User | null;
   notebooks: Notebook[];
+  /**
+   * Whether `notebooks` is the API's answer of this read, not the copy kept
+   * from an earlier one (offline, a server error, a cold start). Only a known
+   * empty list means the account has no notebook yet.
+   */
+  notebooksKnown: boolean;
   notebookId: string | null;
   capture: Capture | null;
   shortcut: string;

@@ -91,6 +91,8 @@ export interface Backend {
   openPlayerPick(): Promise<void>;
   /** A limit message's "See Pro": puts the card away and opens Settings → Plan in Lexpad. */
   openPlan(): Promise<void>;
+  /** Lexpad's home (its first run for an account with no notebook), in its window or the browser. */
+  openWeb(wordId: null): Promise<void>;
 }
 
 export interface SettingsBackend {
@@ -107,6 +109,8 @@ export interface SettingsBackend {
   setOpenOnLaunch(on: boolean): Promise<boolean>;
   setOpenInBrowser(on: boolean): Promise<boolean>;
   appInfo(): Promise<AppInfo>;
+  /** Lexpad's home (its first run for an account with no notebook), in its window or the browser. */
+  openWeb(wordId: null): Promise<void>;
 }
 
 /** What the menu-bar / tray panel needs from the core. */

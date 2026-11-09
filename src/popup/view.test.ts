@@ -23,6 +23,7 @@ function fakeBackend(state: Partial<State>, over: Partial<Backend> = {}): Backen
     connected: true,
     user: { id: 'u', email: 'lena@example.test', displayName: 'Lena' },
     notebooks: [en],
+    notebooksKnown: true,
     notebookId: 'n-en',
     capture: null,
     shortcut: 'CommandOrControl+Shift+L',
@@ -51,6 +52,9 @@ function fakeBackend(state: Partial<State>, over: Partial<Backend> = {}): Backen
     openPlan: vi.fn(async () => {
       calls.push('plan');
     }),
+    openWeb: vi.fn(async () => {
+      calls.push('web');
+    }),
     ...over,
   };
 }
@@ -71,6 +75,59 @@ afterEach(() => {
 });
 
 describe('Popup', () => {
+  it('sends an account with no notebook to set one up instead of a dead end', async () => {
+    const backend = fakeBackend({ notebooks: [], notebookId: null, capture: capture({ text: 'candid' }) });
+    const popup = new Popup(root, backend);
+    await popup.open();
+    await flush();
+
+    expect(backend.lookup).not.toHaveBeenCalled();
+    expect(root.textContent).toContain('Your notebook is not set up yet.');
+    expect(root.textContent).not.toContain('Create a notebook in Lexpad first.');
+    const buttons = [...root.querySelectorAll<HTMLButtonElement>('.actions button')].map(
+      (b) => b.textContent,
+    );
+    expect(buttons).toEqual(['Set up my notebook', 'Close']);
+
+    press('Enter');
+    await flush();
+    await flush();
+    expect(backend.openWeb).toHaveBeenCalledWith(null);
+    expect(backend.addWord).not.toHaveBeenCalled();
+    expect(backend.calls).toEqual(['web', 'hide']);
+  });
+
+  it('says the notebooks could not be read, not "set up", when the empty list is only the kept copy', async () => {
+    const backend = fakeBackend({
+      notebooks: [],
+      notebookId: null,
+      notebooksKnown: false,
+      capture: capture({ text: 'candid' }),
+    });
+    const popup = new Popup(root, backend);
+    await popup.open();
+    await flush();
+    expect(root.textContent).toContain('Lexpad could not read your notebooks just now.');
+    expect(root.textContent).not.toContain('Set up my notebook');
+    expect(backend.lookup).not.toHaveBeenCalled();
+  });
+
+  it('keeps an account that has notebooks away from set-up when its chosen one is gone', async () => {
+    const backend = fakeBackend(
+      { capture: capture({ text: 'candid' }) },
+      { addWord: vi.fn(async () => Promise.reject('no_notebook')) },
+    );
+    const popup = new Popup(root, backend);
+    await popup.open();
+    await flush();
+    press('Enter');
+    await flush();
+    expect(root.textContent).not.toContain('Set up my notebook');
+    expect(root.querySelector('.note.bad')?.textContent).toBe(
+      'This notebook is no longer there. Close the card and try again.',
+    );
+  });
+
   it('is dragged by its header, and the buttons stay direct children of the card so they stick to its bottom', async () => {
     const backend = fakeBackend({ capture: capture({ text: 'candid' }) });
     const popup = new Popup(root, backend);
@@ -295,6 +352,7 @@ describe('Popup', () => {
       connected,
       user: null,
       notebooks: connected ? [en] : [],
+      notebooksKnown: connected,
       notebookId: null,
       capture: null,
       shortcut: 'x',
