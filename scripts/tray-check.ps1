@@ -7,10 +7,10 @@
 #   3. Start it again and left-click the icon: the panel opens.
 #
 # The icon's place comes from Shell_NotifyIconGetRect for the window
-# tray-icon makes (class tray_icon_app). A new icon may sit in the overflow
-# (under the ^ arrow) on the runner, as on a learner's Windows 11, so the
-# check first asks Explorer to show every icon, and when the icon still has
-# no place it opens the overflow and clicks it there, as a learner would.
+# tray-icon makes (class tray_icon_app). A new icon sits in the overflow
+# (under the ^ arrow) on the runner, as on a learner's Windows 11, where the
+# shell gives the ^ button's place: then the check opens the overflow and
+# clicks the icon there, as a learner would.
 # Each step leaves a screenshot in tray-check/ (uploaded by the workflow).
 #
 # Prints TRAY lines and "TRAY failures <n>"; exits 1 when any step failed.
@@ -90,9 +90,6 @@ function Click([int] $x, [int] $y, [string] $button) {
 }
 function Escape { [TrayWin]::keybd_event(0x1B, 0, 0, [UIntPtr]::Zero); [TrayWin]::keybd_event(0x1B, 0, 2, [UIntPtr]::Zero) }
 
-# Every icon in the taskbar itself, not in the overflow (Windows 10 / Server).
-Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer' -Name EnableAutoTray -Value 0 -Type DWord -ErrorAction SilentlyContinue
-
 function Start-Lexpad {
   Get-Process lexpad-desktop -ErrorAction SilentlyContinue | Stop-Process -Force
   Start-Sleep -Seconds 1
@@ -132,33 +129,46 @@ function Icon-Rect($tray) {
   return $null
 }
 
-# The ^ button that opens the overflow, by UI Automation; then the icon in
-# it, by its tooltip "Lexpad".
-function Overflow-Icon {
+# The ^ button that opens the overflow ("Show hidden icons"), by UI Automation.
+function Chevron {
   Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
   $root = [System.Windows.Automation.AutomationElement]::RootElement
   $all = [System.Windows.Automation.Condition]::TrueCondition
-  $chevron = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $all) |
-    Where-Object { $_.Current.Name -match '^(Show hidden icons|Notification Chevron)' } | Select-Object -First 1
-  if (-not $chevron) { Write-Host 'TRAY no overflow button found'; return $null }
+  return $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $all) |
+    Where-Object { $_.Current.Name -match '^(Show hidden icons|Hide hidden icons|Notification Chevron)' } | Select-Object -First 1
+}
+
+function Inside($r, $b) {
+  $cx = ($r.Left + $r.Right) / 2; $cy = ($r.Top + $r.Bottom) / 2
+  return $cx -ge $b.X -and $cx -le ($b.X + $b.Width) -and $cy -ge $b.Y -and $cy -le ($b.Y + $b.Height)
+}
+
+# The icon's own rectangle. A new icon sits in the overflow on Windows 11
+# (and Server 2025), where the shell answers with the ^ button's rectangle:
+# then the overflow is opened, as a learner would, and the icon is found in it.
+function Find-Icon($tray) {
+  $r = Icon-Rect $tray
+  $chevron = Chevron
+  if ($r -and (-not $chevron -or -not (Inside $r $chevron.Current.BoundingRectangle))) { return $r }
+  if (-not $chevron) { Write-Host 'TRAY no icon and no overflow button'; return $null }
+  Write-Host 'TRAY the icon is in the overflow; opening it'
   $c = $chevron.Current.BoundingRectangle
-  Click ([int]($c.X + $c.Width / 2)) ([int]($c.Y + $c.Height / 2)) 'left'
-  Start-Sleep -Seconds 1
+  if ($chevron.Current.Name -notmatch '^Hide') {
+    Click ([int]($c.X + $c.Width / 2)) ([int]($c.Y + $c.Height / 2)) 'left'
+    Start-Sleep -Seconds 1
+  }
+  $r = Icon-Rect $tray
+  if ($r -and -not (Inside $r $c)) { return $r }
+  $root = [System.Windows.Automation.AutomationElement]::RootElement
+  $all = [System.Windows.Automation.Condition]::TrueCondition
   $icon = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $all) |
     Where-Object { $_.Current.Name -like 'Lexpad*' -and $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button } | Select-Object -First 1
   if (-not $icon) { Write-Host 'TRAY Lexpad is not in the overflow either'; return $null }
   $b = $icon.Current.BoundingRectangle
-  Write-Host "TRAY icon in the overflow at $($b.X),$($b.Y)"
+  Write-Host "TRAY icon in the overflow at $($b.X),$($b.Y) $($b.Width)x$($b.Height)"
   $r = New-Object TrayWin+RECT
   $r.Left = [int]$b.X; $r.Top = [int]$b.Y; $r.Right = [int]($b.X + $b.Width); $r.Bottom = [int]($b.Y + $b.Height)
   return $r
-}
-
-function Find-Icon($tray) {
-  $r = Icon-Rect $tray
-  if ($r) { return $r }
-  Write-Host 'TRAY the icon has no place in the taskbar; looking in the overflow'
-  return Overflow-Icon
 }
 
 # --- 1 and 2: right-click, the menu, Quit ---------------------------------
