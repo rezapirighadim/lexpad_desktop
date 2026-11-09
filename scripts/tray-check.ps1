@@ -41,6 +41,7 @@ public static class TrayWin {
   [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, uint d, UIntPtr e);
   [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint f, UIntPtr e);
   [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("shell32.dll")] public static extern int Shell_NotifyIconGetRect(ref NOTIFYICONIDENTIFIER id, out RECT r);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowEx(IntPtr p, IntPtr after, string cls, string title);
@@ -213,8 +214,10 @@ if (-not $r) {
 }
 
 # --- 3: left-click opens the panel -----------------------------------------
+# The panel is made hidden at start and shown (and focused) by the click, as
+# a small window just above the icon: the window in front must be Lexpad's,
+# and narrower than the Start window the launch opened.
 $run = Start-Lexpad
-$before = @([TrayWin]::Windows([uint32]$run.Process.Id, $null) | Where-Object { [TrayWin]::IsWindowVisible($_) })
 $r = Find-Icon $run.Tray
 if (-not $r) {
   Fail 'the tray icon could not be found again'
@@ -222,16 +225,15 @@ if (-not $r) {
   Click ([int](($r.Left + $r.Right) / 2)) ([int](($r.Top + $r.Bottom) / 2)) 'left'
   Start-Sleep -Seconds 2
   Shot '3-left-click'
-  $after = @([TrayWin]::Windows([uint32]$run.Process.Id, $null) | Where-Object { [TrayWin]::IsWindowVisible($_) })
-  $new = @($after | Where-Object { $before -notcontains $_ })
-  if ($new.Count -eq 0) {
-    Fail 'a left-click on the icon opened nothing'
+  $front = [TrayWin]::GetForegroundWindow()
+  $wr = New-Object TrayWin+RECT
+  [void][TrayWin]::GetWindowRect($front, [ref]$wr)
+  $w = $wr.Right - $wr.Left
+  Write-Host "TRAY in front after the left-click: '$([TrayWin]::TitleOf($front))' pid $([TrayWin]::PidOf($front)) at $($wr.Left),$($wr.Top) ${w}x$($wr.Bottom - $wr.Top)"
+  if ([TrayWin]::PidOf($front) -ne [uint32]$run.Process.Id -or $w -ge 600) {
+    Fail 'a left-click on the icon did not open the panel'
   } else {
-    foreach ($h in $new) {
-      $wr = New-Object TrayWin+RECT
-      [void][TrayWin]::GetWindowRect($h, [ref]$wr)
-      Write-Host "TRAY left-click opened '$([TrayWin]::TitleOf($h))' at $($wr.Left),$($wr.Top) $($wr.Right - $wr.Left)x$($wr.Bottom - $wr.Top)"
-    }
+    Write-Host 'TRAY left-click opened the panel'
   }
 }
 Stop-Process -Id $run.Process.Id -Force -ErrorAction SilentlyContinue
