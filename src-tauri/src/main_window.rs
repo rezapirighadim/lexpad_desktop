@@ -74,6 +74,19 @@ pub fn take_pending() -> Option<String> {
     PENDING.lock().ok().and_then(|mut p| p.take())
 }
 
+/// Which store sold this copy, for the web app: `mas` for the Mac App Store
+/// build (it sells through Apple there, lexpad_front `isMacAppStore`), `msstore`
+/// for the Microsoft Store's MSIX (its update line goes to the Store listing,
+/// never a second install from lexpad.app), nothing for the dmg and the
+/// installer from lexpad.app.
+fn distribution() -> Option<&'static str> {
+    match crate::config::install_source() {
+        Some("appstore") => Some("mas"),
+        Some("store") => Some("msstore"),
+        _ => None,
+    }
+}
+
 /// What the page is told before it runs (also the Player's, `player_window`).
 pub(crate) fn config_script(device_id: &str) -> String {
     let mut config = json!({
@@ -82,10 +95,8 @@ pub(crate) fn config_script(device_id: &str) -> String {
         "appVersion": config::VERSION,
         "deviceId": device_id,
     });
-    // The Mac App Store build: the web app sells through Apple there
-    // (lexpad_front `isMacAppStore`), and nowhere else on the desktop.
-    if config::MAS {
-        config["distribution"] = json!("mas");
+    if let Some(d) = distribution() {
+        config["distribution"] = json!(d);
     }
     format!("window.__LEXPAD_CONFIG = Object.freeze({config});")
 }
@@ -341,6 +352,18 @@ mod tests {
     }
 
     #[test]
+    fn the_store_that_sold_this_copy_is_named_only_when_there_is_one() {
+        // Off Windows and off the Mac App Store (the dmg, CI) there is no
+        // distribution key at all; the Store's MSIX says `msstore`.
+        let script = config_script("d");
+        match distribution() {
+            Some(d) => assert!(script.contains(&format!(r#""distribution":"{d}""#))),
+            None => assert!(!script.contains("distribution")),
+        }
+        assert_eq!(distribution() == Some("mas"), config::MAS);
+    }
+
+    #[test]
     fn the_config_is_data_not_code() {
         let script = config_script("d\"; alert(1); \"");
         assert!(script.starts_with("window.__LEXPAD_CONFIG = Object.freeze({"));
@@ -348,6 +371,10 @@ mod tests {
         assert!(script.contains(r#"d\"; alert(1); \""#));
         assert!(script.contains(r#""platform":"desktop""#));
         assert_eq!(script.contains(r#""distribution":"mas""#), config::MAS);
+        assert_eq!(
+            script.contains(r#""distribution":"msstore""#),
+            distribution() == Some("msstore")
+        );
     }
 
     fn mac() -> Screen {
