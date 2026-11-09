@@ -50,7 +50,7 @@ src-tauri/src/capture/           reading the selection: macos.rs (AX, then ⌘C)
 src-tauri/src/services_macos.rs  "Add to Lexpad" in the macOS Services menu; in the Mac App Store build its first-launch probe
 src-tauri/src/services_live.rs   the probe's rules: when ⌘⇧L's service is live, the other copy, giving up (tested)
 src-tauri/src/api.rs             the API client: the only holder of tokens (tested with a local server)
-src-tauri/src/auth.rs            RFC 8252 sign-in: PKCE, state, loopback listener (tested)
+src-tauri/src/auth.rs            RFC 8252 sign-in: PKCE, state, loopback listener; the Mac App Store copy's lexpad://auth/callback (tested)
 src-tauri/src/store.rs           the session in the Keychain / Credential Manager (keyring crate)
 src-tauri/src/commands.rs        everything a window may ask; capabilities/*.json say which window may ask what
 src-tauri/src/popup.rs           showing, placing and hiding the popup; it grows inside the work area
@@ -452,7 +452,13 @@ copy (docs/mac-app-store-plan.md). One codebase: `--features mas` plus
   web app's `/connect-desktop` asks the API for a one-time code bound to the challenge and the
   address (`POST /me/desktop-codes`) and redirects; the app checks the state in constant time and
   trades code + verifier at `POST /auth/desktop/token` for a delegated session of platform
-  `desktop`. That session cannot connect other clients, change the password or allow an
+  `desktop`. The Mac App Store copy may not listen on a port (no `network.server` in its
+  sandbox; App Review 2.4.5(i)), so it asks for `lexpad://auth/callback` instead (RFC 8252
+  §7.1): the scheme is registered in `Info.mas.plist` only, macOS opens the URL in the running
+  app, `tauri-plugin-deep-link` (feature `mas` only) hands it to `auth::SchemeWait`, which
+  checks it is exactly that callback with the waiting state. The API takes that address only
+  because it is in `DESKTOP_APP_REDIRECT_URIS`, and the web app only that exact string. The dmg
+  and Windows keep the loopback. That session cannot connect other clients, change the password or allow an
   assistant, is listed under Signed-in devices as "Desktop app", and is revoked on sign-out.
 - **Tokens live in the operating system's credential store**, one entry per API origin (so a
   development build never touches the production session): the refresh token and who it

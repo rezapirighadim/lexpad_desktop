@@ -14,6 +14,14 @@
 //! The password never reaches the app, the code is worthless without the
 //! verifier (which never leaves this process), and the session is a
 //! delegated one the learner can sign out alone under Signed-in devices.
+//!
+//! The Mac App Store copy may not listen on a port (its sandbox has no
+//! `network.server`; App Review 2.4.5(i)), so it is sent back the other way
+//! RFC 8252 offers (§7.1): the private-use scheme `lexpad`, registered in
+//! Info.mas.plist, at [`APP_REDIRECT`]. macOS hands the URL to the running
+//! app (the deep-link plugin, lib.rs), and [`SchemeWait`] gives it to the
+//! sign-in that waits with the same state. Any app could register `lexpad`
+//! too; the code it caught would be worthless without the verifier.
 
 use std::time::Duration;
 
@@ -69,6 +77,11 @@ pub fn s256(verifier: &str) -> String {
 pub fn new_state() -> String {
     random_token()
 }
+
+/// The Mac App Store copy's address (RFC 8252 §7.1). The API takes it only
+/// because it is listed exactly in its DESKTOP_APP_REDIRECT_URIS, and the
+/// web app's /connect-desktop only this exact string.
+pub const APP_REDIRECT: &str = "lexpad://auth/callback";
 
 /// The address the browser is sent back to, for a port we listen on.
 pub fn redirect_uri(port: u16) -> String {
@@ -158,6 +171,11 @@ fn classify(head: &str, state: &str) -> Request {
     if url.path() != CALLBACK_PATH {
         return Request::Other;
     }
+    answer_in(&url, state)
+}
+
+/// The answer in a callback's query, when it carries our state.
+fn answer_in(url: &url::Url, state: &str) -> Request {
     let mut code = None;
     let mut error = None;
     let mut got_state = None;
@@ -181,6 +199,106 @@ fn classify(head: &str, state: &str) -> Request {
         }
         (_, Some(_)) => Request::Answer(Answer::Denied),
         _ => Request::WrongState,
+    }
+}
+
+/// Reads a URL macOS handed over: an answer only when it is exactly our
+/// scheme's callback (`lexpad://auth/callback`, no port, no user, no
+/// fragment) with our state; any other URL is not ours to answer.
+#[cfg_attr(not(feature = "mas"), allow(dead_code))]
+fn classify_app_url(raw: &str, state: &str) -> Request {
+    let Ok(url) = url::Url::parse(raw) else {
+        return Request::Other;
+    };
+    let mut bare = url.clone();
+    bare.set_query(None);
+    if bare.as_str() != APP_REDIRECT || url.fragment().is_some() {
+        return Request::Other;
+    }
+    answer_in(&url, state)
+}
+
+/// What became of a URL handed to [`SchemeWait::deliver`].
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(not(feature = "mas"), allow(dead_code))]
+pub enum Delivered {
+    /// The waiting sign-in has its answer.
+    Answered,
+    /// Our callback, but no sign-in waits with that state (an old tab, a
+    /// second click, or a link from somewhere else): ignored.
+    NotAwaited,
+    /// Not our callback at all (a film opened with Lexpad, another link).
+    NotOurs,
+}
+
+/// The sign-in the Mac App Store copy waits for: its state and where its
+/// answer goes. One at a time; a new one replaces the old, whose wait ends.
+#[derive(Default)]
+pub struct SchemeWait {
+    pending: std::sync::Mutex<Option<(String, tokio::sync::oneshot::Sender<Answer>)>>,
+}
+
+impl SchemeWait {
+    /// Starts waiting for the answer carrying `state`.
+    pub fn begin(&self, state: &str) -> tokio::sync::oneshot::Receiver<Answer> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        if let Ok(mut p) = self.pending.lock() {
+            *p = Some((state.to_owned(), tx));
+        }
+        rx
+    }
+
+    /// Stops waiting for `state` (timed out or cancelled), so a late answer
+    /// is not taken. A newer sign-in's wait is left alone.
+    pub fn end(&self, state: &str) {
+        if let Ok(mut p) = self.pending.lock() {
+            if p.as_ref().is_some_and(|(s, _)| s == state) {
+                *p = None;
+            }
+        }
+    }
+
+    /// Hands a URL macOS opened with Lexpad to the waiting sign-in, when it
+    /// is our callback with that sign-in's state. Taken once.
+    #[cfg_attr(not(feature = "mas"), allow(dead_code))]
+    pub fn deliver(&self, raw: &str) -> Delivered {
+        let Ok(mut p) = self.pending.lock() else {
+            return Delivered::NotAwaited;
+        };
+        let state = p.as_ref().map(|(s, _)| s.clone()).unwrap_or_default();
+        match classify_app_url(raw, &state) {
+            Request::Other => Delivered::NotOurs,
+            Request::WrongState => Delivered::NotAwaited,
+            Request::Answer(answer) => match p.take() {
+                Some((_, tx)) => {
+                    if tx.send(answer).is_ok() {
+                        Delivered::Answered
+                    } else {
+                        Delivered::NotAwaited
+                    }
+                }
+                None => Delivered::NotAwaited,
+            },
+        }
+    }
+}
+
+/// Where the browser's answer comes back: a loopback port (the dmg and
+/// Windows) or the `lexpad` scheme (the Mac App Store copy).
+pub enum Wait {
+    Loopback(TcpListener),
+    Scheme(tokio::sync::oneshot::Receiver<Answer>),
+}
+
+/// Waits for the answer either way. `None` when `cancel` fires first (or
+/// a newer sign-in replaced this one); the caller bounds the wait.
+pub async fn wait(wait: Wait, state: &str, cancel: &tokio::sync::Notify) -> Option<Answer> {
+    match wait {
+        Wait::Loopback(listener) => wait_for_answer(listener, state, cancel).await,
+        Wait::Scheme(rx) => tokio::select! {
+            answer = rx => answer.ok(),
+            () = cancel.notified() => None,
+        },
     }
 }
 
@@ -363,6 +481,121 @@ mod tests {
             Request::Other
         );
         assert_eq!(classify("", s), Request::Other);
+    }
+
+    #[test]
+    fn only_our_scheme_callback_with_our_state_is_an_answer() {
+        let s = "the-state";
+        assert_eq!(
+            classify_app_url("lexpad://auth/callback?code=abc&state=the-state", s),
+            Request::Answer(Answer::Code("abc".into()))
+        );
+        assert_eq!(
+            classify_app_url(
+                "lexpad://auth/callback?error=access_denied&state=the-state",
+                s
+            ),
+            Request::Answer(Answer::Denied)
+        );
+        assert_eq!(
+            classify_app_url("lexpad://auth/callback?code=abc&state=other", s),
+            Request::WrongState
+        );
+        assert_eq!(
+            classify_app_url("lexpad://auth/callback?code=abc", s),
+            Request::WrongState
+        );
+        for other in [
+            "lexpad://auth/callback/x?code=abc&state=the-state",
+            "lexpad://auth/other?code=abc&state=the-state",
+            "lexpad://evil/callback?code=abc&state=the-state",
+            "lexpad://auth:8080/callback?code=abc&state=the-state",
+            "lexpad://me@auth/callback?code=abc&state=the-state",
+            "lexpad://auth/callback?code=abc&state=the-state#x",
+            "lexpadx://auth/callback?code=abc&state=the-state",
+            "http://127.0.0.1:1/callback?code=abc&state=the-state",
+            "file:///Users/me/Film.mkv",
+            "not a url",
+        ] {
+            assert_eq!(classify_app_url(other, s), Request::Other, "{other}");
+        }
+    }
+
+    #[test]
+    fn the_scheme_answer_reaches_only_the_waiting_sign_in_once() {
+        let wait = SchemeWait::default();
+        // Nothing waits: our callback is ignored, a film is not ours.
+        assert_eq!(
+            wait.deliver("lexpad://auth/callback?code=a&state=s1"),
+            Delivered::NotAwaited
+        );
+        assert_eq!(wait.deliver("file:///tmp/a.mkv"), Delivered::NotOurs);
+
+        let mut rx = wait.begin("s1");
+        assert_eq!(
+            wait.deliver("lexpad://auth/callback?code=a&state=s2"),
+            Delivered::NotAwaited
+        );
+        assert!(rx.try_recv().is_err());
+        assert_eq!(
+            wait.deliver("lexpad://auth/callback?code=the-code&state=s1"),
+            Delivered::Answered
+        );
+        assert_eq!(rx.try_recv().unwrap(), Answer::Code("the-code".into()));
+        // Taken once: the same link again finds nothing waiting.
+        assert_eq!(
+            wait.deliver("lexpad://auth/callback?code=the-code&state=s1"),
+            Delivered::NotAwaited
+        );
+
+        // A newer sign-in replaces the old one, whose wait ends.
+        let old = wait.begin("old");
+        let mut new = wait.begin("new");
+        assert!(old.blocking_recv().is_err());
+        // Ending the old one leaves the new one waiting.
+        wait.end("old");
+        assert_eq!(
+            wait.deliver("lexpad://auth/callback?error=access_denied&state=new"),
+            Delivered::Answered
+        );
+        assert_eq!(new.try_recv().unwrap(), Answer::Denied);
+
+        // Timed out: a late answer is not taken.
+        let _late = wait.begin("late");
+        wait.end("late");
+        assert_eq!(
+            wait.deliver("lexpad://auth/callback?code=a&state=late"),
+            Delivered::NotAwaited
+        );
+    }
+
+    #[tokio::test]
+    async fn the_scheme_wait_ends_with_the_answer_or_a_cancel() {
+        let sw = SchemeWait::default();
+        let cancel = tokio::sync::Notify::new();
+        let rx = sw.begin("s");
+        sw.deliver("lexpad://auth/callback?code=c&state=s");
+        assert_eq!(
+            wait(Wait::Scheme(rx), "s", &cancel).await,
+            Some(Answer::Code("c".into()))
+        );
+        let rx = sw.begin("t");
+        cancel.notify_one();
+        assert_eq!(wait(Wait::Scheme(rx), "t", &cancel).await, None);
+    }
+
+    #[test]
+    fn the_app_redirect_is_what_the_api_and_the_web_app_take() {
+        // lexpad_back DESKTOP_APP_REDIRECT_URIS and lexpad_front
+        // desktopRequest.ts APP_CALLBACK hold this exact string.
+        assert_eq!(APP_REDIRECT, "lexpad://auth/callback");
+        let url = connect_url("https://app.lexpad.app", APP_REDIRECT, "st", "ch", None);
+        let q: std::collections::HashMap<_, _> = url::Url::parse(&url)
+            .unwrap()
+            .query_pairs()
+            .into_owned()
+            .collect();
+        assert_eq!(q["redirect_uri"], "lexpad://auth/callback");
     }
 
     #[tokio::test]

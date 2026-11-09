@@ -316,8 +316,17 @@ pub async fn connect(
 ) -> Result<User, String> {
     let pkce = auth::new_pkce();
     let st = auth::new_state();
-    let (listener, port) = auth::listen().await.map_err(|_| err(Failure::Error))?;
-    let redirect = auth::redirect_uri(port);
+    // The Mac App Store copy may not listen on a port: the browser comes back
+    // to its `lexpad` scheme instead (auth.rs, RFC 8252 §7.1).
+    let (redirect, wait) = if config::MAS {
+        (
+            auth::APP_REDIRECT.to_owned(),
+            auth::Wait::Scheme(state.scheme_wait.begin(&st)),
+        )
+    } else {
+        let (listener, port) = auth::listen().await.map_err(|_| err(Failure::Error))?;
+        (auth::redirect_uri(port), auth::Wait::Loopback(listener))
+    };
     let url = auth::connect_url(
         config::APP_ORIGIN,
         &redirect,
@@ -336,15 +345,13 @@ pub async fn connect(
     {
         old.notify_one();
     }
-    app.opener()
-        .open_url(url, None::<&str>)
-        .map_err(|_| err(Failure::Error))?;
+    if app.opener().open_url(url, None::<&str>).is_err() {
+        state.scheme_wait.end(&st);
+        return Err(err(Failure::Error));
+    }
 
-    let answer = tokio::time::timeout(
-        auth::CONNECT_TIMEOUT,
-        auth::wait_for_answer(listener, &st, &cancel),
-    )
-    .await;
+    let answer = tokio::time::timeout(auth::CONNECT_TIMEOUT, auth::wait(wait, &st, &cancel)).await;
+    state.scheme_wait.end(&st);
     *state.connect_cancel.lock().map_err(|_| "lock")? = None;
     let code = match answer {
         Ok(Some(Answer::Code(code))) => code,
