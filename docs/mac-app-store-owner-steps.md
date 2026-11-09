@@ -146,7 +146,7 @@ vocabulary,flashcards,spaced repetition,leitner,subtitles,video player,language 
 Lexpad is a personal vocabulary notebook with spaced repetition. Learners add the words they meet themselves; the app never generates or pre-fills vocabulary. AI only writes a short meaning and example for a word the learner added, and only after the learner allows it. Every AI card and every Lex answer has a "Report" link.
 
 SIGNING IN
-Click "Sign in…" (or "Continue with Google / Apple" on the first window). Lexpad opens the Mac's default browser on lexpad.app, where you sign in with the demo account above (or with Apple), and the browser hands the sign-in back to the app. The app never sees a password. This is the standard sign-in for native apps (RFC 8252): the app listens once on 127.0.0.1 for the browser's redirect, which is why it has the network server entitlement. Nothing else listens.
+Click "Sign in…" (or "Continue with Google / Apple" on the first window). Lexpad opens the Mac's default browser on lexpad.app, where you sign in with the demo account above (or with Apple), and the browser hands the sign-in back to the app: it opens lexpad://auth/callback, and macOS may ask "Open Lexpad?" (choose Open). The app never sees a password. This is the standard sign-in for native apps (RFC 8252, private-use URI scheme redirect with PKCE). The app does not listen on any port and has no network server entitlement.
 
 ADDING A WORD FROM ANOTHER APP
 Select a word in Safari or TextEdit and press Command-Shift-L, or right-click it and choose Services > Add to Lexpad. The app is sandboxed and does not use Accessibility; macOS hands it only the selected text through the Services menu.

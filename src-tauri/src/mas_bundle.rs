@@ -50,6 +50,23 @@ mod tests {
             .contains("<key>ITSAppUsesNonExemptEncryption</key>\n  <false/>"));
     }
 
+    /// The sign-in's scheme (auth::APP_REDIRECT) is registered in the Mac
+    /// App Store copy only: the dmg keeps its loopback sign-in, and two
+    /// installed copies must not both claim `lexpad`.
+    #[test]
+    fn only_the_mas_copy_registers_the_sign_in_scheme() {
+        let scheme = crate::auth::APP_REDIRECT.split(':').next().unwrap();
+        let mas: String = MAS.split_whitespace().collect();
+        assert!(mas.contains("<key>CFBundleURLTypes</key>"));
+        assert!(mas.contains(&format!(
+            "<key>CFBundleURLSchemes</key><array><string>{scheme}</string></array>"
+        )));
+        assert!(!DMG.contains("CFBundleURLTypes"));
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        assert!(conf["plugins"].get("deep-link").is_none());
+    }
+
     #[test]
     fn the_mas_document_types_are_the_dmgs_file_associations() {
         let conf: serde_json::Value =
@@ -81,7 +98,6 @@ mod tests {
             [
                 "com.apple.security.app-sandbox",
                 "com.apple.security.network.client",
-                "com.apple.security.network.server",
                 "com.apple.security.files.user-selected.read-only",
                 "com.apple.security.files.downloads.read-write",
                 "com.apple.application-identifier",
@@ -89,6 +105,8 @@ mod tests {
             ]
         );
         assert!(ENTITLEMENTS.contains("<string>6Z95MR26LZ.app.lexpad.ios</string>"));
+        // App Review 2.4.5(i): no listening socket in this copy.
+        assert!(!ENTITLEMENTS.contains("<key>com.apple.security.network.server</key>"));
         let helper: Vec<&str> = HELPER
             .split("<key>")
             .skip(1)

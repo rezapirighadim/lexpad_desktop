@@ -484,6 +484,14 @@ pub fn run() {
             }
         }));
     }
+    // The Mac App Store copy's sign-in comes back as lexpad://auth/callback
+    // (auth.rs, RFC 8252 §7.1; the scheme is in Info.mas.plist). macOS opens
+    // such a URL in the running Lexpad (LaunchServices keeps one copy of an
+    // app running), and the plugin passes it to `on_open_url` below.
+    #[cfg(all(feature = "mas", target_os = "macos"))]
+    {
+        builder = builder.plugin(tauri_plugin_deep_link::init());
+    }
     builder
         // Without its link script: the plugin's default script catches every
         // click on a target="_blank" link, cancels it and asks for its own
@@ -589,7 +597,21 @@ pub fn run() {
                 capture: Mutex::new(None),
                 notebooks: Mutex::new(Vec::new()),
                 connect_cancel: Mutex::new(None),
+                scheme_wait: Arc::new(auth::SchemeWait::default()),
             });
+            #[cfg(all(feature = "mas", target_os = "macos"))]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt as _;
+                let wait = app.state::<AppState>().scheme_wait.clone();
+                app.deep_link().on_open_url(move |event| {
+                    for url in event.urls() {
+                        // Never logged in full: the query holds a one-time code.
+                        if wait.deliver(url.as_str()) == auth::Delivered::NotAwaited {
+                            log::info!("a sign-in callback came with no sign-in waiting for it");
+                        }
+                    }
+                });
+            }
 
             let handle = app.handle().clone();
             // Whether the server takes the activity headers, asked once in
