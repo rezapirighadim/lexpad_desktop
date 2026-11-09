@@ -28,6 +28,7 @@ mod e2e;
 mod e2e_main;
 mod everywhere;
 mod launch;
+mod line_tools;
 #[cfg(all(feature = "mas", target_os = "macos"))]
 mod login_item_macos;
 mod main_window;
@@ -742,6 +743,7 @@ pub fn run() {
             }
             (player_window::LABEL, WindowEvent::Destroyed) => {
                 player_window::destroyed();
+                app_menu::player_closed(window.app_handle());
                 refresh_dock(window.app_handle(), false);
                 after_window_closed(window.app_handle());
             }
@@ -852,6 +854,8 @@ pub fn run() {
             player_window::player_home,
             player_window::player_home_note_seen,
             player_window::player_open_clip,
+            line_tools::player_open_privacy,
+            app_menu::player_menu_state,
             app_menu::set_open_at,
             app_menu::open_at,
             app_menu::open_window,

@@ -242,7 +242,9 @@ fn build(app: &AppHandle, opened: Opened, door: Option<Door>) -> tauri::Result<(
         .on_new_window(move |url, _features| {
             open_outside(&popups, &url);
             NewWindowResponse::Deny
-        });
+        })
+        // Say it back's microphone, and nothing else (line_tools.rs).
+        .on_permission_request(|_, kind| crate::line_tools::page_permission(kind));
     #[cfg(target_os = "macos")]
     let builder = builder
         .title_bar_style(tauri::TitleBarStyle::Overlay)
