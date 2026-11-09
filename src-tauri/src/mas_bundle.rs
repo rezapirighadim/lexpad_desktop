@@ -36,7 +36,11 @@ mod tests {
 
     #[test]
     fn the_mas_info_plist_keeps_everything_the_dmg_declares() {
-        for s in strings(DMG) {
+        // The URL type's name is each copy's own (both_mac_copies_register_the_sign_in_scheme).
+        for s in strings(DMG)
+            .into_iter()
+            .filter(|s| *s != "app.lexpad.desktop.signin")
+        {
             assert!(
                 MAS.contains(&format!("<string>{s}</string>")),
                 "Info.mas.plist lacks {s}"
@@ -50,21 +54,25 @@ mod tests {
             .contains("<key>ITSAppUsesNonExemptEncryption</key>\n  <false/>"));
     }
 
-    /// The sign-in's scheme (auth::APP_REDIRECT) is registered in the Mac
-    /// App Store copy only: the dmg keeps its loopback sign-in, and two
-    /// installed copies must not both claim `lexpad`.
+    /// The sign-in's scheme (auth::APP_REDIRECT) is registered by both Mac
+    /// copies, each under its own URL name; the player test build keeps the
+    /// loopback (signin_macos::scheme_registered).
     #[test]
-    fn only_the_mas_copy_registers_the_sign_in_scheme() {
+    fn both_mac_copies_register_the_sign_in_scheme() {
         let scheme = crate::auth::APP_REDIRECT.split(':').next().unwrap();
-        let mas: String = MAS.split_whitespace().collect();
-        assert!(mas.contains("<key>CFBundleURLTypes</key>"));
-        assert!(mas.contains(&format!(
-            "<key>CFBundleURLSchemes</key><array><string>{scheme}</string></array>"
-        )));
-        assert!(!DMG.contains("CFBundleURLTypes"));
-        let conf: serde_json::Value =
-            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
-        assert!(conf["plugins"].get("deep-link").is_none());
+        let want = format!("<key>CFBundleURLSchemes</key><array><string>{scheme}</string></array>");
+        for (plist, name) in [
+            (MAS, "app.lexpad.ios.signin"),
+            (DMG, "app.lexpad.desktop.signin"),
+        ] {
+            let flat: String = plist.split_whitespace().collect();
+            assert!(flat.contains("<key>CFBundleURLTypes</key>"));
+            assert!(flat.contains(&want));
+            assert!(flat.contains(&format!(
+                "<key>CFBundleURLName</key><string>{name}</string>"
+            )));
+        }
+        assert!(!include_str!("../Info.playertest.plist").contains("CFBundleURLTypes"));
     }
 
     #[test]
