@@ -1,0 +1,1 @@
+import{t as e}from"./apple-CWusQg85.js";function t(){return!e()}export{t};
