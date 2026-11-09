@@ -204,6 +204,41 @@ impl LineToolsMenu {
         *now = want;
         Ok(())
     }
+
+    /// The marks back as the page last said: muda flips a check item's mark on
+    /// a click, but the page may refuse the switch (Free, no subtitles, a
+    /// translation, the mini player, the language question). When it accepts,
+    /// it sends `player_menu_state` again and the marks follow.
+    fn restore_marks(&self) -> Result<(), String> {
+        let now = *self.now.lock().map_err(|_| "lock")?;
+        let e = |e: tauri::Error| e.to_string();
+        let (type_every, say_every) = marks_of(now);
+        self.type_every.set_checked(type_every).map_err(e)?;
+        self.say_every.set_checked(say_every).map_err(e)
+    }
+}
+
+/// The two check marks the menu shows for a state.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn marks_of(state: LineTools) -> (bool, bool) {
+    (state.type_every, state.say_every_checked())
+}
+
+/// Whether a Playback item is one of the two check items, whose mark the page decides.
+fn is_line_check(id: &str) -> bool {
+    id == TYPE_EVERY || id == SAY_EVERY
+}
+
+/// After a click on Type Every Line or Say Every Line Back: the marks as the page last said.
+fn restore_line_marks(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    if let Some(menu) = app.try_state::<LineToolsMenu>() {
+        if let Err(e) = menu.restore_marks() {
+            log::warn!("could not restore the Playback menu's marks: {e}");
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = app;
 }
 
 /// The Player's page tells the menu bar what its line tools are now
@@ -276,6 +311,9 @@ pub fn handle(app: &AppHandle, id: &str) {
         _ => {
             if let Some((_, _, command, _)) = PLAYER_ITEMS.iter().find(|(i, ..)| *i == id) {
                 to_player(app, command);
+                if is_line_check(id) {
+                    restore_line_marks(app);
+                }
             }
         }
     }
@@ -514,6 +552,33 @@ mod tests {
         // the ones that come and go (LineToolsMenu).
         assert_eq!((TYPE_EVERY, SAY_EVERY), ("m.typeEvery", "m.sayEvery"));
         assert_eq!((SAY_LINE, SAY_EVERY), ("m.sayLine", "m.sayEvery"));
+    }
+
+    #[test]
+    fn a_click_on_a_line_check_puts_the_marks_back_as_the_page_said() {
+        assert!(is_line_check(TYPE_EVERY));
+        assert!(is_line_check(SAY_EVERY));
+        assert!(!is_line_check(SAY_LINE));
+        assert!(!is_line_check("m.replay"));
+        // The marks follow the last state the page sent, never muda's own flip.
+        let free = LineTools {
+            type_every: false,
+            say_every: false,
+            say: SayRows::Shown,
+        };
+        assert_eq!(marks_of(free), (false, false));
+        let typing = LineTools {
+            type_every: true,
+            say_every: false,
+            say: SayRows::Shown,
+        };
+        assert_eq!(marks_of(typing), (true, false));
+        let hidden = LineTools {
+            type_every: false,
+            say_every: true,
+            say: SayRows::Hidden,
+        };
+        assert_eq!(marks_of(hidden), (false, false));
     }
 
     #[test]
