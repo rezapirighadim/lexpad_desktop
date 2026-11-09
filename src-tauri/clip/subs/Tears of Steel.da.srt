@@ -1,0 +1,48 @@
+1
+00:00:04,000 --> 00:00:05,500
+Du er et skvat, Thom.
+
+2
+00:00:06,000 --> 00:00:08,000
+Hør Celia, vi er nødt til at følge vores drømme;
+
+3
+00:00:08,000 --> 00:00:11,500
+...du har dine robotter, og jeg
+ønsker bare at virke imponerende i det ydre rum.
+
+4
+00:00:11,800 --> 00:00:15,000
+Hvorfor indrømmer du ikke bare at
+min robothånd skræmmer dig?
+
+5
+00:00:15,500 --> 00:00:17,000
+Den skræmmer mig ikke... den...
+
+6
+00:00:18,000 --> 00:00:19,000
+...i orden! Fint!
+
+7
+00:00:19,000 --> 00:00:22,000
+Jeg er bange for den! Jeg har haft mareridt,
+hvor jeg bliver jagtet...
+
+8
+00:00:22,000 --> 00:00:23,999
+...af frygtelige mekaniske klør, der vil
+slå mig ihjel...
+
+9
+00:00:24,000 --> 00:00:26,000
+Det er ligegyldigt, Thom. Vi er færdige.
+
+10
+00:00:31,000 --> 00:00:34,500
+Robottens hukommelse er synkroniseret og låst!
+
+11
+00:00:42,000 --> 00:00:44,000
+Det virker temmelig syret.
+

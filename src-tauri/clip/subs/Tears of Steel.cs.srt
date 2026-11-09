@@ -1,0 +1,52 @@
+1
+00:00:04,000 --> 00:00:05,500
+Jseš pěkná mrcha, Thome.
+
+2
+00:00:06,000 --> 00:00:08,000
+Podívej, Cilie, musíme jít za svými sny;
+
+3
+00:00:08,000 --> 00:00:11,500
+...ty máš svoji robotiku, a já prostě chci být borec ve vesmíru.
+
+4
+00:00:11,800 --> 00:00:15,000
+Nemůžeš prostě přiznat, že jsi vyklepanej z mojí robotický ruky?
+
+5
+00:00:15,500 --> 00:00:17,000
+Já nejsem vyklepanej- totiž...
+
+6
+00:00:18,000 --> 00:00:19,000
+...jo! Dobře!
+
+7
+00:00:19,000 --> 00:00:22,000
+Jsem děsem bez sebe! Mívám noční můry, že mě pronásledujou...
+
+8
+00:00:22,000 --> 00:00:23,000
+...ty mohutné robotické smrtící pařáty...
+
+9
+00:00:23,000 --> 00:00:24,500
+O 40 LET POZDĚJI
+
+10
+00:00:25,000 --> 00:00:27,500
+To je jedno, Thome. Mezi náma je konec.
+
+11
+00:00:31,000 --> 00:00:34,500
+Paměť robota synchronizována a zachycena!
+
+12
+00:00:35,500 --> 00:00:37,500
+SIMULACE PŘIPRAVENA
+
+13
+00:00:42,000 --> 00:00:44,000
+Tohle je docela děsivý.
+

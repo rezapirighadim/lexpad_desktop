@@ -83,9 +83,10 @@ src-tauri/src/player_window.rs   the Lexpad Player's window (the web app's /play
 src-tauri/src/video_hint.rs      the shortcut card's hint when a video app is in front: the apps' names, once per app per 14 days, 3 in all (tested)
 src/panel/watch.ts               the panel's "Watch a video…" / "Continue {title}" row (tested); src/lib/videoTitle.ts is lexpad_front's title parser, keep them identical
 src-tauri/src/app_menu.rs        the two windows: where Lexpad opens, ⌘1 / ⌘2, the macOS menu bar's Playback, Subtitles and Window menus (tested)
-src-tauri/src/welcome.rs         the Start window, its commands and the launch table A–G (`first_window`, tested)
-src/welcome.html, src/welcome/   the Start window: the real Player's loop, Open a video…, Google / Apple (tested with happy-dom)
-src/assets/welcome/              its loop and still, recorded from the real Player by lexpad_front's e2e/player/start-loop.spec.ts
+src-tauri/src/launch.rs          the launch table A–G (`first_window`, tested): Player home unless the learner chose Today
+src-tauri/src/clip.rs            Player home's one-minute clip: its languages, the two tracks it plays with, staging (tested)
+src-tauri/clip/                  the clip (Tears of Steel, CC BY 3.0, CREDITS.txt) and its official subtitles, bundled as resources
+src-tauri/fixtures/settings/     settings.json as 0.2.4 and 0.3.29 wrote them, for the migration tests
 docs/player-dock-icon.md         why the Player shares Lexpad's Dock tile on macOS (phase 1)
 scripts/ffmpeg/                  the bundled LGPL FFmpeg: versions.env (pinned), build-macos.sh, fetch-prebuilt.sh, check-lgpl.sh
 scripts/media-samples.sh         the player's test matrix (synthetic clips and subtitles; local only, never committed)
@@ -311,12 +312,12 @@ The Player's page is the web app's `/player` route (lexpad_front `features/playe
   each page answers Ctrl+1 / Ctrl+2 (`open_window`). Files opened from the system and drops on
   either window open the Player.
 - **Every way into the Player is a door** (`player_window::Door`, spec
-  `uiux/2026-10-31-player-next/spec.md` A1, for the activity reports): `start` (the Start
-  window's Open a video…), `launch` (the launch table, the Dock, a second launch, `--player`),
+  `uiux/2026-10-31-player-next/spec.md` A1, for the activity reports): `start` (the retired
+  Start window's Open a video…, kept in the shared list), `launch` (the launch table, the Dock, a second launch, `--player`),
   `tray` (the panel's Watch row, the tray menu's Open a video…), `watch`, `today_card`,
   `first_five` (the learning window's Player page and Today's cards), `popup_hint` (the card's
-  video hint), `drop` (a file dropped on the learning window or the Start window), `file` (Open
-  with, a file association, the arguments), `menu` (⌘O, Window → Player, Ctrl+2). The core
+  video hint), `drop` (a file dropped on the learning window), `file` (Open
+  with, a file association, the arguments, Player home's clip), `menu` (⌘O, Window → Player, Ctrl+2). The core
   says it in the route (`door=<door>`) when it makes the window, or as `player:door` when it
   brings the window forward from behind; a Player already in front hears nothing. The page
   sends it on (`player.window {from}`). `open_player`'s `from` takes only the learning window's
@@ -332,16 +333,30 @@ The Player's page is the web app's `/player` route (lexpad_front `features/playe
   door `popup_hint`). The core decides and records in one step (`video_hint` command): once
   per app every 14 days, 3 times in all on this computer (`settings.json` `videoHint`), never
   signed out.
-- **Which window a launch opens is one table** (`welcome::first_window`, spec
-  `uiux/specs/2026-10-26-desktop-first-run.md` §2, a test per row): a video that opened Lexpad
-  is the only window (B; decided `FIRST_WINDOW_GRACE` after `RunEvent::Ready`, because macOS
-  hands the file over as `RunEvent::Opened` after `setup`, and `open_media` closes a Start window
-  already up); signed in, the window last in front (`last_place`) unless Settings → This computer
-  → "When I open Lexpad" names Today or the Player (`open_at`) (C); signed out, the Start window
-  (A, D), or the Player once a video was played here (E); started by the login item (`--login`,
-  the autostart's argument; the Store's StartupTask activation) nothing (F); `--player` (the
-  Start menu's "Lexpad Player", a pinned Player button) the Player (G). The Dock and a second
-  launch ask the same table (`open_again`). The Settings window never opens by itself.
+- **Which window a launch opens is one table** (`launch::first_window`, Player spec
+  `uiux/2026-11-08-player/spec.md` B1, owner QB1 and QB4 8 Nov 2026, a test per row): a video
+  that opened Lexpad is the only window (B; decided `FIRST_WINDOW_GRACE` after
+  `RunEvent::Ready`, because macOS hands the file over as `RunEvent::Opened` after `setup`);
+  started by the login item (`--login`, the autostart's argument; the Store's StartupTask
+  activation) nothing, or Lexpad's window when Settings asks for it (F); `--player` (the Start
+  menu's "Lexpad Player", a pinned Player button) the Player (G); otherwise Player home,
+  signed in or out (A, C, D, E), unless a signed-in learner chose Today under Settings → This
+  computer → "When I open Lexpad" (`open_at`). The Dock and a second launch ask the same table
+  (`open_again`). The Settings window never opens by itself.
+- **"When I open Lexpad" tells a choice from the default** (`open_at_set`, written only by
+  `set_open_at`). A settings file from 0.3.29 or older always held `openAt`, so only a value
+  other than its old default `leftOff` can have been chosen: `settings::migrate` keeps `today`
+  and `player` as chosen, and turns a missing or `leftOff` value into the Player with
+  `player_home_note`, the page's one-time "Lexpad now opens on the Player. Prefer Today?" note
+  (`player_home` says it is due, `player_home_note_seen` ends it). Tested on saved files in
+  `fixtures/settings`.
+- **Player home's one-minute clip** (`clip.rs`, owner QB2): one minute of Tears of Steel (CC BY
+  3.0; the credit is in `clip/CREDITS.txt`, on the page and in About) with the film's official
+  subtitles in 20 languages, shipped in the resources (`bundle.resources`; the MSIX copies
+  `clip/` beside the exe). `player_home` lists the languages; the page picks the learner's
+  (system language, then time zone, else French) and `player_open_clip` stages the film in the
+  app's data folder with exactly English and that translation beside it, so the Player shows two
+  tracks, and opens it like any file (door `file`).
 - **One Dock tile on macOS** for both windows (`docs/player-dock-icon.md`). Windows gives the
   Player its own taskbar button (AppUserModelID `Lexpad.Player`, `taskbar::own_button`).
 - **The menu bar mirrors the Player's keys** (File → Open Video… ⌘O, Playback, Subtitles) with
@@ -357,18 +372,12 @@ The Player's page is the web app's `/player` route (lexpad_front `features/playe
 - **Windows 11 draws no border round the Player** (`taskbar::no_border`, `DWMWA_BORDER_COLOR`
   none): its accent border was a faint blue line at the foot of the black window. The shadow
   and the rounded corners stay.
-- **The first launch is the Start window, not a question** (`welcome.rs`, `src/welcome/`; owner
-  26 Oct 2026, direction A): the real Player (a word clicked in a subtitle, its card, Add to
-  Lexpad: a loop played twice that rests on the card, a still under reduced motion; the film's
-  CC BY 3.0 credit always readable, also in About), "Watch. Click a word. Keep it.", **Open a
-  video…** (⌘O / Ctrl+O, the core's dialog, `start_open_video`; or a file dropped on the window,
-  which the core takes and refuses with the reason when it is not a video) and **Continue with
-  Google / Apple** (`connect(provider)`, then `start_signed_in` opens Lexpad's window). No step,
-  no Skip; Escape does nothing; closing it sets nothing. What the learner does sets `focus`
-  (`focus_after_video`, `focus_after_sign_in`); it only changes tips. Once shown (`start_seen`)
-  the Player's route carries `seen=start`, so the Player never asks for a sign-in of its own.
-  No trial, no Pro and no numbers on it. One sign-in wording everywhere: "Sign in…", "Not
-  signed in", "Opens your browser. Lexpad never sees your password."
+- **No Start window** (retired 8 Nov 2026, owner QB4): the first launch is Player home, whose
+  first-run card says what the Start window said ("Watch. Click a word. Keep it.", Open a
+  video…, Continue with Google / Apple, the film's CC BY 3.0 credit) and works signed out. What
+  the learner does still sets `focus` (`launch::focus_after_video`); `learn` and `both` written
+  by the Start window are kept. One sign-in wording everywhere: "Sign in…", "Not signed in",
+  "Opens your browser. Lexpad never sees your password."
 - **Nothing in the background unasked**: start on login is off on a new install (no "Background
   Items Added" on the first run); an install that had it keeps it, and it is re-applied with
   `--login` at each start. The first time the last window closes, once per install
@@ -381,8 +390,7 @@ The Player's page is the web app's `/player` route (lexpad_front `features/playe
   and `scripts/msix-smoke.ps1` requires exactly one.
 - **Capabilities.** `player.json` grants the Player the engine, the words queue, the card's
   calls, the API proxy and its own window's controls; `main.json` keeps of the engine only what
-  the Player page and Settings → Video player read; `welcome.json` the Start window's commands
-  and moving and closing its own window.
+  the Player page and Settings → Video player read.
 - **Engine requests** go in `NOTES-player-ui.md`, never as edits to `src-tauri/src/media/`.
 
 ## The Mac App Store build (2026-11)

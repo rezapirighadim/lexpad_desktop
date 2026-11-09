@@ -62,9 +62,10 @@ pub enum Opened {
 /// (lexpad_front `features/player/door.ts`) and the server's allow-list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Door {
-    /// The Start window's "Open a video…".
+    /// The Start window's "Open a video…" (0.3.x; the window is retired, the
+    /// name stays in the list the page and the server share).
     Start,
-    /// The launch table (`welcome::first_window`), a second launch, the Dock,
+    /// The launch table (`launch::first_window`), a second launch, the Dock,
     /// `--player` (the Start menu's "Lexpad Player").
     Launch,
     /// The tray panel's "Watch a video…" row and the tray menu's "Open a video…".
@@ -77,7 +78,7 @@ pub enum Door {
     FirstFive,
     /// The shortcut card's hint when a video app is in front.
     PopupHint,
-    /// A file dropped on the learning window or the Start window.
+    /// A file dropped on the learning window.
     Drop,
     /// The system's "Open with", a file association, a file in the arguments.
     File,
@@ -153,15 +154,12 @@ impl Opened {
         }
     }
 
-    /// The route's query: how it was opened, and `seen=start` once the
-    /// Start window has been shown, so the Player never asks for a sign-in
-    /// of its own after it (Start window spec §7).
-    fn query(self, start_seen: bool, door: Option<Door>) -> String {
+    /// The route's query: how it was opened, and through which door.
+    fn query(self, door: Option<Door>) -> String {
         let parts: Vec<String> = self
             .from()
             .map(|f| format!("from={f}"))
             .into_iter()
-            .chain(start_seen.then(|| "seen=start".to_string()))
             .chain(door.map(|d| format!("door={}", d.as_str())))
             .collect();
         if parts.is_empty() {
@@ -208,22 +206,22 @@ fn open_now(app: &AppHandle, opened: Opened, door: Option<Door>) {
 
 /// The script that runs before the page: the app's configuration (as for
 /// Lexpad's window) and the Player's route, so the router starts there.
-fn init_script(device_id: &str, opened: Opened, start_seen: bool, door: Option<Door>) -> String {
+fn init_script(device_id: &str, opened: Opened, door: Option<Door>) -> String {
     format!(
         "{}\nif (!location.hash || location.hash === '#/') history.replaceState(null, '', '#/player{}');",
         main_window::config_script(device_id),
-        opened.query(start_seen, door)
+        opened.query(door)
     )
 }
 
 fn build(app: &AppHandle, opened: Opened, door: Option<Door>) -> tauri::Result<()> {
     let state = app.state::<AppState>();
-    let (device_id, saved, start_seen) = {
+    let (device_id, saved) = {
         let s = state
             .settings
             .lock()
             .map_err(|_| tauri::Error::FailedToReceiveMessage)?;
-        (s.device_id.clone(), s.player_window, s.start_seen)
+        (s.device_id.clone(), s.player_window)
     };
     let nav = app.clone();
     let popups = app.clone();
@@ -233,7 +231,7 @@ fn build(app: &AppHandle, opened: Opened, door: Option<Door>) -> tauri::Result<(
         .min_inner_size(MIN_SIZE.0, MIN_SIZE.1)
         .visible(false)
         .background_color(tauri::window::Color(0, 0, 0, 255))
-        .initialization_script(init_script(&device_id, opened, start_seen, door))
+        .initialization_script(init_script(&device_id, opened, door))
         .on_navigation(move |url| {
             if main_window::is_app_page(url) {
                 return true;
@@ -810,6 +808,53 @@ pub async fn player_account(app: AppHandle) -> Result<Account, String> {
     })
 }
 
+/// What Player home needs from the core (Player spec B1): whether the
+/// one-time launch note is due, and the languages the bundled clip has
+/// subtitles in (empty: no clip in this build, and the page shows no clip
+/// card). A page that finds no such command draws the Player as before.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HomeDto {
+    note: bool,
+    clip: Vec<String>,
+}
+
+#[tauri::command]
+pub fn player_home(app: AppHandle) -> HomeDto {
+    let note = app
+        .try_state::<AppState>()
+        .and_then(|s| s.settings.lock().ok().map(|s| s.player_home_note))
+        .unwrap_or(false);
+    let clip = app
+        .path()
+        .resource_dir()
+        .map(|dir| crate::clip::languages(&dir))
+        .unwrap_or_default();
+    HomeDto { note, clip }
+}
+
+/// The launch note showed (or was closed): it never comes again.
+#[tauri::command]
+pub fn player_home_note_seen(app: AppHandle) -> Result<(), String> {
+    app.state::<AppState>()
+        .update_settings(|s| s.player_home_note = false)
+        .map(|_| ())
+}
+
+/// "Play the clip": the clip with English and `second` (a language
+/// `player_home` listed) plays in this Player like any opened file.
+#[tauri::command]
+pub fn player_open_clip(app: AppHandle, second: String) -> Result<bool, String> {
+    let resources = app.path().resource_dir().map_err(|e| e.to_string())?;
+    let staging = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join(crate::clip::DIR);
+    let video = crate::clip::stage(&resources, &staging, &second)?;
+    Ok(crate::open_media(&app, &[video], Door::File))
+}
+
 /// Full screen: macOS's own space, Windows' borderless screen (§2, §19).
 #[tauri::command]
 pub fn player_fullscreen(window: WebviewWindow, on: bool) -> Result<(), String> {
@@ -1022,27 +1067,22 @@ mod tests {
 
     #[test]
     fn the_route_script_starts_the_router_on_the_player() {
-        let s = init_script("dev", Opened::Pick, false, None);
+        let s = init_script("dev", Opened::Pick, None);
         assert!(s.contains("window.__LEXPAD_CONFIG"));
         assert!(s.contains("#/player?from=pick'"));
-        assert!(init_script("dev", Opened::Launch, false, None).ends_with("'#/player');"));
-        // After the Start window, the Player is told so (no second sign-in).
-        assert!(
-            init_script("dev", Opened::File, true, None).contains("#/player?from=file&seen=start'")
-        );
-        assert!(init_script("dev", Opened::Launch, true, None).ends_with("'#/player?seen=start');"));
+        assert!(init_script("dev", Opened::Launch, None).ends_with("'#/player');"));
+        // The Start window is gone: nothing says it was seen.
+        assert!(init_script("dev", Opened::File, None).contains("#/player?from=file'"));
     }
 
     #[test]
     fn the_route_says_which_door_opened_the_player() {
-        assert!(init_script("dev", Opened::Pick, false, Some(Door::Tray))
+        assert!(init_script("dev", Opened::Pick, Some(Door::Tray))
             .contains("#/player?from=pick&door=tray'"));
-        assert!(
-            init_script("dev", Opened::Launch, false, Some(Door::Launch))
-                .ends_with("'#/player?door=launch');")
-        );
-        assert!(init_script("dev", Opened::File, true, Some(Door::Drop))
-            .contains("#/player?from=file&seen=start&door=drop'"));
+        assert!(init_script("dev", Opened::Launch, Some(Door::Launch))
+            .ends_with("'#/player?door=launch');"));
+        assert!(init_script("dev", Opened::File, Some(Door::Drop))
+            .contains("#/player?from=file&door=drop'"));
     }
 
     #[test]

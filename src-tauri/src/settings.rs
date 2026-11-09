@@ -53,23 +53,28 @@ pub struct Settings {
     /// applies the old grant though the switch still looks on: missing
     /// after it was allowed in another version is that, not a refusal.
     pub accessibility_granted_in: Option<String>,
-    /// What the learner came for, inferred from what they did first (the
-    /// Start window, `welcome`): a video opened is `watch`, a sign-in from
-    /// the Start window `learn`, both in turn `both`. It only changes tips
-    /// and is sent with the onboarding answers; it locks nothing. None until
-    /// known.
+    /// What the learner came for, inferred from what they did first: a
+    /// video opened is `watch`, `learn` or `both` were written by the Start
+    /// window of 0.3.x (retired 8 Nov 2026) and are kept as they are. It only
+    /// changes tips and is sent with the onboarding answers; it locks nothing.
+    /// None until known.
     pub focus: Option<Focus>,
     /// The window that was last in front: where "Open Lexpad" goes back to.
     pub last_place: Place,
     /// Settings → This computer → "When I open Lexpad".
     pub open_at: OpenAt,
+    /// `open_at` was chosen by the learner in Settings, not left at its
+    /// default. Written `true` only by that control (and by the migration of
+    /// a file whose value could only have come from it), so a later change of
+    /// the default never overrides a choice (Player spec B1, 8 Nov 2026).
+    pub open_at_set: bool,
+    /// The one-time note on Player home, "Lexpad now opens on the Player.
+    /// Prefer Today? Change it in Settings", is due: set by the migration of
+    /// an install that opened where it left off, cleared once the note showed.
+    pub player_home_note: bool,
     /// Where the Player's window was when it last closed.
     pub player_window: Option<WindowPlace>,
-    /// The Start window has been shown on this computer: the Player then
-    /// never asks for a sign-in of its own (`seen=start`, spec §7).
-    pub start_seen: bool,
-    /// A video has been opened on this computer: a later signed-out launch
-    /// opens the Player rather than the Start window (spec §2, state E).
+    /// A video has been opened on this computer.
     pub played_video: bool,
     /// "Lexpad is still here" was shown once, when the last window closed (§6).
     pub tray_hint_shown: bool,
@@ -126,14 +131,76 @@ pub enum Place {
     Player,
 }
 
-/// "When I open Lexpad": where it left off (the default), Today, or the Player.
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+/// "When I open Lexpad": Player home (the default since 8 Nov 2026, owner
+/// QB1) or Today. "Where I left off" (`leftOff`, the old default) is read as
+/// the Player; `SettingsFile::load` migrates it and says so once.
+#[derive(Clone, Copy, Debug, Default, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum OpenAt {
-    #[default]
-    LeftOff,
     Today,
+    #[default]
     Player,
+}
+
+/// Read leniently: a word this version does not know (a newer version's, or
+/// a damaged file's) is the Player, never a failed file that would lose every
+/// other setting with it.
+impl<'de> Deserialize<'de> for OpenAt {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let v = serde_json::Value::deserialize(d)?;
+        Ok(v.as_str().and_then(OpenAt::parse).unwrap_or_default())
+    }
+}
+
+impl OpenAt {
+    /// The word the windows' pages use for it.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            OpenAt::Today => "today",
+            OpenAt::Player => "player",
+        }
+    }
+
+    /// The control's word; "leftOff" is an older page's, read as the Player.
+    pub fn parse(word: &str) -> Option<OpenAt> {
+        match word {
+            "today" => Some(OpenAt::Today),
+            "player" | "leftOff" => Some(OpenAt::Player),
+            _ => None,
+        }
+    }
+}
+
+/// Brings a settings file from before `openAtSet` (0.3.29 and older) to the
+/// launch of 8 Nov 2026 (owner QB1: every launch opens Player home). Such a
+/// file always held `openAt`, chosen or not, because the old default was
+/// written too; only a value other than that default can have come from the
+/// learner. So `today` and `player` stay and count as chosen, and a missing
+/// or `leftOff` value becomes the Player, with the one-time note. Returns
+/// whether anything changed (the file is then written back).
+pub fn migrate(raw: &serde_json::Value, s: &mut Settings) -> bool {
+    let Some(map) = raw.as_object() else {
+        return false;
+    };
+    if map.contains_key("openAtSet") {
+        return false;
+    }
+    match map.get("openAt").and_then(|v| v.as_str()) {
+        Some("today") => {
+            s.open_at = OpenAt::Today;
+            s.open_at_set = true;
+        }
+        Some("player") => {
+            s.open_at = OpenAt::Player;
+            s.open_at_set = true;
+        }
+        _ => {
+            s.open_at = OpenAt::Player;
+            s.open_at_set = false;
+            s.player_home_note = true;
+        }
+    }
+    true
 }
 
 /// A window's place on screen, remembered between runs.
@@ -198,9 +265,10 @@ impl Default for Settings {
             accessibility_granted_in: None,
             focus: None,
             last_place: Place::Learn,
-            open_at: OpenAt::LeftOff,
+            open_at: OpenAt::Player,
+            open_at_set: false,
+            player_home_note: false,
             player_window: None,
-            start_seen: false,
             played_video: false,
             tray_hint_shown: false,
             phone_used_by: None,
@@ -222,9 +290,18 @@ impl SettingsFile {
     }
 
     /// The saved settings, and whether this is the first run (no file yet).
+    /// A file from an older version is migrated (`migrate`) and written back.
     pub fn load(&self) -> (Settings, bool) {
         match std::fs::read_to_string(&self.path) {
-            Ok(text) => (serde_json::from_str(&text).unwrap_or_default(), false),
+            Ok(text) => {
+                let (settings, migrated) = parse(&text);
+                if migrated {
+                    if let Err(e) = self.save(&settings) {
+                        log::warn!("could not write the migrated settings: {e}");
+                    }
+                }
+                (settings, false)
+            }
             Err(_) => (Settings::default(), true),
         }
     }
@@ -239,6 +316,26 @@ impl SettingsFile {
         std::fs::write(&tmp, json).map_err(|e| e.to_string())?;
         std::fs::rename(&tmp, &self.path).map_err(|e| e.to_string())
     }
+}
+
+/// A settings file's text, migrated, and whether the migration changed it.
+///
+/// A file that cannot be read as settings (not JSON, or a field of the wrong
+/// type) gives the defaults for this run and is never migrated: writing back
+/// would replace the learner's device id and every other setting with them.
+pub fn parse(text: &str) -> (Settings, bool) {
+    let Some(raw) = serde_json::from_str::<serde_json::Value>(text).ok() else {
+        log::warn!("the settings file is not JSON; using the defaults and leaving it as it is");
+        return (Settings::default(), false);
+    };
+    let Some(mut settings) = serde_json::from_value::<Settings>(raw.clone()).ok() else {
+        log::warn!(
+            "the settings file could not be read; using the defaults and leaving it as it is"
+        );
+        return (Settings::default(), false);
+    };
+    let migrated = migrate(&raw, &mut settings);
+    (settings, migrated)
 }
 
 /// Whether a missing Accessibility permission is one macOS dropped because
@@ -264,7 +361,10 @@ mod tests {
         assert!(is_first);
         // Nothing starts at login until the learner asks (Start window spec §6).
         assert!(!first.start_on_login);
-        assert!(!first.start_seen && !first.played_video && !first.tray_hint_shown);
+        assert!(!first.played_video && !first.tray_hint_shown);
+        // A new install opens Player home, with no note: nothing changed for it.
+        assert_eq!(first.open_at, OpenAt::Player);
+        assert!(!first.open_at_set && !first.player_home_note);
         assert_eq!(first.shortcut, DEFAULT_SHORTCUT);
         file.save(&first).unwrap();
         let (again, is_first) = file.load();
@@ -314,7 +414,7 @@ mod tests {
         assert!(s.main_window.is_none());
         assert!(s.notifications);
         assert!(s.accessibility_granted_in.is_none());
-        assert!(!s.start_seen && !s.played_video && !s.tray_hint_shown);
+        assert!(!s.played_video && !s.tray_hint_shown);
     }
 
     #[test]
@@ -351,6 +451,138 @@ mod tests {
         assert!(!off.start_on_login);
         let new = Settings::default();
         assert!(!new.start_on_login);
+    }
+
+    /// Settings files as 0.3.29 (and 0.2.4, before "When I open Lexpad")
+    /// wrote them, with their own fields only (`fixtures/settings`).
+    const OLD_LEFT_OFF: &str = include_str!("../fixtures/settings/0.3.29-left-off.json");
+    const OLD_TODAY: &str = include_str!("../fixtures/settings/0.3.29-today.json");
+    const OLD_PLAYER: &str = include_str!("../fixtures/settings/0.3.29-player.json");
+    const OLDER_NONE: &str = include_str!("../fixtures/settings/0.2.4-no-open-at.json");
+
+    #[test]
+    fn an_old_default_becomes_player_home_with_the_note_once() {
+        for text in [OLD_LEFT_OFF, OLDER_NONE] {
+            let (s, migrated) = parse(text);
+            assert!(migrated);
+            assert_eq!(s.open_at, OpenAt::Player);
+            // Never chosen: a later default may still move it.
+            assert!(!s.open_at_set);
+            assert!(s.player_home_note);
+            // Everything else the file held is kept.
+            assert_eq!(s.device_id, "7d1f3c2e-0000-4000-8000-000000000001");
+            assert!(s.start_on_login);
+            // Written back, the file is not migrated again: the note comes once.
+            let again = serde_json::to_string(&s).unwrap();
+            let (s2, migrated2) = parse(&again);
+            assert!(!migrated2);
+            assert_eq!(s2, s);
+        }
+    }
+
+    #[test]
+    fn an_unknown_open_at_word_is_the_player_and_keeps_everything_else() {
+        let (s, migrated) = parse(r#"{"openAt":"nowhere","deviceId":"x"}"#);
+        assert_eq!(s.open_at, OpenAt::Player);
+        assert_eq!(s.device_id, "x");
+        // An old file (no openAtSet): migrated as an unchosen default, the device id kept.
+        assert!(migrated && !s.open_at_set);
+        let (s, migrated) = parse(r#"{"openAt":"nowhere","openAtSet":true,"deviceId":"x"}"#);
+        assert!(!migrated);
+        assert_eq!((s.open_at, s.device_id.as_str()), (OpenAt::Player, "x"));
+    }
+
+    #[test]
+    fn a_file_that_cannot_be_read_is_never_written_back() {
+        for text in [
+            r#"{"openAt":"nowhere","deviceId":"x","startOnLogin":"yes"}"#,
+            r#"{"deviceId":7}"#,
+            "{not json",
+        ] {
+            let (s, migrated) = parse(text);
+            assert!(!migrated, "{text}");
+            assert_eq!(
+                s,
+                Settings {
+                    device_id: s.device_id.clone(),
+                    ..Settings::default()
+                }
+            );
+            let dir =
+                std::env::temp_dir().join(format!("lexpad-settings-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir_all(&dir).unwrap();
+            let file = SettingsFile::new(&dir);
+            std::fs::write(&file.path, text).unwrap();
+            let (_, first) = file.load();
+            assert!(!first);
+            assert_eq!(
+                std::fs::read_to_string(&file.path).unwrap(),
+                text,
+                "rewritten: {text}"
+            );
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_place_the_learner_chose_stays_and_counts_as_chosen() {
+        let (s, migrated) = parse(OLD_TODAY);
+        assert!(migrated);
+        assert_eq!(s.open_at, OpenAt::Today);
+        assert!(s.open_at_set && !s.player_home_note);
+        let (s, _) = parse(OLD_PLAYER);
+        assert_eq!(s.open_at, OpenAt::Player);
+        assert!(s.open_at_set && !s.player_home_note);
+    }
+
+    #[test]
+    fn a_new_file_is_not_migrated_and_a_chosen_value_is_told_from_the_default() {
+        let fresh = serde_json::to_string(&Settings::default()).unwrap();
+        let (s, migrated) = parse(&fresh);
+        assert!(!migrated);
+        assert!(!s.open_at_set && !s.player_home_note);
+        // The Settings control writes the choice and the mark together.
+        let chosen = Settings {
+            open_at: OpenAt::Today,
+            open_at_set: true,
+            ..Settings::default()
+        };
+        let (s, migrated) = parse(&serde_json::to_string(&chosen).unwrap());
+        assert!(!migrated);
+        assert_eq!(s.open_at, OpenAt::Today);
+        assert!(s.open_at_set);
+    }
+
+    #[test]
+    fn the_migrated_file_is_written_back_by_load() {
+        let dir = std::env::temp_dir().join(format!("lexpad-settings-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("settings.json"), OLD_LEFT_OFF).unwrap();
+        let file = SettingsFile::new(&dir);
+        let (s, first) = file.load();
+        assert!(!first);
+        assert!(s.player_home_note);
+        let text = std::fs::read_to_string(dir.join("settings.json")).unwrap();
+        assert!(text.contains("\"openAtSet\": false"));
+        assert!(text.contains("\"openAt\": \"player\""));
+        // The note is cleared once shown; the next start keeps it cleared.
+        let mut s = s;
+        s.player_home_note = false;
+        file.save(&s).unwrap();
+        let (again, _) = file.load();
+        assert!(!again.player_home_note);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn the_pages_words_for_the_choice() {
+        assert_eq!(OpenAt::parse("today"), Some(OpenAt::Today));
+        assert_eq!(OpenAt::parse("player"), Some(OpenAt::Player));
+        // An older page's "Where I left off" is the Player now.
+        assert_eq!(OpenAt::parse("leftOff"), Some(OpenAt::Player));
+        assert_eq!(OpenAt::parse("nowhere"), None);
+        assert_eq!(OpenAt::Today.as_str(), "today");
+        assert_eq!(OpenAt::Player.as_str(), "player");
     }
 
     #[test]

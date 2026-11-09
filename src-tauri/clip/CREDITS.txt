@@ -1,0 +1,17 @@
+Tears of Steel (CC) Blender Foundation | mango.blender.org
+
+The film is licensed under the Creative Commons Attribution 3.0 licence
+(CC BY 3.0, https://creativecommons.org/licenses/by/3.0/).
+
+"Tears of Steel.mp4" is one minute of the film (from 0:19 to 1:19 of the
+official 720p release, download.blender.org/demo/movies/ToS/), re-encoded
+to H.264 and AAC. The subtitles in subs/ are the film's official
+subtitles from download.blender.org/demo/movies/ToS/subtitles/, cut to the
+same minute and saved as UTF-8; their text is unchanged.
+
+Lexpad bundles it for "Try a one-minute clip" on Player home and credits
+it there, while it plays, and in About Lexpad.
+
+"Tears of Steel.pt.srt" is the official Brazilian Portuguese (pt-BR)
+translation. The European Portuguese file was the same text and is not
+bundled.

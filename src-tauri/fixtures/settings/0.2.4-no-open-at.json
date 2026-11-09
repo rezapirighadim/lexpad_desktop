@@ -1,0 +1,19 @@
+{
+  "deviceId": "7d1f3c2e-0000-4000-8000-000000000001",
+  "shortcut": "CommandOrControl+Shift+L",
+  "startOnLogin": true,
+  "notebookId": null,
+  "recent": [],
+  "openOnLaunch": false,
+  "openInBrowser": false,
+  "mainWindow": {
+    "x": 120.0,
+    "y": 80.0,
+    "w": 1240.0,
+    "h": 820.0,
+    "maximized": false
+  },
+  "notifications": true,
+  "inbox": {},
+  "accessibilityGrantedIn": "0.3.29"
+}
