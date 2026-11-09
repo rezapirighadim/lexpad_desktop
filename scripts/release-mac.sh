@@ -170,6 +170,17 @@ sig=$(codesign -dv --verbose=4 "$app" 2>&1)
 echo "$sig" | grep -q "^Identifier=$identifier\$" || { echo "release-mac: not signed as $identifier" >&2; exit 1; }
 echo "$sig" | grep -q "^Authority=$APPLE_SIGNING_IDENTITY\$" || { echo "release-mac: not signed by $APPLE_SIGNING_IDENTITY" >&2; exit 1; }
 echo "$sig" | grep -q "flags=0x10000(runtime)" || { echo "release-mac: no hardened runtime" >&2; exit 1; }
+# The hardened runtime keeps the microphone closed unless the signature
+# carries this entitlement (src-tauri/Lexpad.entitlements): without it the
+# Player's Say it back fails before macOS even asks the learner.
+ents=$(mktemp -t lexpad-ents)
+codesign -d --entitlements - --xml "$app" >"$ents" 2>/dev/null || true
+[ "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.device.audio-input' "$ents" 2>/dev/null)" = true ] || {
+  rm -f "$ents"
+  echo "release-mac: the signed app lacks com.apple.security.device.audio-input" >&2
+  exit 1
+}
+rm -f "$ents"
 if [ "$notarize" = 1 ]; then
   # Notarization refuses a signature without Apple's secure timestamp.
   echo "$sig" | grep -q "^Timestamp=" || { echo "release-mac: no secure timestamp on the signature" >&2; exit 1; }

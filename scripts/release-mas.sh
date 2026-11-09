@@ -145,6 +145,16 @@ codesign -d --entitlements :- "$app" 2>/dev/null | grep -q "com.apple.security.a
   echo "release-mas: the app is not sandboxed" >&2
   exit 1
 }
+# The sandbox keeps the microphone closed unless the signature carries this
+# entitlement (mas/Lexpad.entitlements): the Player's Say it back needs it.
+ents_file=$(mktemp -t lexpad-ents)
+codesign -d --entitlements - --xml "$app" >"$ents_file" 2>/dev/null || true
+[ "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.device.audio-input' "$ents_file" 2>/dev/null)" = true ] || {
+  rm -f "$ents_file"
+  echo "release-mas: the signed app lacks com.apple.security.device.audio-input" >&2
+  exit 1
+}
+rm -f "$ents_file"
 for tool in ffmpeg ffprobe; do
   ents=$(codesign -d --entitlements :- "$app/Contents/MacOS/$tool" 2>/dev/null)
   echo "$ents" | grep -q "com.apple.security.inherit" || { echo "release-mas: $tool does not inherit the sandbox" >&2; exit 1; }
