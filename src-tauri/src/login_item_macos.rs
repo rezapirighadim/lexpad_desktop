@@ -6,8 +6,9 @@
 //! macOS lists it under System Settings › General › Login Items as "Lexpad".
 //!
 //! A start by this login item carries no `--login` argument, so the launch
-//! table (`welcome::first_window`) treats it as a start by hand and may open
-//! a window; the plan (docs/mac-app-store-plan.md) lists it.
+//! table (`launch::first_window`) treats it as a start by hand and opens
+//! Player home (or Today, when chosen); the plan (docs/mac-app-store-plan.md)
+//! lists it.
 
 use objc2::msg_send;
 use objc2::runtime::{AnyClass, AnyObject, Bool};

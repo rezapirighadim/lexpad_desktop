@@ -65,7 +65,7 @@ pub enum Door {
     /// The Start window's "Open a video…" (0.3.x; the window is retired, the
     /// name stays in the list the page and the server share).
     Start,
-    /// The launch table (`welcome::first_window`), a second launch, the Dock,
+    /// The launch table (`launch::first_window`), a second launch, the Dock,
     /// `--player` (the Start menu's "Lexpad Player").
     Launch,
     /// The tray panel's "Watch a video…" row and the tray menu's "Open a video…".
