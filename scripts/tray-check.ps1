@@ -98,10 +98,12 @@ function Start-Lexpad {
   # The tray's window, once tray-icon has made it.
   for ($i = 0; $i -lt 60; $i++) {
     Start-Sleep -Milliseconds 500
-    $tray = [TrayWin]::Windows([uint32]$p.Id, 'tray_icon_app') | Select-Object -First 1
-    if ($tray) { break }
+    $trays = @([TrayWin]::Windows([uint32]$p.Id, 'tray_icon_app'))
+    if ($trays.Count -gt 0) { break }
   }
-  if (-not $tray) { throw "Lexpad (pid $($p.Id)) made no tray window" }
+  if ($trays.Count -eq 0) { throw "Lexpad (pid $($p.Id)) made no tray window" }
+  $tray = $trays[0]
+  Write-Host "TRAY pid $($p.Id): $($trays.Count) tray window(s) after $([int]($i / 2)) s"
   Start-Sleep -Seconds 4
   # Whatever window the launch opened is put away, so the clicks go to the tray.
   foreach ($h in [TrayWin]::Windows([uint32]$p.Id, $null)) {
@@ -148,12 +150,17 @@ function Inside($r, $b) {
 # (and Server 2025), where the shell answers with the ^ button's rectangle:
 # then the overflow is opened, as a learner would, and the icon is found in it.
 function Find-Icon($tray) {
-  # A fresh start may take a few seconds to put its icon in the shell.
+  # A fresh start may take a few seconds to put its icon in the shell. Up to
+  # 60 s, and how long it took is printed: a restart right after Quit on the
+  # Windows 10 taskbar found none within 10 s (0.3.30), and this tells a slow
+  # shell from an icon that is never added.
   $r = $null
-  for ($i = 0; $i -lt 20 -and -not $r; $i++) {
+  $clock = [System.Diagnostics.Stopwatch]::StartNew()
+  while (-not $r -and $clock.Elapsed.TotalSeconds -lt 60) {
     $r = Icon-Rect $tray
     if (-not $r) { Start-Sleep -Milliseconds 500 }
   }
+  Write-Host "TRAY icon rect after $([int]$clock.Elapsed.TotalSeconds) s: $(if ($r) { 'found' } else { 'none' })"
   $chevron = Chevron
   if ($r -and (-not $chevron -or -not (Inside $r $chevron.Current.BoundingRectangle))) { return $r }
   if (-not $chevron) { Write-Host 'TRAY no icon and no overflow button'; return $null }
@@ -225,6 +232,7 @@ if (-not $r) {
 $run = Start-Lexpad
 $r = Find-Icon $run.Tray
 if (-not $r) {
+  Shot '3-no-icon'
   Fail 'the tray icon could not be found again'
 } else {
   Click ([int](($r.Left + $r.Right) / 2)) ([int](($r.Top + $r.Bottom) / 2)) 'left'
