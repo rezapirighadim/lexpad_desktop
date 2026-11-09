@@ -188,15 +188,12 @@ the sandbox. No push entitlement is needed (the server's messages come from the 
 
 ## Signing in
 
-The system browser and PKCE (RFC 8252), as in the dmg, but the browser comes back to the
-private-use scheme `lexpad://auth/callback` (§7.1) instead of a loopback port. Apple rejected
-0.3.29 under 2.4.5(i) for `network.server`, so this copy has no listener and no such key: the
-scheme is in `Info.mas.plist`, macOS opens the URL in the running app (LaunchServices runs one
-copy), `tauri-plugin-deep-link` (feature `mas`) passes it to `auth::SchemeWait`, which takes
-only that exact callback with the waiting state. The API allows that address through
-`DESKTOP_APP_REDIRECT_URIS`; the web app's `/connect-desktop` takes that exact string. Only the
-Mac App Store copy registers `lexpad`, so a Mac with the dmg too still sends the answer to the
-right copy (the dmg never asks for it). No password is typed in the app, so Guideline 4.8 (Sign in
+The system browser and PKCE (RFC 8252); the browser comes back to the private-use scheme
+`lexpad://auth/callback` (§7.1) instead of a loopback port. Apple rejected 0.3.29 under 2.4.5(i)
+for `network.server`, so this copy has no listener and no such key. Since 0.3.30 the dmg signs in
+the same way (owner, 9 Nov 2026); see CLAUDE.md, "The app never sees a password", for the
+cold start, the second click, cancel and two installed copies. The API allows the address
+through `DESKTOP_APP_REDIRECT_URIS`; the web app's `/connect-desktop` takes that exact string. No password is typed in the app, so Guideline 4.8 (Sign in
 with Apple) is met by the web sign-in page itself, which offers Apple next to Google.
 
 ## Pro purchase

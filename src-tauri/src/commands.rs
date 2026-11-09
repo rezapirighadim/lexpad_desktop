@@ -308,12 +308,17 @@ pub async fn connect(
 ) -> Result<User, String> {
     let pkce = auth::new_pkce();
     let st = auth::new_state();
-    // The Mac App Store copy may not listen on a port: the browser comes back
-    // to its `lexpad` scheme instead (auth.rs, RFC 8252 §7.1).
-    let (redirect, wait) = if config::MAS {
+    // The Mac copies: the browser comes back to the `lexpad` scheme (auth.rs,
+    // RFC 8252 §7.1; the Mac App Store copy may not listen on a port). A run
+    // without a bundle that registers it (development) and Windows: loopback.
+    #[cfg(target_os = "macos")]
+    let use_scheme = crate::signin_macos::scheme_registered();
+    #[cfg(not(target_os = "macos"))]
+    let use_scheme = false;
+    let (redirect, wait) = if use_scheme {
         (
             auth::APP_REDIRECT.to_owned(),
-            auth::Wait::Scheme(state.scheme_wait.begin(&st)),
+            auth::Wait::Scheme(state.scheme_wait.begin(&st, &pkce.verifier)),
         )
     } else {
         let (listener, port) = auth::listen().await.map_err(|_| err(Failure::Error))?;
@@ -351,21 +356,7 @@ pub async fn connect(
         Ok(None) => return Err("cancelled".into()),
         Err(_) => return Err("timeout".into()),
     };
-    let device_id = state.settings.lock().map_err(|_| "lock")?.device_id.clone();
-    let device = Device {
-        platform: "desktop",
-        device_id,
-        device_name: config::device_name().into(),
-        app_version: config::VERSION.into(),
-    };
-    let user = state
-        .api
-        .exchange_code(&code, &pkce.verifier, &redirect, &device)
-        .await
-        .map_err(err)?;
-    let _ = app.emit("session:changed", ());
-    // Words saved before signing in go to the account now.
-    flush_words(&app);
+    let user = trade_code(&app, &state, &code, &pkce.verifier, &redirect).await?;
     // Signed in from the Start window, which was closed while the browser was
     // still open: the sign-in still counts and Lexpad's window opens, as the
     // page would have asked (`welcome::start_signed_in`).
@@ -376,6 +367,56 @@ pub async fn connect(
         let _ = crate::welcome::start_signed_in(app.clone());
     }
     Ok(user)
+}
+
+/// Trades a one-time code and its verifier for this app's own session, and
+/// tells the windows: who signed in, and the words saved before go now.
+async fn trade_code(
+    app: &AppHandle,
+    state: &AppState,
+    code: &str,
+    verifier: &str,
+    redirect: &str,
+) -> Result<User, String> {
+    let device_id = state.settings.lock().map_err(|_| "lock")?.device_id.clone();
+    let device = Device {
+        platform: "desktop",
+        device_id,
+        device_name: config::device_name().into(),
+        app_version: config::VERSION.into(),
+    };
+    let user = state
+        .api
+        .exchange_code(code, verifier, redirect, &device)
+        .await
+        .map_err(err)?;
+    let _ = app.emit("session:changed", ());
+    // Words saved before signing in go to the account now.
+    flush_words(app);
+    Ok(user)
+}
+
+/// A Mac copy's sign-in begun before Lexpad was quit, answered by the
+/// browser after macOS started Lexpad again for `lexpad://auth/callback`
+/// (auth::Delivered::Resume): the code is traded with the verifier kept for
+/// it, and Lexpad opens signed in, as the Start window would after a sign-in.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn resume_sign_in(app: AppHandle, code: String, verifier: String) {
+    tauri::async_runtime::spawn(async move {
+        let Some(state) = app.try_state::<AppState>() else {
+            return;
+        };
+        match trade_code(&app, &state, &code, &verifier, auth::APP_REDIRECT).await {
+            Ok(_) => {
+                if app.get_webview_window(crate::welcome::LABEL).is_some() {
+                    let _ = crate::welcome::start_signed_in(app.clone());
+                } else {
+                    crate::open_web(&app, None);
+                }
+            }
+            Err(e) => log::warn!("the sign-in begun before Lexpad was quit failed: {e}"),
+        }
+    });
 }
 
 /// Sends the words waiting on this computer (`word_queue`), in the

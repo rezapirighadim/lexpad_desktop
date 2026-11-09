@@ -126,8 +126,8 @@
   </array>
   <!-- Signing in (auth.rs, RFC 8252 section 7.1): the browser comes back to
        lexpad://auth/callback, which macOS opens in Lexpad. This copy may not
-       listen on a port, so it has no loopback listener. Only this build
-       registers the scheme; the dmg keeps its loopback sign-in. -->
+       listen on a port, so it has no loopback listener. The dmg registers
+       the same scheme; its URL name differs. -->
   <key>CFBundleURLTypes</key>
   <array>
     <dict>
