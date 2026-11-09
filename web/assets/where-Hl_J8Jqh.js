@@ -1,1 +1,0 @@
-import{t as e}from"./apple-vFo1Zw9F.js";function t(){return!e()}export{t};
