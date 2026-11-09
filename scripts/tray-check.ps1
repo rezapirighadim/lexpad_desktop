@@ -148,7 +148,12 @@ function Inside($r, $b) {
 # (and Server 2025), where the shell answers with the ^ button's rectangle:
 # then the overflow is opened, as a learner would, and the icon is found in it.
 function Find-Icon($tray) {
-  $r = Icon-Rect $tray
+  # A fresh start may take a few seconds to put its icon in the shell.
+  $r = $null
+  for ($i = 0; $i -lt 20 -and -not $r; $i++) {
+    $r = Icon-Rect $tray
+    if (-not $r) { Start-Sleep -Milliseconds 500 }
+  }
   $chevron = Chevron
   if ($r -and (-not $chevron -or -not (Inside $r $chevron.Current.BoundingRectangle))) { return $r }
   if (-not $chevron) { Write-Host 'TRAY no icon and no overflow button'; return $null }
