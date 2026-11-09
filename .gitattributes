@@ -1,0 +1,5 @@
+# The bundled clip's subtitles ship byte for byte as committed, LF, on every
+# platform: a Windows checkout would otherwise turn them into CRLF in the
+# installer (and clip::tests reads them as shipped).
+src-tauri/clip/subs/*.srt text eol=lf
+src-tauri/clip/CREDITS.txt text eol=lf

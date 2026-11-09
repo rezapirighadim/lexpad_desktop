@@ -1,0 +1,1 @@
+import{t as e}from"./apple-B1107SBk.js";function t(){return!e()}export{t};

@@ -2156,7 +2156,7 @@ dependencies = [
 
 [[package]]
 name = "lexpad-desktop"
-version = "0.3.29"
+version = "0.3.31"
 dependencies = [
  "base64 0.22.1",
  "block2",
