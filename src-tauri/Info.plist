@@ -18,6 +18,14 @@
       </array>
     </dict>
   </array>
+  <!-- The Player's Say it back (webkitSpeechRecognition in the Player's
+       WKWebView): macOS shows these in its own two prompts, the first time
+       the learner says a line back. WebKit refuses the microphone without the
+       first and speech recognition without the second. -->
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Say it back listens to you say a line, so Lexpad can show which words came through.</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>Say it back turns what you say into text to check it against the subtitle line.</string>
   <!-- A menu-bar app: no Dock icon while idle. The Settings window brings one
        back while it is open (see lib.rs). -->
   <key>LSUIElement</key>

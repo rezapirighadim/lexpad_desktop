@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The site's dmg's entitlements (bundle.macOS.entitlements in
+  tauri.macos.conf.json). The dmg is signed with the hardened runtime, which
+  keeps the microphone closed unless this key is here. Nothing else is asked
+  for: WebKit's JavaScript runs in its own WebContent process, so the app
+  needs no JIT key. The Mac App Store build signs with mas/Lexpad.entitlements
+  instead (tauri.mas.conf.json, scripts/release-mas.sh).
+-->
+<plist version="1.0">
+<dict>
+  <!-- The Player's Say it back: the microphone, for WebKit's speech
+       recognition (macOS still asks the learner first). -->
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
+</dict>
+</plist>
