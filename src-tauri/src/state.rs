@@ -20,6 +20,9 @@ pub struct AppState {
     pub notebooks: Mutex<Vec<Value>>,
     /// Ends a connect that is waiting for the browser.
     pub connect_cancel: Mutex<Option<Arc<tokio::sync::Notify>>>,
+    /// The Mac App Store copy's sign-in waiting for `lexpad://auth/callback`
+    /// (auth.rs); the deep-link handler in lib.rs delivers to it.
+    pub scheme_wait: Arc<crate::auth::SchemeWait>,
 }
 
 impl AppState {

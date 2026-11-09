@@ -74,10 +74,14 @@ whatlang = "0.16"
 regex = "1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+# The Mac copies' sign-in comes back as lexpad://auth/callback (auth.rs,
+# RFC 8252 §7.1): macOS hands the URL to the running app (or starts it), the
+# plugin passes it on. macOS only; Windows keeps the loopback.
+tauri-plugin-deep-link = "2"
 core-foundation = "0.10"
 core-graphics = "0.24"
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", features = ["NSString", "NSArray", "NSData", "NSObject", "NSBundle", "NSError"] }
+objc2-foundation = { version = "0.3", features = ["NSString", "NSArray", "NSData", "NSObject", "NSBundle", "NSError", "NSDictionary", "NSURL", "NSEnumerator"] }
 block2 = "0.6"
 objc2-user-notifications = { version = "0.3", features = ["block2", "UNUserNotificationCenter", "UNNotification", "UNNotificationContent", "UNNotificationRequest", "UNNotificationResponse", "UNNotificationSettings", "UNNotificationSound", "UNNotificationTrigger", "bitflags"] }
 objc2-app-kit = { version = "0.3", features = ["NSWindow", "NSApplication", "NSPasteboard", "NSPasteboardItem", "NSRunningApplication", "NSWorkspace", "NSResponder", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSStatusItem", "NSStatusBarButton", "NSButton", "NSControl", "NSView"] }

@@ -73,6 +73,67 @@ impl SessionStore for Keyring {
     }
 }
 
+/// The sign-in a Mac copy waits for through `lexpad://auth/callback`
+/// (auth::Pending), kept next to the session so a Lexpad quit meanwhile can
+/// finish it when macOS starts it for the callback. One entry per API, like
+/// the session; removed when answered, cancelled, timed out or expired.
+pub struct PendingKeyring {
+    account: String,
+}
+
+impl PendingKeyring {
+    pub fn new(api_origin: &str) -> Self {
+        Self {
+            account: format!("pending sign-in {api_origin}"),
+        }
+    }
+
+    fn entry(&self) -> Option<keyring::Entry> {
+        keyring::Entry::new(SERVICE, &self.account)
+            .map_err(|e| log::warn!("credential store unavailable: {e}"))
+            .ok()
+    }
+}
+
+impl crate::auth::PendingStore for PendingKeyring {
+    fn load(&self) -> Option<crate::auth::Pending> {
+        let secret = self.entry()?.get_password().ok()?;
+        serde_json::from_str(&secret).ok()
+    }
+
+    fn save(&self, pending: &crate::auth::Pending) {
+        let Some(entry) = self.entry() else {
+            return;
+        };
+        if let Ok(json) = serde_json::to_string(pending) {
+            if let Err(e) = entry.set_password(&json) {
+                log::warn!("could not keep the waiting sign-in: {e}");
+            }
+        }
+    }
+
+    fn clear(&self) {
+        if let Some(entry) = self.entry() {
+            match entry.delete_credential() {
+                Ok(()) | Err(keyring::Error::NoEntry) => {}
+                Err(e) => log::warn!("could not remove the waiting sign-in: {e}"),
+            }
+        }
+    }
+}
+
+/// Keeps nothing: the smoke test and the platforms whose sign-in is the
+/// loopback (Windows), where a quit Lexpad cannot be reached anyway.
+pub struct NoPending;
+
+impl crate::auth::PendingStore for NoPending {
+    fn load(&self) -> Option<crate::auth::Pending> {
+        None
+    }
+    fn save(&self, _pending: &crate::auth::Pending) {}
+    fn clear(&self) {}
+}
+
 /// An in-memory store for tests.
 #[cfg(test)]
 #[derive(Default)]

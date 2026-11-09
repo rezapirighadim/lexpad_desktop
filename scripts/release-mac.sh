@@ -129,8 +129,8 @@ if [ "$notarize" = 1 ]; then
   [ -f "$ASC_KEY_PATH" ] || { echo "release-mac: no API key file at $ASC_KEY_PATH" >&2; exit 1; }
 fi
 # tauri build notarizes by itself when it sees Apple credentials; this
-# script notarizes the .dmg instead (it carries the app, and its ticket is
-# stapled to the file people download), so tauri must not see them.
+# script notarizes and staples the app and then the .dmg (below), so tauri
+# must not see them.
 unset APPLE_API_KEY APPLE_API_ISSUER APPLE_API_KEY_PATH APPLE_ID APPLE_PASSWORD
 # The player test build: the same pipeline with an overlay config (its own
 # name, identifier, icon and Info.plist) and the player-test feature.
@@ -179,37 +179,80 @@ case "$requirement" in
   "identifier \"$identifier\" and "*certificate*) echo "release-mac: designated requirement: $requirement" ;;
   *) echo "release-mac: unexpected designated requirement: $requirement" >&2; exit 1 ;;
 esac
+# Signing in comes back as lexpad://auth/callback (auth.rs): the scheme must be
+# registered, or the browser's answer never reaches Lexpad.
+if [ "${LEXPAD_PLAYER_TEST:-}" != 1 ]; then
+  [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' "$app/Contents/Info.plist")" = lexpad ] || {
+    echo "release-mac: the lexpad URL scheme is not registered" >&2
+    exit 1
+  }
+fi
 plist_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")
 [ "$plist_version" = "$version" ] || { echo "release-mac: app says $plist_version, package.json says $version" >&2; exit 1; }
 hdiutil detach "$mnt" >/dev/null
 trap - EXIT
 
-# Notarize the .dmg (Apple checks the app inside it too) and staple the
-# ticket to it, so the first open works offline and without a warning.
-if [ "$notarize" = 1 ]; then
-  # Gatekeeper assesses a downloaded .dmg by its own signature; sign it with
-  # the same identity when the bundler has not.
-  codesign -v "$dmg" 2>/dev/null || codesign --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$dmg"
-  echo "release-mac: notarizing $dmg (this waits for Apple, usually a few minutes)"
-  xcrun notarytool submit "$dmg" --key "$ASC_KEY_PATH" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" --wait \
-    --output-format json >"$bundle/notarytool.json" || {
-    echo "release-mac: notarytool failed; see $bundle/notarytool.json" >&2
+# Notarize and staple twice (Gatekeeper, 9 Nov 2026): first Lexpad.app, so
+# the app keeps its own ticket once it is copied to Applications (with only
+# the .dmg stapled, the app had none, macOS had to reach Apple at its first
+# open, and where that failed it asked for "Open Anyway"); then the .dmg that
+# carries the stapled app. scripts/check-mac-dmg.sh then checks the result as
+# Gatekeeper will, and any failure stops the release.
+notarize_file() {
+  file=$1
+  report="$bundle/notarytool-$(basename "$file").json"
+  echo "release-mac: notarizing $(basename "$file") (this waits for Apple, usually a few minutes)"
+  xcrun notarytool submit "$file" --key "$ASC_KEY_PATH" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" --wait \
+    --output-format json >"$report" || {
+    echo "release-mac: notarytool failed; see $report" >&2
     exit 1
   }
-  status=$(node -p "require('./$bundle/notarytool.json').status")
+  status=$(node -p "require('./$report').status")
   if [ "$status" != Accepted ]; then
-    id=$(node -p "require('./$bundle/notarytool.json').id")
+    id=$(node -p "require('./$report').id")
     echo "release-mac: notarization $status; the log says why:" >&2
     xcrun notarytool log "$id" --key "$ASC_KEY_PATH" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" >&2 || true
     exit 1
   fi
-  xcrun stapler staple "$dmg"
-  xcrun stapler validate "$dmg"
-  spctl -a -t open --context context:primary-signature -v "$dmg" 2>&1 | grep -q "source=Notarized Developer ID" || {
-    echo "release-mac: Gatekeeper does not accept the .dmg as notarized" >&2
+}
+if [ "$notarize" = 1 ]; then
+  built_app="$bundle/macos/$product.app"
+  [ -d "$built_app" ] || { echo "release-mac: $built_app is missing" >&2; exit 1; }
+  # The app the bundler put in the .dmg is this one, byte for byte signed.
+  cd_built=$(codesign -dv --verbose=4 "$built_app" 2>&1 | sed -n 's/^CDHash=//p')
+  [ "$cd_built" = "$(echo "$sig" | sed -n 's/^CDHash=//p')" ] || {
+    echo "release-mac: the app in the .dmg is not $built_app" >&2
     exit 1
   }
-  echo "release-mac: notarized and stapled"
+  work=$(mktemp -d)
+  ditto -c -k --keepParent "$built_app" "$work/app.zip"
+  notarize_file "$work/app.zip"
+  xcrun stapler staple "$built_app"
+  xcrun stapler validate "$built_app"
+
+  # The stapled app goes back into the bundler's .dmg (its window layout kept).
+  hdiutil convert "$dmg" -format UDRW -o "$work/rw.dmg" >/dev/null
+  rwmnt="$work/mnt"
+  mkdir "$rwmnt"
+  hdiutil attach "$work/rw.dmg" -nobrowse -noautoopen -mountpoint "$rwmnt" >/dev/null
+  rm -rf "${rwmnt:?}/$product.app"
+  ditto "$built_app" "$rwmnt/$product.app"
+  sync
+  hdiutil detach "$rwmnt" >/dev/null
+  rm -f "$dmg"
+  hdiutil convert "$work/rw.dmg" -format UDZO -imagekey zlib-level=9 -o "$dmg" >/dev/null
+  rm -rf "$work"
+
+  # Gatekeeper assesses a downloaded .dmg by its own signature.
+  codesign --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$dmg"
+  notarize_file "$dmg"
+  xcrun stapler staple "$dmg"
+  xcrun stapler validate "$dmg"
+  scripts/check-mac-dmg.sh "$dmg" || {
+    echo "release-mac: the .dmg fails the Gatekeeper checks above; do not publish it" >&2
+    exit 1
+  }
+  echo "release-mac: app and .dmg notarized and stapled, Gatekeeper checks pass"
 fi
 
 # After the .dmg is made: this build writes the arm64 binary of the same

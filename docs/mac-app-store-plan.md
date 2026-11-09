@@ -115,9 +115,6 @@ One codebase. The Mac App Store build is `--features mas` plus the overlay
 
 - `com.apple.security.app-sandbox`: required (2.4.5(i)).
 - `com.apple.security.network.client`: the API and lexpad.app.
-- `com.apple.security.network.server`: the sign-in's one-time loopback listener on
-  `127.0.0.1` (RFC 8252, `auth.rs`). App Review sometimes asks about this key; the review notes
-  explain it (see below).
 - `com.apple.security.files.user-selected.read-only`: films and subtitles the learner opens.
 - `com.apple.security.files.downloads.read-write`: exports saved from Lexpad's window go to
   Downloads, as today.
@@ -191,8 +188,12 @@ the sandbox. No push entitlement is needed (the server's messages come from the 
 
 ## Signing in
 
-Unchanged: the system browser, a loopback redirect, PKCE (RFC 8252). It needs
-`network.server` for the listener. No password is typed in the app, so Guideline 4.8 (Sign in
+The system browser and PKCE (RFC 8252); the browser comes back to the private-use scheme
+`lexpad://auth/callback` (§7.1) instead of a loopback port. Apple rejected 0.3.29 under 2.4.5(i)
+for `network.server`, so this copy has no listener and no such key. Since 0.3.30 the dmg signs in
+the same way (owner, 9 Nov 2026); see CLAUDE.md, "The app never sees a password", for the
+cold start, the second click, cancel and two installed copies. The API allows the address
+through `DESKTOP_APP_REDIRECT_URIS`; the web app's `/connect-desktop` takes that exact string. No password is typed in the app, so Guideline 4.8 (Sign in
 with Apple) is met by the web sign-in page itself, which offers Apple next to Google.
 
 ## Pro purchase
@@ -273,7 +274,7 @@ with Apple) is met by the web sign-in page itself, which offers Apple next to Go
 | Subscription disclosure                                 | 3.1.2          | the iPhone's sheet: length, price, renewal, cancel, Terms, Privacy, Restore                                                                                                                                                                                                  |
 | Naming other platforms ("get the Android app")          | 2.3.10         | Android, Google Play and the Microsoft Store are hidden in mas; an e2e scan guards it (section "Other platforms inside the app")                                                                                                                                             |
 | Reviewer cannot sign in                                 | 2.1            | apple-reviewer@lexpad.app (the iPhone's, owner 1 Nov 2026); the notes explain sign-in opens the browser                                                                                                                                                                      |
-| `network.server` questioned                             | 2.4.5          | review notes: loopback-only sign-in listener (RFC 8252)                                                                                                                                                                                                                      |
+| `network.server` questioned                             | 2.4.5(i)       | removed (9 Nov 2026): sign-in comes back as `lexpad://auth/callback`, no listener                                                                                                                                                                                            |
 | Generative AI content                                   | 1.1/1.2        | Report on every AI card (already there)                                                                                                                                                                                                                                      |
 | Metadata                                                | 2.3            | real screenshots of this build, numbers from lexpad.app, no unsupported services                                                                                                                                                                                             |
 | Crashes on review hardware                              | 2.1            | universal binary; `--local` sandboxed smoke on this Mac before upload                                                                                                                                                                                                        |

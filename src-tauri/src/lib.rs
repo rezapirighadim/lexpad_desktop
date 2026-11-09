@@ -48,6 +48,8 @@ mod services_live;
 #[cfg(target_os = "macos")]
 mod services_macos;
 mod settings;
+#[cfg(target_os = "macos")]
+mod signin_macos;
 #[cfg(feature = "smoke-test")]
 mod smoke;
 mod state;
@@ -437,6 +439,14 @@ fn session_store(smoke: bool) -> Arc<dyn store::SessionStore> {
     Arc::new(store::Keyring::new(config::API_ORIGIN))
 }
 
+/// Where a Mac copy keeps a sign-in that waits for the browser (auth.rs).
+fn pending_store(smoke: bool) -> Box<dyn auth::PendingStore> {
+    if smoke || !cfg!(target_os = "macos") {
+        return Box::new(store::NoPending);
+    }
+    Box::new(store::PendingKeyring::new(config::API_ORIGIN))
+}
+
 pub fn run() {
     #[cfg(feature = "smoke-test")]
     let smoke = smoke::requested();
@@ -466,6 +476,15 @@ pub fn run() {
                 open_again(app);
             }
         }));
+    }
+    // The Mac copies' sign-in comes back as lexpad://auth/callback (auth.rs,
+    // RFC 8252 §7.1; the scheme is in Info.plist and Info.mas.plist). macOS
+    // opens such a URL in the running Lexpad (LaunchServices keeps one copy
+    // of an app running) or starts it, and the plugin passes it to
+    // `on_open_url` below.
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.plugin(tauri_plugin_deep_link::init());
     }
     builder
         // Without its link script: the plugin's default script catches every
@@ -572,7 +591,31 @@ pub fn run() {
                 capture: Mutex::new(None),
                 notebooks: Mutex::new(Vec::new()),
                 connect_cancel: Mutex::new(None),
+                scheme_wait: Arc::new(auth::SchemeWait::new(pending_store(smoke))),
             });
+            #[cfg(target_os = "macos")]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt as _;
+                let wait = app.state::<AppState>().scheme_wait.clone();
+                let handle = app.handle().clone();
+                app.deep_link().on_open_url(move |event| {
+                    for url in event.urls() {
+                        // Never logged in full: the query holds a one-time code.
+                        match wait.deliver(url.as_str()) {
+                            auth::Delivered::Resume { code, verifier } => {
+                                commands::resume_sign_in(handle.clone(), code, verifier);
+                            }
+                            auth::Delivered::NotAwaited => {
+                                log::info!(
+                                    "a sign-in callback came with no sign-in waiting for it"
+                                );
+                                signin_macos::to_other_copy(url.as_str());
+                            }
+                            auth::Delivered::Answered | auth::Delivered::NotOurs => {}
+                        }
+                    }
+                });
+            }
 
             let handle = app.handle().clone();
             // Whether the server takes the activity headers, asked once in

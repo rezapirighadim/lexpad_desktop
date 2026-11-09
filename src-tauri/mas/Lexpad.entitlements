@@ -12,12 +12,10 @@
   <!-- App Review Guideline 2.4.5(i): every Mac App Store app is sandboxed. -->
   <key>com.apple.security.app-sandbox</key>
   <true/>
-  <!-- The API (api.lexpad.app), lexpad.app's pages opened in the browser. -->
+  <!-- The API (api.lexpad.app), lexpad.app's pages opened in the browser.
+       Nothing listens: signing in comes back as lexpad://auth/callback
+       (Info.mas.plist, auth.rs), so there is no network.server key. -->
   <key>com.apple.security.network.client</key>
-  <true/>
-  <!-- Signing in (RFC 8252): a one-time listener on 127.0.0.1 for the
-       browser's redirect back (auth.rs). Nothing listens otherwise. -->
-  <key>com.apple.security.network.server</key>
   <true/>
   <!-- The video player plays the films and subtitles the learner chooses,
        drops or opens with Lexpad; it only reads them. -->

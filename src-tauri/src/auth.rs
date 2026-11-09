@@ -14,6 +14,14 @@
 //! The password never reaches the app, the code is worthless without the
 //! verifier (which never leaves this process), and the session is a
 //! delegated one the learner can sign out alone under Signed-in devices.
+//!
+//! The Mac App Store copy may not listen on a port (its sandbox has no
+//! `network.server`; App Review 2.4.5(i)), so it is sent back the other way
+//! RFC 8252 offers (§7.1): the private-use scheme `lexpad`, registered in
+//! Info.mas.plist, at [`APP_REDIRECT`]. macOS hands the URL to the running
+//! app (the deep-link plugin, lib.rs), and [`SchemeWait`] gives it to the
+//! sign-in that waits with the same state. Any app could register `lexpad`
+//! too; the code it caught would be worthless without the verifier.
 
 use std::time::Duration;
 
@@ -69,6 +77,11 @@ pub fn s256(verifier: &str) -> String {
 pub fn new_state() -> String {
     random_token()
 }
+
+/// The Mac App Store copy's address (RFC 8252 §7.1). The API takes it only
+/// because it is listed exactly in its DESKTOP_APP_REDIRECT_URIS, and the
+/// web app's /connect-desktop only this exact string.
+pub const APP_REDIRECT: &str = "lexpad://auth/callback";
 
 /// The address the browser is sent back to, for a port we listen on.
 pub fn redirect_uri(port: u16) -> String {
@@ -158,6 +171,11 @@ fn classify(head: &str, state: &str) -> Request {
     if url.path() != CALLBACK_PATH {
         return Request::Other;
     }
+    answer_in(&url, state)
+}
+
+/// The answer in a callback's query, when it carries our state.
+fn answer_in(url: &url::Url, state: &str) -> Request {
     let mut code = None;
     let mut error = None;
     let mut got_state = None;
@@ -181,6 +199,210 @@ fn classify(head: &str, state: &str) -> Request {
         }
         (_, Some(_)) => Request::Answer(Answer::Denied),
         _ => Request::WrongState,
+    }
+}
+
+/// Reads a URL macOS handed over: an answer only when it is exactly our
+/// scheme's callback (`lexpad://auth/callback`, no port, no user, no
+/// fragment) with our state; any other URL is not ours to answer.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn classify_app_url(raw: &str, state: &str) -> Request {
+    let Ok(url) = url::Url::parse(raw) else {
+        return Request::Other;
+    };
+    let mut bare = url.clone();
+    bare.set_query(None);
+    if bare.as_str() != APP_REDIRECT || url.fragment().is_some() {
+        return Request::Other;
+    }
+    answer_in(&url, state)
+}
+
+/// What became of a URL handed to [`SchemeWait::deliver`].
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub enum Delivered {
+    /// The sign-in waiting in this run has its answer.
+    Answered,
+    /// A sign-in begun before Lexpad was quit (or before macOS started it
+    /// again for this link): its code and the verifier kept for it, to trade.
+    Resume { code: String, verifier: String },
+    /// Our callback, but no sign-in waits with that state (an old tab, a
+    /// second click, a cancelled or timed-out sign-in, another copy's link).
+    NotAwaited,
+    /// Not our callback at all (a film opened with Lexpad, another link).
+    NotOurs,
+}
+
+/// A sign-in waiting for the browser, kept in the credential store so that
+/// a Lexpad quit (or ended) meanwhile can still finish it when macOS starts
+/// it again with the callback. The verifier is a secret: only the credential
+/// store holds it, and only until `expires` (unix seconds).
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Pending {
+    pub state: String,
+    pub verifier: String,
+    pub expires: i64,
+}
+
+/// Where [`Pending`] is kept (store.rs: the Keychain; tests: memory).
+pub trait PendingStore: Send + Sync {
+    fn load(&self) -> Option<Pending>;
+    fn save(&self, pending: &Pending);
+    fn clear(&self);
+}
+
+fn now_unix() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// The sign-in a Mac copy waits for through the `lexpad` scheme: its state,
+/// where its answer goes in this run, and the same kept for a later run.
+/// One at a time; a new one replaces the old, whose wait ends.
+pub struct SchemeWait {
+    waiting: std::sync::Mutex<Option<(String, tokio::sync::oneshot::Sender<Answer>)>>,
+    store: Box<dyn PendingStore>,
+}
+
+impl SchemeWait {
+    pub fn new(store: Box<dyn PendingStore>) -> Self {
+        Self {
+            waiting: std::sync::Mutex::new(None),
+            store,
+        }
+    }
+
+    /// Starts waiting for the answer carrying `state`, and keeps `verifier`
+    /// for a later run until CONNECT_TIMEOUT has passed.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub fn begin(&self, state: &str, verifier: &str) -> tokio::sync::oneshot::Receiver<Answer> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        if let Ok(mut w) = self.waiting.lock() {
+            *w = Some((state.to_owned(), tx));
+        }
+        self.store.save(&Pending {
+            state: state.to_owned(),
+            verifier: verifier.to_owned(),
+            expires: now_unix() + CONNECT_TIMEOUT.as_secs() as i64,
+        });
+        rx
+    }
+
+    /// Stops waiting for `state` (answered, timed out or cancelled), here
+    /// and in the store, so a late or repeated answer is not taken. A newer
+    /// sign-in's wait is left alone.
+    pub fn end(&self, state: &str) {
+        if let Ok(mut w) = self.waiting.lock() {
+            if w.as_ref().is_some_and(|(s, _)| s == state) {
+                *w = None;
+            }
+        }
+        if self.store.load().is_some_and(|p| p.state == state) {
+            self.store.clear();
+        }
+    }
+
+    /// Hands a URL macOS opened with Lexpad to the sign-in it answers: the
+    /// one waiting in this run, else the one kept from an earlier run (not
+    /// expired). Taken once, either way.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub fn deliver(&self, raw: &str) -> Delivered {
+        if classify_app_url(raw, "") == Request::Other {
+            return Delivered::NotOurs;
+        }
+        // Taken out under the lock, answered after it (end() locks again).
+        let taken = self.waiting.lock().ok().and_then(|mut w| {
+            let state = w.as_ref().map(|(s, _)| s.clone())?;
+            match classify_app_url(raw, &state) {
+                Request::Answer(answer) => w.take().map(|(s, tx)| (s, tx, answer)),
+                _ => None,
+            }
+        });
+        if let Some((state, tx, answer)) = taken {
+            self.end(&state);
+            return if tx.send(answer).is_ok() {
+                Delivered::Answered
+            } else {
+                Delivered::NotAwaited
+            };
+        }
+        let Some(pending) = self.store.load() else {
+            return Delivered::NotAwaited;
+        };
+        if pending.expires <= now_unix() {
+            self.store.clear();
+            return Delivered::NotAwaited;
+        }
+        match classify_app_url(raw, &pending.state) {
+            Request::Answer(Answer::Code(code)) => {
+                self.store.clear();
+                Delivered::Resume {
+                    code,
+                    verifier: pending.verifier,
+                }
+            }
+            Request::Answer(Answer::Denied) => {
+                self.store.clear();
+                Delivered::NotAwaited
+            }
+            _ => Delivered::NotAwaited,
+        }
+    }
+}
+
+/// A [`PendingStore`] in memory, for tests.
+#[cfg(test)]
+#[derive(Default)]
+pub struct MemoryPending(pub std::sync::Arc<std::sync::Mutex<Option<Pending>>>);
+
+#[cfg(test)]
+impl PendingStore for MemoryPending {
+    fn load(&self) -> Option<Pending> {
+        self.0.lock().unwrap().clone()
+    }
+    fn save(&self, pending: &Pending) {
+        *self.0.lock().unwrap() = Some(pending.clone());
+    }
+    fn clear(&self) {
+        *self.0.lock().unwrap() = None;
+    }
+}
+
+/// The forwarded mark: a callback one Mac copy of Lexpad passed on to the
+/// other (both register `lexpad`; macOS gives a link to one of them) is
+/// never passed on again.
+pub const FORWARDED: &str = "fwd";
+
+/// The callback with the forwarded mark, or `None` when it already has it.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn forwarded(raw: &str) -> Option<String> {
+    let mut url = url::Url::parse(raw).ok()?;
+    if url.query_pairs().any(|(k, _)| k == FORWARDED) {
+        return None;
+    }
+    url.query_pairs_mut().append_pair(FORWARDED, "1");
+    Some(url.into())
+}
+
+/// Where the browser's answer comes back: a loopback port (the dmg and
+/// Windows) or the `lexpad` scheme (the Mac App Store copy).
+pub enum Wait {
+    Loopback(TcpListener),
+    Scheme(tokio::sync::oneshot::Receiver<Answer>),
+}
+
+/// Waits for the answer either way. `None` when `cancel` fires first (or
+/// a newer sign-in replaced this one); the caller bounds the wait.
+pub async fn wait(wait: Wait, state: &str, cancel: &tokio::sync::Notify) -> Option<Answer> {
+    match wait {
+        Wait::Loopback(listener) => wait_for_answer(listener, state, cancel).await,
+        Wait::Scheme(rx) => tokio::select! {
+            answer = rx => answer.ok(),
+            () = cancel.notified() => None,
+        },
     }
 }
 
@@ -363,6 +585,194 @@ mod tests {
             Request::Other
         );
         assert_eq!(classify("", s), Request::Other);
+    }
+
+    #[test]
+    fn only_our_scheme_callback_with_our_state_is_an_answer() {
+        let s = "the-state";
+        assert_eq!(
+            classify_app_url("lexpad://auth/callback?code=abc&state=the-state", s),
+            Request::Answer(Answer::Code("abc".into()))
+        );
+        assert_eq!(
+            classify_app_url(
+                "lexpad://auth/callback?error=access_denied&state=the-state",
+                s
+            ),
+            Request::Answer(Answer::Denied)
+        );
+        assert_eq!(
+            classify_app_url("lexpad://auth/callback?code=abc&state=other", s),
+            Request::WrongState
+        );
+        assert_eq!(
+            classify_app_url("lexpad://auth/callback?code=abc", s),
+            Request::WrongState
+        );
+        for other in [
+            "lexpad://auth/callback/x?code=abc&state=the-state",
+            "lexpad://auth/other?code=abc&state=the-state",
+            "lexpad://evil/callback?code=abc&state=the-state",
+            "lexpad://auth:8080/callback?code=abc&state=the-state",
+            "lexpad://me@auth/callback?code=abc&state=the-state",
+            "lexpad://auth/callback?code=abc&state=the-state#x",
+            "lexpadx://auth/callback?code=abc&state=the-state",
+            "http://127.0.0.1:1/callback?code=abc&state=the-state",
+            "file:///Users/me/Film.mkv",
+            "not a url",
+        ] {
+            assert_eq!(classify_app_url(other, s), Request::Other, "{other}");
+        }
+    }
+
+    fn scheme_wait() -> (
+        SchemeWait,
+        std::sync::Arc<std::sync::Mutex<Option<Pending>>>,
+    ) {
+        let kept = std::sync::Arc::new(std::sync::Mutex::new(None));
+        (SchemeWait::new(Box::new(MemoryPending(kept.clone()))), kept)
+    }
+
+    #[test]
+    fn the_scheme_answer_reaches_only_the_waiting_sign_in_once() {
+        let (wait, kept) = scheme_wait();
+        // Nothing waits: our callback is ignored, a film is not ours.
+        assert_eq!(
+            wait.deliver("lexpad://auth/callback?code=a&state=s1"),
+            Delivered::NotAwaited
+        );
+        assert_eq!(wait.deliver("file:///tmp/a.mkv"), Delivered::NotOurs);
+
+        let mut rx = wait.begin("s1", "v1");
+        assert_eq!(kept.lock().unwrap().as_ref().unwrap().verifier, "v1");
+        assert_eq!(
+            wait.deliver("lexpad://auth/callback?code=a&state=s2"),
+            Delivered::NotAwaited
+        );
+        assert!(rx.try_recv().is_err());
+        assert_eq!(
+            wait.deliver("lexpad://auth/callback?code=the-code&state=s1"),
+            Delivered::Answered
+        );
+        assert_eq!(rx.try_recv().unwrap(), Answer::Code("the-code".into()));
+        // Answered: nothing is kept for a later run, and a second click on
+        // the same link finds nothing waiting.
+        assert!(kept.lock().unwrap().is_none());
+        assert_eq!(
+            wait.deliver("lexpad://auth/callback?code=the-code&state=s1"),
+            Delivered::NotAwaited
+        );
+
+        // A newer sign-in replaces the old one, whose wait ends.
+        let old = wait.begin("old", "vo");
+        let mut new = wait.begin("new", "vn");
+        assert!(old.blocking_recv().is_err());
+        // Ending the old one leaves the new one waiting, here and kept.
+        wait.end("old");
+        assert_eq!(kept.lock().unwrap().as_ref().unwrap().state, "new");
+        // Cancel in the browser: the answer is Denied.
+        assert_eq!(
+            wait.deliver("lexpad://auth/callback?error=access_denied&state=new"),
+            Delivered::Answered
+        );
+        assert_eq!(new.try_recv().unwrap(), Answer::Denied);
+
+        // Timed out: a late answer is not taken, here or from the store.
+        let _late = wait.begin("late", "vl");
+        wait.end("late");
+        assert!(kept.lock().unwrap().is_none());
+        assert_eq!(
+            wait.deliver("lexpad://auth/callback?code=a&state=late"),
+            Delivered::NotAwaited
+        );
+    }
+
+    #[test]
+    fn a_sign_in_survives_lexpad_being_quit_until_it_expires() {
+        let (first_run, kept) = scheme_wait();
+        let _rx = first_run.begin("s", "the-verifier");
+        drop(first_run);
+        // macOS starts Lexpad again for the link: the new run resumes it.
+        let second_run = SchemeWait::new(Box::new(MemoryPending(kept.clone())));
+        assert_eq!(
+            second_run.deliver("lexpad://auth/callback?code=c&state=other"),
+            Delivered::NotAwaited
+        );
+        assert_eq!(
+            second_run.deliver("lexpad://auth/callback?code=c&state=s"),
+            Delivered::Resume {
+                code: "c".into(),
+                verifier: "the-verifier".into()
+            }
+        );
+        // Once only.
+        assert_eq!(
+            second_run.deliver("lexpad://auth/callback?code=c&state=s"),
+            Delivered::NotAwaited
+        );
+        // A cancel answered after a restart ends it too.
+        *kept.lock().unwrap() = Some(Pending {
+            state: "d".into(),
+            verifier: "v".into(),
+            expires: now_unix() + 60,
+        });
+        assert_eq!(
+            second_run.deliver("lexpad://auth/callback?error=access_denied&state=d"),
+            Delivered::NotAwaited
+        );
+        assert!(kept.lock().unwrap().is_none());
+        // Expired: never resumed, and forgotten.
+        *kept.lock().unwrap() = Some(Pending {
+            state: "e".into(),
+            verifier: "v".into(),
+            expires: now_unix() - 1,
+        });
+        assert_eq!(
+            second_run.deliver("lexpad://auth/callback?code=c&state=e"),
+            Delivered::NotAwaited
+        );
+        assert!(kept.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn a_callback_is_passed_to_the_other_copy_once() {
+        let once = forwarded("lexpad://auth/callback?code=c&state=s").unwrap();
+        assert_eq!(once, "lexpad://auth/callback?code=c&state=s&fwd=1");
+        assert_eq!(forwarded(&once), None);
+        // The mark does not stop the other copy from taking it.
+        let (wait, _) = scheme_wait();
+        let mut rx = wait.begin("s", "v");
+        assert_eq!(wait.deliver(&once), Delivered::Answered);
+        assert_eq!(rx.try_recv().unwrap(), Answer::Code("c".into()));
+    }
+
+    #[tokio::test]
+    async fn the_scheme_wait_ends_with_the_answer_or_a_cancel() {
+        let (sw, _) = scheme_wait();
+        let cancel = tokio::sync::Notify::new();
+        let rx = sw.begin("s", "v");
+        sw.deliver("lexpad://auth/callback?code=c&state=s");
+        assert_eq!(
+            wait(Wait::Scheme(rx), "s", &cancel).await,
+            Some(Answer::Code("c".into()))
+        );
+        let rx = sw.begin("t", "v");
+        cancel.notify_one();
+        assert_eq!(wait(Wait::Scheme(rx), "t", &cancel).await, None);
+    }
+
+    #[test]
+    fn the_app_redirect_is_what_the_api_and_the_web_app_take() {
+        // lexpad_back DESKTOP_APP_REDIRECT_URIS and lexpad_front
+        // desktopRequest.ts APP_CALLBACK hold this exact string.
+        assert_eq!(APP_REDIRECT, "lexpad://auth/callback");
+        let url = connect_url("https://app.lexpad.app", APP_REDIRECT, "st", "ch", None);
+        let q: std::collections::HashMap<_, _> = url::Url::parse(&url)
+            .unwrap()
+            .query_pairs()
+            .into_owned()
+            .collect();
+        assert_eq!(q["redirect_uri"], "lexpad://auth/callback");
     }
 
     #[tokio::test]
