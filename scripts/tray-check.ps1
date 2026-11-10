@@ -221,7 +221,7 @@ function Find-Icon($tray, [string] $tag) {
   Write-Host "TRAY the icon is not on the taskbar; opening the overflow ('$($cb.Name)' at $([int]$cb.X),$([int]$cb.Y))"
   if ($cb.Name -notmatch '^Hide') {
     Click ([int]($cb.X + $cb.Width / 2)) ([int]($cb.Y + $cb.Height / 2)) 'left'
-    Start-Sleep -Seconds 1
+    Start-Sleep -Seconds 2
   }
   Shot "$tag-overflow-open"
   $r = Icon-Rect $tray
@@ -309,10 +309,21 @@ if (-not $r) {
   [void][TrayWin]::GetWindowRect($front, [ref]$wr)
   $w = $wr.Right - $wr.Left
   Write-Host "TRAY in front after the left-click: '$([TrayWin]::TitleOf($front))' pid $([TrayWin]::PidOf($front)) at $($wr.Left),$($wr.Top) ${w}x$($wr.Bottom - $wr.Top)"
-  if ([TrayWin]::PidOf($front) -ne [uint32]$run.Process.Id -or $w -ge 600) {
-    Fail 'a left-click on the icon did not open the panel'
-  } else {
+  # The panel, shown: a small visible window of Lexpad's. From the overflow
+  # on the Windows 10 taskbar the shell may hand the focus back to the window
+  # that had it as the overflow closes, so being in front is not required.
+  $panel = [TrayWin]::Windows([uint32]$run.Process.Id, $null) | Where-Object {
+    $pr = New-Object TrayWin+RECT
+    [void][TrayWin]::GetWindowRect($_, [ref]$pr)
+    [TrayWin]::IsWindowVisible($_) -and [TrayWin]::ClassOf($_) -ne 'tray_icon_app' -and [TrayWin]::TitleOf($_) -eq 'Lexpad' -and
+      ($pr.Right - $pr.Left) -gt 0 -and ($pr.Right - $pr.Left) -lt 600
+  } | Select-Object -First 1
+  if ([TrayWin]::PidOf($front) -eq [uint32]$run.Process.Id -and $w -lt 600) {
     Write-Host 'TRAY left-click opened the panel'
+  } elseif ($panel) {
+    Write-Host 'TRAY left-click opened the panel (shown, not in front)'
+  } else {
+    Fail 'a left-click on the icon did not open the panel'
   }
 }
 Stop-Process -Id $run.Process.Id -Force -ErrorAction SilentlyContinue

@@ -136,6 +136,37 @@ function Quit-Item([int] $x, [int] $top) {
   return $null
 }
 
+# Lexpad's taskbar button found by its icon's green, for a taskbar whose
+# buttons UI Automation does not list (Server 2022 on CI): the densest run of
+# that colour on the taskbar, left of the notification area.
+function Button-By-Colour {
+  $tw = [JumpWin]::FindWindow('Shell_TrayWnd', $null)
+  $tb = $UIA::FromHandle($tw).Current.BoundingRectangle
+  $tn = [JumpWin]::FindWindowEx($tw, [IntPtr]::Zero, 'TrayNotifyWnd', $null)
+  $right = if ($tn -ne [IntPtr]::Zero) { [int]$UIA::FromHandle($tn).Current.BoundingRectangle.X } else { [int]($tb.X + $tb.Width) }
+  $w = $right - [int]$tb.X; $h = [int]$tb.Height
+  if ($w -le 0 -or $h -le 0) { return $null }
+  $bmp = New-Object System.Drawing.Bitmap $w, $h
+  $g = [System.Drawing.Graphics]::FromImage($bmp)
+  $g.CopyFromScreen([int]$tb.X, [int]$tb.Y, 0, 0, $bmp.Size)
+  $cols = New-Object int[] $w
+  for ($x = 0; $x -lt $w; $x++) {
+    for ($y = 0; $y -lt $h; $y += 2) {
+      $c = $bmp.GetPixel($x, $y)
+      if ([Math]::Abs($c.R - 46) + [Math]::Abs($c.G - 123) + [Math]::Abs($c.B - 78) -lt 45) { $cols[$x]++ }
+    }
+  }
+  $g.Dispose(); $bmp.Dispose()
+  $best = 0; $at = -1
+  for ($x = 0; $x -lt $w - 24; $x++) {
+    $sum = 0; for ($i = 0; $i -lt 24; $i++) { $sum += $cols[$x + $i] }
+    if ($sum -gt $best) { $best = $sum; $at = $x }
+  }
+  Write-Host "JUMP icon colour on the taskbar: $best pixels at x $([int]$tb.X + $at)"
+  if ($best -lt 30) { return $null }
+  return @(([int]$tb.X + $at + 12), ([int]($tb.Y + $tb.Height / 2)), [int]$tb.Y)
+}
+
 # --- 1: start, and the list is written --------------------------------------
 Get-Process lexpad-desktop -ErrorAction SilentlyContinue | Stop-Process -Force
 $since = Get-Date
@@ -149,29 +180,44 @@ if ($withQuit.Count -lt 1) { Fail 'no jump list with Quit Lexpad was written' }
 
 # --- 2 and 3: right-click the taskbar button, Quit Lexpad -------------------
 $buttons = Taskbar-Buttons
-if ($buttons.Count -eq 0) {
+$target = $null
+if ($buttons.Count -gt 0) {
+  $xy = Center $buttons[0]
+  $target = @($xy[0], $xy[1], [int]$buttons[0].Current.BoundingRectangle.Y)
+  Write-Host "JUMP right-click '$($buttons[0].Current.Name)' at $($xy[0]),$($xy[1])"
+} else {
+  $target = Button-By-Colour
+  if ($target) { Write-Host "JUMP right-click the button with Lexpad's icon at $($target[0]),$($target[1])" }
+}
+if (-not $target) {
   Shot '2-no-button'
   Fail 'Lexpad has no taskbar button'
 } else {
-  $xy = Center $buttons[0]
-  Write-Host "JUMP right-click '$($buttons[0].Current.Name)' at $($xy[0]),$($xy[1])"
-  Click $xy[0] $xy[1] 'right'
+  Click $target[0] $target[1] 'right'
   Start-Sleep -Seconds 2
-  $item = Quit-Item $xy[0] ([int]$buttons[0].Current.BoundingRectangle.Y)
   Shot '2-jump-list'
-  if (-not $item) {
-    Fail 'the taskbar menu has no Quit Lexpad'
-    Escape
-  } else {
+  $item = Quit-Item $target[0] $target[2]
+  if ($item) {
     $q = Center $item
     Write-Host "JUMP Quit Lexpad at $($q[0]),$($q[1])"
     Click $q[0] $q[1] 'left'
-    if ($p.WaitForExit(15000)) {
-      Write-Host "JUMP Quit Lexpad: Lexpad quit (exit code $($p.ExitCode))"
-    } else {
-      Shot '3-after-quit'
-      Fail 'Quit Lexpad from the taskbar did not quit within 15 seconds'
-    }
+  } else {
+    # The shell's menu is not readable here: its first row is Tasks' Quit
+    # Lexpad (2-jump-list.png), so the keyboard picks it: Down, then Enter.
+    # Only that row quits Lexpad: the others open the Player, pin or close a
+    # window, and Lexpad stays in the tray after a window closes.
+    Write-Host 'JUMP choosing the first row by keyboard'
+    [JumpWin]::keybd_event(0x28, 0, 0, [UIntPtr]::Zero); [JumpWin]::keybd_event(0x28, 0, 2, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 400
+    Shot '2-first-row'
+    [JumpWin]::keybd_event(0x0D, 0, 0, [UIntPtr]::Zero); [JumpWin]::keybd_event(0x0D, 0, 2, [UIntPtr]::Zero)
+  }
+  if ($p.WaitForExit(15000)) {
+    Write-Host "JUMP Quit Lexpad: Lexpad quit (exit code $($p.ExitCode))"
+  } else {
+    Shot '3-after-quit'
+    Fail 'Quit Lexpad from the taskbar did not quit within 15 seconds'
+    Escape
   }
 }
 Get-Process lexpad-desktop -ErrorAction SilentlyContinue | Stop-Process -Force
