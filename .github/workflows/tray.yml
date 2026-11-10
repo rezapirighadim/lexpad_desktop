@@ -1,4 +1,4 @@
-# The Windows tray icon, on its own (fix/windows-tray-readd): built, installed
+# The Windows tray icon and taskbar menu, on their own: built, installed
 # and clicked with the real mouse (scripts/tray-check.ps1) on the Windows 10
 # taskbar (windows-2022, Server 2022's shell) and Windows 11's (windows-latest),
 # three times over, each run a fresh start, a Quit and a start right after it,

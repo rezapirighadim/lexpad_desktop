@@ -64,11 +64,21 @@ function Taskbar-Buttons {
     $sw = if ($rebar -ne [IntPtr]::Zero) { [JumpWin]::FindWindowEx($rebar, [IntPtr]::Zero, 'MSTaskSwWClass', $null) } else { [IntPtr]::Zero }
     $list = if ($sw -ne [IntPtr]::Zero) { [JumpWin]::FindWindowEx($sw, [IntPtr]::Zero, 'MSTaskListWClass', $null) } else { [IntPtr]::Zero }
   }
+  $found = @()
   if ($list -ne [IntPtr]::Zero) {
-    $found = @($UIA::FromHandle($list).FindAll($Tree::Descendants, $All))
-  } else {
-    # Windows 11: the task list is XAML; its buttons' AutomationId start with "Appid:".
-    $found = @($UIA::FromHandle($tw).FindAll($Tree::Descendants, $All) | Where-Object { $_.Current.AutomationId -like 'Appid*' })
+    $found = @($UIA::FromHandle($list).FindAll($Tree::Descendants, $All) | Where-Object { $_.Current.Name })
+  }
+  if ($found.Count -eq 0 -and $tw -ne [IntPtr]::Zero) {
+    # Windows 11's task list is XAML (its buttons' AutomationId start with
+    # "Appid:"); on Server 2022 the task list's own element may list nothing.
+    # Then every named button of the taskbar outside the notification area.
+    $tn = [JumpWin]::FindWindowEx($tw, [IntPtr]::Zero, 'TrayNotifyWnd', $null)
+    $notify = if ($tn -ne [IntPtr]::Zero) { $UIA::FromHandle($tn).Current.BoundingRectangle } else { $null }
+    $found = @($UIA::FromHandle($tw).FindAll($Tree::Descendants, $All) | Where-Object {
+      $n = $_.Current.Name; $b = $_.Current.BoundingRectangle
+      $n -and $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button -and $b.Width -gt 0 -and
+        -not ($notify -and $b.X -ge $notify.X -and $b.X -lt ($notify.X + $notify.Width))
+    })
   }
   Write-Host "JUMP taskbar buttons: $((@($found | ForEach-Object { "'$($_.Current.Name)'" })) -join ', ')"
   return @($found | Where-Object { $_.Current.Name -like '*Lexpad*' })
@@ -78,10 +88,25 @@ function Taskbar-Buttons {
 # window: XAML on Windows 10 1607+ and 11).
 function Quit-Item {
   $clock = [System.Diagnostics.Stopwatch]::StartNew()
-  while ($clock.Elapsed.TotalSeconds -lt 10) {
-    $item = $UIA::RootElement.FindAll($Tree::Descendants, $All) |
-      Where-Object { $_.Current.Name -eq 'Quit Lexpad' -and $_.Current.BoundingRectangle.Width -gt 0 } | Select-Object -First 1
-    if ($item) { return $item }
+  $said = $false
+  while ($clock.Elapsed.TotalSeconds -lt 15) {
+    # Each top-level window on its own: the jump list is its own window
+    # (XAML, in the shell's process), and one slow window must not hide it.
+    foreach ($top in @($UIA::RootElement.FindAll($Tree::Children, $All))) {
+      try {
+        $item = $top.FindAll($Tree::Descendants, $All) |
+          Where-Object { $_.Current.Name -like '*Quit Lexpad*' -and $_.Current.BoundingRectangle.Width -gt 0 } | Select-Object -First 1
+      } catch { $item = $null }
+      if ($item) {
+        Write-Host "JUMP found '$($item.Current.Name)' in '$($top.Current.Name)' ($($top.Current.ClassName))"
+        return $item
+      }
+    }
+    if (-not $said) {
+      $tops = @($UIA::RootElement.FindAll($Tree::Children, $All) | ForEach-Object { "'$($_.Current.Name)' ($($_.Current.ClassName))" })
+      Write-Host "JUMP top-level windows: $($tops -join ', ')"
+      $said = $true
+    }
     Start-Sleep -Milliseconds 500
   }
   return $null

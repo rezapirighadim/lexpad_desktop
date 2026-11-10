@@ -116,72 +116,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
             set_template_image(&item);
         }
     })?;
-    #[cfg(windows)]
-    keep_in_notification_area(app);
     Ok(())
-}
-
-/// How long after start (and between tries) the Windows icon is looked for in
-/// the notification area, and re-added when the shell has no place for it.
-/// tray-icon 0.25 adds it once (`Shell_NotifyIcon` NIM_ADD) and again only on
-/// `TaskbarCreated`; on the Windows 10 taskbar a start right after Quit
-/// sometimes got no icon at all (0.3.30, ci/tray-restart-diagnose), and the
-/// learner was left with nothing to click.
-#[cfg_attr(not(windows), allow(dead_code))]
-pub const TRAY_RETRY_WAITS_MS: [u64; 5] = [3_000, 3_000, 5_000, 10_000, 20_000];
-
-/// The Windows icon has a place in the notification area (its own, or the ^
-/// overflow's); else it is added again the way tray-icon re-adds it after
-/// Explorer restarts: its window gets `TaskbarCreated` (remove, then NIM_ADD).
-/// A few tries, then it stops; nothing here ever blocks the app.
-#[cfg(windows)]
-fn keep_in_notification_area(app: &AppHandle) {
-    use windows::core::w;
-    use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
-    use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, RegisterWindowMessageW};
-
-    let handle = app.clone();
-    std::thread::spawn(move || {
-        let taskbar_created = unsafe { RegisterWindowMessageW(w!("TaskbarCreated")) };
-        for (attempt, wait) in TRAY_RETRY_WAITS_MS.iter().enumerate() {
-            std::thread::sleep(std::time::Duration::from_millis(*wait));
-            let Some(tray) = handle.tray_by_id("main") else {
-                return;
-            };
-            if has_place(tray.rect().ok().flatten()) {
-                if attempt > 0 {
-                    log::info!(
-                        "tray: the icon is in the notification area after {attempt} re-add(s)"
-                    );
-                }
-                return;
-            }
-            log::warn!(
-                "tray: no place for the icon in the notification area; adding it again ({})",
-                attempt + 1
-            );
-            let posted = tray.with_inner_tray_icon(move |inner| {
-                let hwnd = HWND(inner.window_handle() as _);
-                unsafe { PostMessageW(Some(hwnd), taskbar_created, WPARAM(0), LPARAM(0)) }.is_ok()
-            });
-            if !matches!(posted, Ok(true)) {
-                log::warn!("tray: could not ask the tray window to add its icon again");
-            }
-        }
-        log::warn!(
-            "tray: the icon still has no place after {} tries",
-            TRAY_RETRY_WAITS_MS.len()
-        );
-    });
-}
-
-/// Whether the shell gave the icon a place: a rectangle with a size.
-#[cfg_attr(not(windows), allow(dead_code))]
-pub fn has_place(rect: Option<tauri::Rect>) -> bool {
-    rect.is_some_and(|r| {
-        let size = r.size.to_physical::<u32>(1.0);
-        size.width > 0 && size.height > 0
-    })
 }
 
 /// Puts "Lexpad on your phone…" / "Lexpad everywhere…" in the right-click
@@ -323,22 +258,7 @@ pub fn pick_size(sizes: &[u32], want: u32) -> Option<u32> {
 
 #[cfg(test)]
 mod tests {
-    use super::{has_place, pick_size, STILL_HERE, TRAY_RETRY_WAITS_MS};
-
-    #[test]
-    fn the_icon_counts_as_placed_only_with_a_size() {
-        use tauri::{PhysicalPosition, PhysicalSize, Rect};
-        let rect = |w: u32, h: u32| Rect {
-            position: PhysicalPosition::new(10, 10).into(),
-            size: PhysicalSize::new(w, h).into(),
-        };
-        assert!(!has_place(None));
-        assert!(!has_place(Some(rect(0, 0))));
-        assert!(has_place(Some(rect(24, 24))));
-        // A handful of tries over about 40 s, never forever.
-        assert_eq!(TRAY_RETRY_WAITS_MS.len(), 5);
-        assert!(TRAY_RETRY_WAITS_MS.iter().sum::<u64>() <= 60_000);
-    }
+    use super::{pick_size, STILL_HERE};
 
     #[test]
     fn the_windows_hint_says_what_the_spec_says() {
