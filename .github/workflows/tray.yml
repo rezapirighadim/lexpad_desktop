@@ -1,0 +1,76 @@
+# The Windows tray icon, on its own (fix/windows-tray-readd): built, installed
+# and clicked with the real mouse (scripts/tray-check.ps1) on the Windows 10
+# taskbar (windows-2022, Server 2022's shell) and Windows 11's (windows-latest),
+# three times over, each run a fresh start, a Quit and a start right after it,
+# the case that left no icon (0.3.30). A run on a pull request that touches the
+# tray, and by hand.
+name: tray
+on:
+  pull_request:
+    paths:
+      - 'src-tauri/src/tray.rs'
+      - 'scripts/tray-check.ps1'
+      - '.github/workflows/tray.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  tray:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-2022, windows-latest]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: tray-${{ matrix.runner }}
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/cache@v4
+        with:
+          path: src-tauri/binaries
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/ffmpeg/versions.env') }}
+      - run: scripts/ffmpeg/fetch-prebuilt.sh win64
+        shell: bash
+      - run: pnpm tauri build --bundles nsis
+      - name: Install
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem 'src-tauri/target/release/bundle/nsis/*.exe' | Select-Object -First 1
+          Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait
+      - name: Tray check, three runs
+        timeout-minutes: 20
+        shell: powershell
+        run: |
+          $exe = Get-ChildItem "$env:LOCALAPPDATA\Lexpad" -Filter *.exe -Recurse |
+            Where-Object { $_.Name -notlike 'uninstall*' -and $_.Name -notin 'ffmpeg.exe', 'ffprobe.exe' } | Select-Object -First 1
+          $failed = 0
+          foreach ($run in 1..3) {
+            Write-Host "TRAY run $run"
+            Get-Process | Where-Object { $_.Path -eq $exe.FullName } | Stop-Process -Force -ErrorAction SilentlyContinue
+            ./scripts/tray-check.ps1 -Exe $exe.FullName
+            if ($LASTEXITCODE) { $failed++ }
+            if (Test-Path tray-check) { Rename-Item tray-check "tray-check-run$run" }
+          }
+          if ($failed) { throw "the tray check failed in $failed of 3 runs" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tray-${{ matrix.runner }}
+          if-no-files-found: ignore
+          retention-days: 14
+          path: tray-check-run*/
