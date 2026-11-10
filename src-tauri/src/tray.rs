@@ -81,7 +81,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
                 Some(crate::player_window::Door::Tray),
             ),
             "settings" => crate::open_desktop_settings(app),
-            "quit" => app.exit(0),
+            "quit" => crate::quit(app),
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
