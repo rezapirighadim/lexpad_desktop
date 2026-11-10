@@ -24,6 +24,24 @@ public static class JumpWin {
   [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowEx(IntPtr p, IntPtr after, string cls, string title);
+  public delegate bool EnumProc(IntPtr h, IntPtr l);
+  [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc f, IntPtr l);
+  [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr p, EnumProc f, IntPtr l);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);
+  public static string ClassOf(IntPtr h) { var s = new System.Text.StringBuilder(256); GetClassName(h, s, 256); return s.ToString(); }
+  public static string TitleOf(IntPtr h) { var s = new System.Text.StringBuilder(256); GetWindowText(h, s, 256); return s.ToString(); }
+  public static System.Collections.Generic.List<IntPtr> Visible() {
+    var found = new System.Collections.Generic.List<IntPtr>();
+    EnumWindows((h, l) => { if (IsWindowVisible(h)) found.Add(h); return true; }, IntPtr.Zero);
+    return found;
+  }
+  public static System.Collections.Generic.List<IntPtr> Children(IntPtr p) {
+    var found = new System.Collections.Generic.List<IntPtr>();
+    EnumChildWindows(p, (h, l) => { found.Add(h); return true; }, IntPtr.Zero);
+    return found;
+  }
 }
 '@
 [void][JumpWin]::SetProcessDPIAware()
@@ -64,6 +82,8 @@ function Taskbar-Buttons {
     $sw = if ($rebar -ne [IntPtr]::Zero) { [JumpWin]::FindWindowEx($rebar, [IntPtr]::Zero, 'MSTaskSwWClass', $null) } else { [IntPtr]::Zero }
     $list = if ($sw -ne [IntPtr]::Zero) { [JumpWin]::FindWindowEx($sw, [IntPtr]::Zero, 'MSTaskListWClass', $null) } else { [IntPtr]::Zero }
   }
+  $kids = @(if ($tw -ne [IntPtr]::Zero) { [JumpWin]::Children($tw) | ForEach-Object { [JumpWin]::ClassOf($_) } })
+  Write-Host "JUMP taskbar windows: $(($kids | Select-Object -Unique) -join ', '); task list $(if ($list -ne [IntPtr]::Zero) { 'found' } else { 'not found' })"
   $found = @()
   if ($list -ne [IntPtr]::Zero) {
     $found = @($UIA::FromHandle($list).FindAll($Tree::Descendants, $All) | Where-Object { $_.Current.Name })
@@ -102,7 +122,21 @@ function Quit-Item {
         return $item
       }
     }
+    foreach ($h in [JumpWin]::Visible()) {
+      $cls = [JumpWin]::ClassOf($h); $title = [JumpWin]::TitleOf($h)
+      if ($cls -notlike '*CoreWindow*' -and $title -notlike '*Jump*' -and $cls -notlike '*Xaml*' -and $cls -notlike '*Popup*') { continue }
+      try {
+        $item = $UIA::FromHandle($h).FindAll($Tree::Descendants, $All) |
+          Where-Object { $_.Current.Name -like '*Quit Lexpad*' -and $_.Current.BoundingRectangle.Width -gt 0 } | Select-Object -First 1
+      } catch { $item = $null }
+      if ($item) {
+        Write-Host "JUMP found '$($item.Current.Name)' in window '$title' ($cls)"
+        return $item
+      }
+    }
     if (-not $said) {
+      $vis = @([JumpWin]::Visible() | ForEach-Object { "'$([JumpWin]::TitleOf($_))' ($([JumpWin]::ClassOf($_)))" })
+      Write-Host "JUMP visible windows: $($vis -join ', ')"
       $tops = @($UIA::RootElement.FindAll($Tree::Children, $All) | ForEach-Object { "'$($_.Current.Name)' ($($_.Current.ClassName))" })
       Write-Host "JUMP top-level windows: $($tops -join ', ')"
       $said = $true
