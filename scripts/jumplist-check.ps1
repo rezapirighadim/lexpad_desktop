@@ -13,7 +13,7 @@
 param([Parameter(Mandatory = $true)] [string] $Exe)
 
 $ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName System.Drawing, System.Windows.Forms, UIAutomationClient, UIAutomationTypes
+Add-Type -AssemblyName System.Drawing, System.Windows.Forms, UIAutomationClient, UIAutomationTypes, WindowsBase
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
@@ -82,6 +82,10 @@ function Taskbar-Buttons {
     $sw = if ($rebar -ne [IntPtr]::Zero) { [JumpWin]::FindWindowEx($rebar, [IntPtr]::Zero, 'MSTaskSwWClass', $null) } else { [IntPtr]::Zero }
     $list = if ($sw -ne [IntPtr]::Zero) { [JumpWin]::FindWindowEx($sw, [IntPtr]::Zero, 'MSTaskListWClass', $null) } else { [IntPtr]::Zero }
   }
+  if ($list -eq [IntPtr]::Zero -and $tw -ne [IntPtr]::Zero) {
+    $list = [JumpWin]::Children($tw) | Where-Object { [JumpWin]::ClassOf($_) -eq 'MSTaskListWClass' } | Select-Object -First 1
+    if (-not $list) { $list = [IntPtr]::Zero }
+  }
   $kids = @(if ($tw -ne [IntPtr]::Zero) { [JumpWin]::Children($tw) | ForEach-Object { [JumpWin]::ClassOf($_) } })
   Write-Host "JUMP taskbar windows: $(($kids | Select-Object -Unique) -join ', '); task list $(if ($list -ne [IntPtr]::Zero) { 'found' } else { 'not found' })"
   $found = @()
@@ -106,43 +110,29 @@ function Taskbar-Buttons {
 
 # The open jump list's "Quit Lexpad", from the desktop down (it is its own
 # window: XAML on Windows 10 1607+ and 11).
-function Quit-Item {
+# The open jump list's "Quit Lexpad". The menu is the shell's own XAML
+# window, which neither EnumWindows nor the desktop's UI Automation children
+# list on Windows 11 (CI, 10 Nov 2026), so it is read where it is drawn:
+# UI Automation at points straight above the button, as the pointer would go.
+function Quit-Item([int] $x, [int] $top) {
   $clock = [System.Diagnostics.Stopwatch]::StartNew()
-  $said = $false
+  $seen = @{}
   while ($clock.Elapsed.TotalSeconds -lt 15) {
-    # Each top-level window on its own: the jump list is its own window
-    # (XAML, in the shell's process), and one slow window must not hide it.
-    foreach ($top in @($UIA::RootElement.FindAll($Tree::Children, $All))) {
-      try {
-        $item = $top.FindAll($Tree::Descendants, $All) |
-          Where-Object { $_.Current.Name -like '*Quit Lexpad*' -and $_.Current.BoundingRectangle.Width -gt 0 } | Select-Object -First 1
-      } catch { $item = $null }
-      if ($item) {
-        Write-Host "JUMP found '$($item.Current.Name)' in '$($top.Current.Name)' ($($top.Current.ClassName))"
-        return $item
+    foreach ($dx in 0, -60, 60) {
+      for ($y = $top - 4; $y -gt [Math]::Max(0, $top - 700); $y -= 6) {
+        try { $el = $UIA::FromPoint((New-Object System.Windows.Point(($x + $dx), $y))) } catch { continue }
+        if (-not $el) { continue }
+        $name = $el.Current.Name
+        if ($name) { $seen[$name] = 1 }
+        if ($name -like '*Quit Lexpad*' -and $el.Current.BoundingRectangle.Width -gt 0) {
+          Write-Host "JUMP found '$name' ($($el.Current.ClassName)) at $($x + $dx),$y"
+          return $el
+        }
       }
     }
-    foreach ($h in [JumpWin]::Visible()) {
-      $cls = [JumpWin]::ClassOf($h); $title = [JumpWin]::TitleOf($h)
-      if ($cls -notlike '*CoreWindow*' -and $title -notlike '*Jump*' -and $cls -notlike '*Xaml*' -and $cls -notlike '*Popup*') { continue }
-      try {
-        $item = $UIA::FromHandle($h).FindAll($Tree::Descendants, $All) |
-          Where-Object { $_.Current.Name -like '*Quit Lexpad*' -and $_.Current.BoundingRectangle.Width -gt 0 } | Select-Object -First 1
-      } catch { $item = $null }
-      if ($item) {
-        Write-Host "JUMP found '$($item.Current.Name)' in window '$title' ($cls)"
-        return $item
-      }
-    }
-    if (-not $said) {
-      $vis = @([JumpWin]::Visible() | ForEach-Object { "'$([JumpWin]::TitleOf($_))' ($([JumpWin]::ClassOf($_)))" })
-      Write-Host "JUMP visible windows: $($vis -join ', ')"
-      $tops = @($UIA::RootElement.FindAll($Tree::Children, $All) | ForEach-Object { "'$($_.Current.Name)' ($($_.Current.ClassName))" })
-      Write-Host "JUMP top-level windows: $($tops -join ', ')"
-      $said = $true
-    }
-    Start-Sleep -Milliseconds 500
+    Start-Sleep -Milliseconds 300
   }
+  Write-Host "JUMP names above the button: $((@($seen.Keys | ForEach-Object { "'$_'" })) -join ', ')"
   return $null
 }
 
@@ -167,7 +157,7 @@ if ($buttons.Count -eq 0) {
   Write-Host "JUMP right-click '$($buttons[0].Current.Name)' at $($xy[0]),$($xy[1])"
   Click $xy[0] $xy[1] 'right'
   Start-Sleep -Seconds 2
-  $item = Quit-Item
+  $item = Quit-Item $xy[0] ([int]$buttons[0].Current.BoundingRectangle.Y)
   Shot '2-jump-list'
   if (-not $item) {
     Fail 'the taskbar menu has no Quit Lexpad'
