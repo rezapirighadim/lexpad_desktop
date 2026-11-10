@@ -1,1 +1,0 @@
-import{Dt as e}from"./dist-CKLs8Iro.js";var t=new Set;function n(t,n){return`${t}\u0000${e(n)}`}function r(e,r){for(let i of r)i.trim()!==``&&t.add(n(e,i))}function i(e,r){return r.trim()!==``&&t.has(n(e,r))}export{r as n,i as t};
