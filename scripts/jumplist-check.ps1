@@ -203,11 +203,12 @@ if (-not $target) {
     Click $q[0] $q[1] 'left'
   } else {
     # The shell's menu is not readable here: its first row is Tasks' Quit
-    # Lexpad (2-jump-list.png), so the keyboard picks it: Down, then Enter.
+    # Lexpad (2-jump-list.png), so the keyboard picks it: Home, then Enter.
     # Only that row quits Lexpad: the others open the Player, pin or close a
-    # window, and Lexpad stays in the tray after a window closes.
+    # window, and Lexpad stays in the tray after a window closes. Home, since
+    # Windows 11 already has the first row focused and Windows 10 none.
     Write-Host 'JUMP choosing the first row by keyboard'
-    [JumpWin]::keybd_event(0x28, 0, 0, [UIntPtr]::Zero); [JumpWin]::keybd_event(0x28, 0, 2, [UIntPtr]::Zero)
+    [JumpWin]::keybd_event(0x24, 0, 0, [UIntPtr]::Zero); [JumpWin]::keybd_event(0x24, 0, 2, [UIntPtr]::Zero)
     Start-Sleep -Milliseconds 400
     Shot '2-first-row'
     [JumpWin]::keybd_event(0x0D, 0, 0, [UIntPtr]::Zero); [JumpWin]::keybd_event(0x0D, 0, 2, [UIntPtr]::Zero)
