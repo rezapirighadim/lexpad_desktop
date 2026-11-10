@@ -190,13 +190,25 @@ jobs:
             Where-Object { $_.Name -notlike 'uninstall*' -and $_.Name -notin 'ffmpeg.exe', 'ffprobe.exe' } | Select-Object -First 1
           ./scripts/tray-check.ps1 -Exe $exe.FullName
 
+      # "Quit Lexpad" in the taskbar button's right-click menu (the Jump List
+      # task, src-tauri/src/jump_list.rs): written, shown, and it quits.
+      - name: Quit Lexpad in the taskbar menu
+        timeout-minutes: 5
+        shell: powershell
+        run: |
+          $exe = Get-ChildItem "$env:LOCALAPPDATA\Lexpad" -Filter *.exe -Recurse |
+            Where-Object { $_.Name -notlike 'uninstall*' -and $_.Name -notin 'ffmpeg.exe', 'ffprobe.exe' } | Select-Object -First 1
+          ./scripts/jumplist-check.ps1 -Exe $exe.FullName
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: tray-check
           if-no-files-found: ignore
           retention-days: 14
-          path: tray-check/
+          path: |
+            tray-check/
+            jumplist-check/
 
       # The video player's FFmpeg is installed beside Lexpad and runs, and
       # the installer added "Open with Lexpad" and a Default Apps entry
@@ -310,10 +322,20 @@ jobs:
           $exe = Get-ChildItem "$env:LOCALAPPDATA\Lexpad" -Filter *.exe -Recurse |
             Where-Object { $_.Name -notlike 'uninstall*' -and $_.Name -notin 'ffmpeg.exe', 'ffprobe.exe' } | Select-Object -First 1
           ./scripts/tray-check.ps1 -Exe $exe.FullName
+      - name: Quit Lexpad in the taskbar menu
+        if: always()
+        timeout-minutes: 5
+        shell: powershell
+        run: |
+          $exe = Get-ChildItem "$env:LOCALAPPDATA\Lexpad" -Filter *.exe -Recurse |
+            Where-Object { $_.Name -notlike 'uninstall*' -and $_.Name -notin 'ffmpeg.exe', 'ffprobe.exe' } | Select-Object -First 1
+          ./scripts/jumplist-check.ps1 -Exe $exe.FullName
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: tray-check-windows-2022
           if-no-files-found: ignore
           retention-days: 14
-          path: tray-check/
+          path: |
+            tray-check/
+            jumplist-check/

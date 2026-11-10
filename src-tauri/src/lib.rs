@@ -27,6 +27,7 @@ mod e2e;
 #[cfg(test)]
 mod e2e_main;
 mod everywhere;
+mod jump_list;
 mod launch;
 mod line_tools;
 #[cfg(all(feature = "mas", target_os = "macos"))]
@@ -330,6 +331,11 @@ fn open_first(app: &AppHandle, first: launch::FirstWindow) {
 /// Start menu): the same table as a launch, as it stands now.
 /// The facts are read off the main thread (the session read may wait on a
 /// token refresh); the window is opened from there as usual.
+/// Quits Lexpad: the tray's "Quit Lexpad" and the taskbar menu's task.
+pub fn quit(app: &AppHandle) {
+    app.exit(0);
+}
+
 pub fn open_again(app: &AppHandle) {
     let app = app.clone();
     std::thread::spawn(move || {
@@ -460,6 +466,11 @@ pub fn run() {
     // so they are not "a second launch".
     if !smoke && !cfg!(feature = "player-dev") {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // "Quit Lexpad" in the taskbar button's menu (Windows, jump_list.rs).
+            if jump_list::wants_quit(&args) {
+                quit(app);
+                return;
+            }
             // "Open with Lexpad" on Windows starts a second Lexpad with the
             // file; it hands the file here and quits.
             if open_media(app, &media::files_in_args(&args), player_window::Door::File) {
@@ -548,6 +559,12 @@ pub fn run() {
                 .build(),
         )
         .setup(move |app| {
+            // `--quit` (the taskbar menu's task, jump_list.rs) with no Lexpad
+            // running: the single-instance plugin found no copy to hand it to,
+            // so there is nothing to quit and nothing is opened.
+            if !smoke && jump_list::wants_quit(std::env::args()) {
+                std::process::exit(0);
+            }
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             // The menu bar (macOS): Playback, Subtitles, and both windows in Window.
@@ -639,6 +656,8 @@ pub fn run() {
             }
             panel::create(&handle)?;
             tray::build(&handle)?;
+            #[cfg(windows)]
+            jump_list::install();
             // The right-click menu's Lexpad everywhere item: in when signed
             // in, with the words for the account, and again after every
             // sign-in or sign-out.

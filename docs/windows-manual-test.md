@@ -75,6 +75,9 @@ Use the installer from the latest `build` run on GitHub (Actions → build → a
     Quit Lexpad. Lexpad on your phone… opens Settings → Lexpad everywhere in Lexpad's window. Sign
     out: the item is gone from the menu; sign in again: it is back. The panel shows the same row
     above Open Lexpad, and Tab reaches it after the recent words.
+    Right-click Lexpad's taskbar button (the Player's, and Lexpad's window's): the menu has
+    **Quit Lexpad** under Tasks; it quits Lexpad as the tray's item does. There is no Quit inside
+    Lexpad's windows (owner, 10 Nov 2026). CI checks it (`scripts/jumplist-check.ps1`).
 21. **Uninstall.** Settings → Apps → Lexpad → Uninstall. The tray icon is gone, and the login
     item with it.
 

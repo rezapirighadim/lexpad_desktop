@@ -44,6 +44,7 @@ src/lib/compose.ts               the word as saved, and what a capture turns int
 src/lib/backend.ts               the only bridge to the core: typed `invoke` wrappers
 src-tauri/src/lib.rs             wiring: shortcut, windows, plugins
 src-tauri/src/tray.rs            the menu-bar / tray icon (1x+2x template on macOS, tray.ico frame on Windows), right-click menu
+src-tauri/src/jump_list.rs       Windows: "Quit Lexpad" in the taskbar button's right-click menu (a Jump List task, `--quit`, both buttons); scripts/jumplist-check.ps1 checks it in CI
 src-tauri/src/everywhere.rs      the tray's "Lexpad on your phone…" / "Lexpad everywhere…" row and menu item: GET /me/surfaces (android/ios everUsed), remembered once true (tested)
 src-tauri/src/panel.rs           the panel window: placing it from the icon's rect on any monitor (tested), showing, hiding
 src-tauri/src/capture/           reading the selection: macos.rs (AX, then ⌘C), windows.rs (UIA, then Ctrl+C)

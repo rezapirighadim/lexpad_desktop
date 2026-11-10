@@ -146,10 +146,48 @@ function Inside($r, $b) {
   return $cx -ge $b.X -and $cx -le ($b.X + $b.Width) -and $cy -ge $b.Y -and $cy -le ($b.Y + $b.Height)
 }
 
-# The icon's own rectangle. A new icon sits in the overflow on Windows 11
-# (and Server 2025), where the shell answers with the ^ button's rectangle:
-# then the overflow is opened, as a learner would, and the icon is found in it.
-function Find-Icon($tray) {
+# The notification area's own windows (the Windows 10 taskbar; Windows 11
+# draws its tray in XAML and has none of these, so each may be zero).
+function Taskbar-Parts {
+  $tw = [TrayWin]::FindWindow('Shell_TrayWnd', $null)
+  $tn = if ($tw -ne [IntPtr]::Zero) { [TrayWin]::FindWindowEx($tw, [IntPtr]::Zero, 'TrayNotifyWnd', $null) } else { [IntPtr]::Zero }
+  $chev = if ($tn -ne [IntPtr]::Zero) { [TrayWin]::FindWindowEx($tn, [IntPtr]::Zero, 'Button', $null) } else { [IntPtr]::Zero }
+  $pager = if ($tn -ne [IntPtr]::Zero) { [TrayWin]::FindWindowEx($tn, [IntPtr]::Zero, 'SysPager', $null) } else { [IntPtr]::Zero }
+  $shown = if ($pager -ne [IntPtr]::Zero) { [TrayWin]::FindWindowEx($pager, [IntPtr]::Zero, 'ToolbarWindow32', $null) } else { [IntPtr]::Zero }
+  $ow = [TrayWin]::FindWindow('NotifyIconOverflowWindow', $null)
+  $hidden = if ($ow -ne [IntPtr]::Zero) { [TrayWin]::FindWindowEx($ow, [IntPtr]::Zero, 'ToolbarWindow32', $null) } else { [IntPtr]::Zero }
+  return @{ Chevron = $chev; Shown = $shown; Overflow = $ow; Hidden = $hidden }
+}
+
+# The icons in one of those toolbars, by UI Automation: name and place.
+function Toolbar-Icons([IntPtr] $toolbar) {
+  if ($toolbar -eq [IntPtr]::Zero) { return @() }
+  Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+  $el = [System.Windows.Automation.AutomationElement]::FromHandle($toolbar)
+  $all = [System.Windows.Automation.Condition]::TrueCondition
+  return @($el.FindAll([System.Windows.Automation.TreeScope]::Children, $all) | ForEach-Object {
+    $b = $_.Current.BoundingRectangle
+    [pscustomobject]@{ Name = $_.Current.Name; X = [int]$b.X; Y = [int]$b.Y; W = [int]$b.Width; H = [int]$b.Height }
+  })
+}
+
+function Say-Icons([string] $where, $icons) {
+  $names = @($icons | ForEach-Object { "'$($_.Name)'" })
+  Write-Host "TRAY icons $where ($($names.Count)): $($names -join ', ')"
+}
+
+function Rect-Of($b) {
+  $r = New-Object TrayWin+RECT
+  $r.Left = [int]$b.X; $r.Top = [int]$b.Y; $r.Right = [int]($b.X + $b.W); $r.Bottom = [int]($b.Y + $b.H)
+  return $r
+}
+
+# The icon's own rectangle. A new icon may sit in the overflow (under the ^
+# arrow), where the shell answers with no rectangle or the ^ button's: then
+# the overflow is opened, as a learner would, and the icon is looked for in
+# it by name. When it is in neither the taskbar's icons nor the overflow, the
+# check says so: the icon is really missing, not hidden.
+function Find-Icon($tray, [string] $tag) {
   # A fresh start may take a few seconds to put its icon in the shell. Up to
   # 60 s, and how long it took is printed: a restart right after Quit on the
   # Windows 10 taskbar found none within 10 s (0.3.30), and this tells a slow
@@ -161,32 +199,60 @@ function Find-Icon($tray) {
     if (-not $r) { Start-Sleep -Milliseconds 500 }
   }
   Write-Host "TRAY icon rect after $([int]$clock.Elapsed.TotalSeconds) s: $(if ($r) { 'found' } else { 'none' })"
+  $parts = Taskbar-Parts
+  $shown = Toolbar-Icons $parts.Shown
+  if ($parts.Shown -ne [IntPtr]::Zero) { Say-Icons 'on the taskbar' $shown }
   $chevron = Chevron
-  if ($r -and (-not $chevron -or -not (Inside $r $chevron.Current.BoundingRectangle))) { return $r }
-  if (-not $chevron) { Write-Host 'TRAY no icon and no overflow button'; return $null }
-  Write-Host 'TRAY the icon is in the overflow; opening it'
-  $c = $chevron.Current.BoundingRectangle
-  if ($chevron.Current.Name -notmatch '^Hide') {
-    Click ([int]($c.X + $c.Width / 2)) ([int]($c.Y + $c.Height / 2)) 'left'
+  $cb = $null
+  if ($chevron) {
+    $b = $chevron.Current.BoundingRectangle
+    $cb = [pscustomobject]@{ X = $b.X; Y = $b.Y; Width = $b.Width; Height = $b.Height; Name = $chevron.Current.Name }
+  } elseif ($parts.Chevron -ne [IntPtr]::Zero -and [TrayWin]::IsWindowVisible($parts.Chevron)) {
+    # The Windows 10 taskbar's ^ is a plain Button in TrayNotifyWnd; UI
+    # Automation names it differently by language and build.
+    $wr = New-Object TrayWin+RECT
+    [void][TrayWin]::GetWindowRect($parts.Chevron, [ref]$wr)
+    $cb = [pscustomobject]@{ X = $wr.Left; Y = $wr.Top; Width = $wr.Right - $wr.Left; Height = $wr.Bottom - $wr.Top; Name = 'Button in TrayNotifyWnd' }
+  }
+  if ($r -and (-not $cb -or -not (Inside $r $cb))) { return $r }
+  $mine = $shown | Where-Object { $_.Name -like 'Lexpad*' } | Select-Object -First 1
+  if ($mine) { Write-Host "TRAY icon on the taskbar by name at $($mine.X),$($mine.Y)"; return Rect-Of $mine }
+  if (-not $cb) { Write-Host 'TRAY no icon and no overflow button'; Shot "$tag-no-overflow-button"; return $null }
+  Write-Host "TRAY the icon is not on the taskbar; opening the overflow ('$($cb.Name)' at $([int]$cb.X),$([int]$cb.Y))"
+  if ($cb.Name -notmatch '^Hide') {
+    Click ([int]($cb.X + $cb.Width / 2)) ([int]($cb.Y + $cb.Height / 2)) 'left'
     Start-Sleep -Seconds 1
   }
+  Shot "$tag-overflow-open"
   $r = Icon-Rect $tray
-  if ($r -and -not (Inside $r $c)) { return $r }
-  $root = [System.Windows.Automation.AutomationElement]::RootElement
-  $all = [System.Windows.Automation.Condition]::TrueCondition
-  $icon = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $all) |
-    Where-Object { $_.Current.Name -like 'Lexpad*' -and $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button } | Select-Object -First 1
-  if (-not $icon) { Write-Host 'TRAY Lexpad is not in the overflow either'; return $null }
-  $b = $icon.Current.BoundingRectangle
-  Write-Host "TRAY icon in the overflow at $($b.X),$($b.Y) $($b.Width)x$($b.Height)"
-  $r = New-Object TrayWin+RECT
-  $r.Left = [int]$b.X; $r.Top = [int]$b.Y; $r.Right = [int]($b.X + $b.Width); $r.Bottom = [int]($b.Y + $b.Height)
-  return $r
+  if ($r -and -not (Inside $r $cb)) { return $r }
+  $parts = Taskbar-Parts
+  $hidden = Toolbar-Icons $parts.Hidden
+  if ($parts.Hidden -ne [IntPtr]::Zero) { Say-Icons 'in the overflow' $hidden }
+  $mine = $hidden | Where-Object { $_.Name -like 'Lexpad*' } | Select-Object -First 1
+  if (-not $mine) {
+    # Windows 11: the overflow is XAML, found from the root by name.
+    $root = [System.Windows.Automation.AutomationElement]::RootElement
+    $all = [System.Windows.Automation.Condition]::TrueCondition
+    $icon = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $all) |
+      Where-Object { $_.Current.Name -like 'Lexpad*' -and $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button } | Select-Object -First 1
+    if ($icon) {
+      $b = $icon.Current.BoundingRectangle
+      $mine = [pscustomobject]@{ Name = $icon.Current.Name; X = [int]$b.X; Y = [int]$b.Y; W = [int]$b.Width; H = [int]$b.Height }
+    }
+  }
+  if (-not $mine) {
+    Write-Host 'TRAY MISSING Lexpad is in neither the taskbar''s icons nor the overflow'
+    Escape
+    return $null
+  }
+  Write-Host "TRAY HIDDEN the icon is in the overflow at $($mine.X),$($mine.Y) $($mine.W)x$($mine.H)"
+  return Rect-Of $mine
 }
 
 # --- 1 and 2: right-click, the menu, Quit ---------------------------------
 $run = Start-Lexpad
-$r = Find-Icon $run.Tray
+$r = Find-Icon $run.Tray '1'
 if (-not $r) {
   Shot '1-no-icon'
   Fail 'the tray icon could not be found'
@@ -230,7 +296,7 @@ if (-not $r) {
 # a small window just above the icon: the window in front must be Lexpad's,
 # and narrower than the Start window the launch opened.
 $run = Start-Lexpad
-$r = Find-Icon $run.Tray
+$r = Find-Icon $run.Tray '3'
 if (-not $r) {
   Shot '3-no-icon'
   Fail 'the tray icon could not be found again'

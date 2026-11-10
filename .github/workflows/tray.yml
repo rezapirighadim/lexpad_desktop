@@ -2,14 +2,18 @@
 # and clicked with the real mouse (scripts/tray-check.ps1) on the Windows 10
 # taskbar (windows-2022, Server 2022's shell) and Windows 11's (windows-latest),
 # three times over, each run a fresh start, a Quit and a start right after it,
-# the case that left no icon (0.3.30). A run on a pull request that touches the
-# tray, and by hand.
+# the case that left no icon (0.3.30); the check looks inside the overflow
+# too, so a hidden icon is told from a missing one. Then the taskbar button's
+# "Quit Lexpad" (scripts/jumplist-check.ps1). A run on a pull request that
+# touches either, and by hand.
 name: tray
 on:
   pull_request:
     paths:
       - 'src-tauri/src/tray.rs'
       - 'scripts/tray-check.ps1'
+      - 'src-tauri/src/jump_list.rs'
+      - 'scripts/jumplist-check.ps1'
       - '.github/workflows/tray.yml'
   workflow_dispatch:
 
@@ -67,10 +71,20 @@ jobs:
             if (Test-Path tray-check) { Rename-Item tray-check "tray-check-run$run" }
           }
           if ($failed) { throw "the tray check failed in $failed of 3 runs" }
+      - name: Quit Lexpad in the taskbar menu
+        if: always()
+        timeout-minutes: 5
+        shell: powershell
+        run: |
+          $exe = Get-ChildItem "$env:LOCALAPPDATA\Lexpad" -Filter *.exe -Recurse |
+            Where-Object { $_.Name -notlike 'uninstall*' -and $_.Name -notin 'ffmpeg.exe', 'ffprobe.exe' } | Select-Object -First 1
+          ./scripts/jumplist-check.ps1 -Exe $exe.FullName
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: tray-${{ matrix.runner }}
           if-no-files-found: ignore
           retention-days: 14
-          path: tray-check-run*/
+          path: |
+            tray-check-run*/
+            jumplist-check/
