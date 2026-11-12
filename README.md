@@ -323,6 +323,21 @@ scripts/make-developer-id-csr.sh --import ~/Downloads/developerID_application.ce
 Only the Account Holder can make a Developer ID certificate. The Developer ID G2 intermediate
 must be in the system keychain (Xcode installs it), or the identity does not show as valid.
 
+**The keychain was made again on 12 November 2026.** Nobody had the old keychain's password any
+more (the copy in the login keychain did not open it), so it was moved aside, not deleted, to
+`~/Library/Keychains/lexpad-signing-locked-20261112.keychain-db` and is off the search list. A
+new keychain with a new random password sits at the same path, holding new keys and three new
+certificates: Apple Distribution (`7R9P9U6L33`, until 2027-11-12, also used for iOS), 3rd Party
+Mac Developer Installer (`JY74CRSK54`, until 2027-11-12) and Developer ID Application G2
+(`Z64HQA2WCW`, until 2027-12-12, made in the portal because the API key may not make one). The
+Mac App Store profile was remade for the new Distribution certificate ("Lexpad Mac App Store
+2026-11-12"; the old file is kept as `Lexpad_Mac_App_Store-oldcert-20261112.provisionprofile`).
+The old certificates stay valid in the portal until they expire; nothing was revoked. The
+self-signed "Lexpad Local Signing" fallback was only in the old keychain and was not made again,
+so `release-mac.sh` has no fallback now: without the Developer ID identity it stops. When you
+store the keychain password, never pass `-T` with `-U` on the existing login item: changing its
+access list opens macOS's password dialog.
+
 **Accessibility, once more.** The designated requirement of a Developer ID build names the team
 (`anchor apple generic … certificate leaf[subject.OU] = "6Z95MR26LZ"`), not a certificate, so it
 survives updates and certificate renewals. It differs from the self-signed builds', though, so
