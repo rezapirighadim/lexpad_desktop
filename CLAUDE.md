@@ -452,7 +452,9 @@ copy (docs/mac-app-store-plan.md). One codebase: `--features mas` plus
   features; before a Mac App Store release also run `cargo clippy --features mas --all-targets`,
   `cargo test --features mas` and `scripts/mas-storekit-test.sh`.
 - No certificate, profile, key or key id is committed; they live in
-  `~/Library/Keychains/lexpad-signing.keychain-db` and `~/.appstoreconnect/`.
+  `~/Library/Keychains/lexpad-signing.keychain-db` and `~/.appstoreconnect/`. The keychain was
+  made again on 12 Nov 2026 with new keys and certificates (README, "macOS signing"); the old,
+  locked one is kept at `~/Library/Keychains/lexpad-signing-locked-20261112.keychain-db`.
 
 ## Hard rules
 
