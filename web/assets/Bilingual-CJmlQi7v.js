@@ -1,1 +1,0 @@
-import{t as e}from"./react--nwWWpNE.js";import{t}from"./cx-CykQDk87.js";import{en as n}from"./dist-CFh9TQ1h.js";import{t as r}from"./script-PSyudlu9.js";var i={text:`BOJGE1`},a=e();function o({lang:e,children:o,className:s,block:c=!1,free:l=!1}){let u=l?`auto`:n(e),d=t(i.text,r(e),s);return(0,a.jsx)(c?`div`:`span`,{dir:u,lang:e,className:d,children:o})}export{o as t};
