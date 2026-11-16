@@ -283,6 +283,30 @@ fn set_line_tools(app: &AppHandle, want: LineTools) -> Result<(), String> {
 /// the Player command the item sends (`player_window::player_context_menu`).
 pub const CONTEXT_PREFIX: &str = "ctx:";
 
+/// Whether the Player's window is the one in front.
+fn player_in_front(app: &AppHandle) -> bool {
+    app.get_webview_window(player_window::LABEL)
+        .and_then(|w| w.is_focused().ok())
+        .unwrap_or(false)
+}
+
+/// How the menu's "Lexpad" (⌘1) reaches the learning window.
+#[derive(Debug, PartialEq, Eq)]
+enum LexpadRoute {
+    /// The Player's page opens it (`player:menu` "lexpad"): it pauses the film and names the door.
+    PlayerDoor,
+    /// Straight to the learning window.
+    Direct,
+}
+
+fn lexpad_route(player_in_front: bool) -> LexpadRoute {
+    if player_in_front {
+        LexpadRoute::PlayerDoor
+    } else {
+        LexpadRoute::Direct
+    }
+}
+
 /// Handles the app menu's own items (ids starting "m.") and the Player's
 /// right-click menu ("ctx:"); everything else (the tray's menu) is left to
 /// its own handler.
@@ -295,14 +319,20 @@ pub fn handle(app: &AppHandle, id: &str) {
         return;
     }
     match id {
-        "m.lexpad" => main_window::open(app, None),
+        "m.lexpad" => {
+            // ⌘1 with the Player in front goes through the Player's own door, so a playing film
+            // pauses first and Lexpad hears where it came from (uiux 2026-11-16 §4, review r1 M2):
+            // the menu's accelerator answers before the page's key handler would.
+            match lexpad_route(player_in_front(app)) {
+                LexpadRoute::PlayerDoor => {
+                    let _ = app.emit_to(player_window::LABEL, "player:menu", "lexpad");
+                }
+                LexpadRoute::Direct => main_window::open(app, None),
+            }
+        }
         "m.player" => player_window::open(app, Opened::App, Some(Door::Menu)),
         "m.settings" => {
-            let player_in_front = app
-                .get_webview_window(player_window::LABEL)
-                .and_then(|w| w.is_focused().ok())
-                .unwrap_or(false);
-            if player_in_front {
+            if player_in_front(app) {
                 let _ = app.emit_to(player_window::LABEL, "player:menu", "settings");
             } else {
                 crate::open_desktop_settings(app);
@@ -486,6 +516,13 @@ mod tests {
         choose_open_at(&mut s, OpenAt::Player);
         assert_eq!(s.open_at, OpenAt::Player);
         assert!(s.open_at_set);
+    }
+
+    #[test]
+    fn lexpad_from_the_player_goes_through_its_door() {
+        // Review r1 M2: ⌘1 with the Player in front pauses the film and says where it came from.
+        assert_eq!(lexpad_route(true), LexpadRoute::PlayerDoor);
+        assert_eq!(lexpad_route(false), LexpadRoute::Direct);
     }
 
     #[test]

@@ -9,6 +9,7 @@
     "allow-api-fetch",
     "allow-main-signed-in",
     "allow-main-take-pending",
+    "allow-main-take-arrival",
     "allow-connect",
     "allow-cancel-connect",
     "allow-disconnect",

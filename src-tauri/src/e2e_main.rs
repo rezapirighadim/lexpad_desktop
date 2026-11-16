@@ -104,7 +104,7 @@ async fn handle(ctx: Arc<Ctx>, mut s: TcpStream) {
     let args = req["args"].clone();
     let result: Result<Value, String> = match cmd.as_str() {
         "main_signed_in" => Ok(json!(ctx.api.user().await.is_some())),
-        "main_take_pending" | "cancel_connect" => Ok(Value::Null),
+        "main_take_pending" | "main_take_arrival" | "cancel_connect" => Ok(Value::Null),
         "plugin:event|listen" => Ok(json!(1)),
         "plugin:event|unlisten" => Ok(Value::Null),
         "connect" => connect(&ctx).await,

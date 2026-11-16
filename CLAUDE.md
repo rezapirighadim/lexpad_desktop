@@ -142,7 +142,8 @@ scripts/mas-asc-listing.py       the macOS version, listing text and review deta
   its own `open_url`, which no window is granted (links did nothing up to 0.3.14). Files the
   page saves go to Downloads.
 - **Opening it**: Open Lexpad (panel, tray menu), a click on the Dock icon, a second launch, a
-  word from the panel (`/words/<id>`, also before the page listens: `main_take_pending`), a
+  word from the panel (`/words/<id>`, also before the page listens: `main_take_pending`), the
+  Player's doors (`open_lexpad`, with the door's `lexpad:arrive`), a
   clicked notification, and at start when the learner asks (Settings). "Open Lexpad in my
   browser instead" sends all of those to the browser. The window is made when opened and
   destroyed when closed; its place is remembered and brought back inside the work area.
@@ -316,6 +317,17 @@ The Player's page is the web app's `/player` route (lexpad_front `features/playe
   checked app path (`open_lexpad`). ⌘1 / ⌘2 are the Window menu's items on macOS; on Windows
   each page answers Ctrl+1 / Ctrl+2 (`open_window`). Files opened from the system and drops on
   either window open the Player.
+- **The Player's doors to Lexpad say so** (uiux `2026-11-16-player-polish` §4, owner-approved
+  16 Nov 2026): `open_lexpad` takes an optional `from` (the Player's door: `topbar`,
+  `home_card`, `words`, `key`…; checked by `main_window::Arrival::new`, short lower-case names
+  only) and `film` (whether a film is open there; the Player pauses it first). The learning window
+  hears `lexpad:arrive {from, film}` at once if it is open (the menu's ⌘1 with the Player in front
+  goes through the Player's page, `player:menu` "lexpad", so it pauses and names the door too), else asks once as it starts listening
+  (`main_take_arrival`, like `main_take_pending`), and on its first three arrivals says the film
+  waits, with "Back to the film ⌘2" (`open_window('player')`). An older Player sends neither and
+  nothing is said. The Player's own changes of that release (lines that never move with the bars,
+  practice modes that turn off on a second press, the app's language faces with a font per
+  language) are all in the bundled web app; all its faces ship in `web/`, so they draw offline.
 - **Every way into the Player is a door** (`player_window::Door`, spec
   `uiux/2026-10-31-player-next/spec.md` A1, for the activity reports): `start` (the retired
   Start window's Open a video…, kept in the shared list), `launch` (the launch table, the Dock, a second launch, `--player`),
