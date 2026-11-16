@@ -42,14 +42,53 @@ const MARGIN: f64 = 24.0;
 /// the panel, opened before the window had loaded).
 static PENDING: Mutex<Option<String>> = Mutex::new(None);
 
+/// The event the learning window hears when the Player opened it (uiux
+/// 2026-11-16 §4.2 R4): which door, and whether a film is open there.
+pub const ARRIVE_EVENT: &str = "lexpad:arrive";
+
+/// The longest door name the core passes on (the web app's are 3–10).
+const DOOR_MAX: usize = 32;
+
+/// The Player's door to this window, as the page reads it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct Arrival {
+    pub from: String,
+    pub film: bool,
+}
+
+impl Arrival {
+    /// A door name from the Player, checked: short, lower-case letters and
+    /// `_` only (`topbar`, `home_card`). Anything else is not passed on.
+    pub fn new(from: &str, film: bool) -> Option<Self> {
+        let ok = !from.is_empty()
+            && from.len() <= DOOR_MAX
+            && from.bytes().all(|b| b.is_ascii_lowercase() || b == b'_');
+        ok.then(|| Self {
+            from: from.to_owned(),
+            film,
+        })
+    }
+}
+
+/// An arrival the page should hear once it is listening (the window was
+/// made by this very door, before its page had loaded).
+static PENDING_ARRIVAL: Mutex<Option<Arrival>> = Mutex::new(None);
+
 /// Opens the window, or brings it forward, at `path` (an in-app path such
 /// as `/words/<id>`) when there is one.
 pub fn open(app: &AppHandle, path: Option<String>) {
-    let handle = app.clone();
-    let _ = app.run_on_main_thread(move || open_now(&handle, path));
+    open_from(app, path, None);
 }
 
-fn open_now(app: &AppHandle, path: Option<String>) {
+/// The same, from the Player: the page also hears which door it came by
+/// (`lexpad:arrive`), at once if it is listening, else when it asks
+/// (`take_arrival`).
+pub fn open_from(app: &AppHandle, path: Option<String>, arrival: Option<Arrival>) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || open_now(&handle, path, arrival));
+}
+
+fn open_now(app: &AppHandle, path: Option<String>, arrival: Option<Arrival>) {
     crate::refresh_dock(app, true);
     if let Some(win) = app.get_webview_window(LABEL) {
         let _ = win.unminimize();
@@ -58,10 +97,16 @@ fn open_now(app: &AppHandle, path: Option<String>) {
         if let Some(p) = path {
             let _ = win.emit_to(LABEL, "main:open", p);
         }
+        if let Some(a) = arrival {
+            let _ = win.emit_to(LABEL, ARRIVE_EVENT, a);
+        }
         return;
     }
     if let Ok(mut pending) = PENDING.lock() {
         *pending = path;
+    }
+    if let Ok(mut pending) = PENDING_ARRIVAL.lock() {
+        *pending = arrival;
     }
     if let Err(e) = build(app) {
         log::warn!("could not open Lexpad's window: {e}");
@@ -72,6 +117,11 @@ fn open_now(app: &AppHandle, path: Option<String>) {
 /// The page asks once, when it starts listening, for a page it should open.
 pub fn take_pending() -> Option<String> {
     PENDING.lock().ok().and_then(|mut p| p.take())
+}
+
+/// The arrival the page missed while it loaded, asked for once as it listens.
+pub fn take_arrival() -> Option<Arrival> {
+    PENDING_ARRIVAL.lock().ok().and_then(|mut p| p.take())
 }
 
 /// Which store sold this copy, for the web app: `mas` for the Mac App Store
@@ -314,6 +364,30 @@ mod tests {
 
     fn url(s: &str) -> Url {
         Url::parse(s).unwrap()
+    }
+
+    // uiux 2026-11-16 §4.2 R4: the Player's door is passed on only when it is a plain name.
+    #[test]
+    fn an_arrival_from_the_player_names_its_door_plainly() {
+        assert_eq!(
+            Arrival::new("home_card", true),
+            Some(Arrival {
+                from: "home_card".into(),
+                film: true
+            })
+        );
+        assert_eq!(Arrival::new("topbar", false).map(|a| a.film), Some(false));
+        assert_eq!(Arrival::new("", true), None);
+        assert_eq!(Arrival::new("C:/film.mkv", true), None);
+        assert_eq!(Arrival::new("Topbar", true), None);
+        assert_eq!(Arrival::new(&"a".repeat(DOOR_MAX + 1), true), None);
+    }
+
+    #[test]
+    fn a_missed_arrival_is_taken_once() {
+        *PENDING_ARRIVAL.lock().unwrap() = Arrival::new("key", true);
+        assert_eq!(take_arrival().map(|a| a.from), Some("key".to_owned()));
+        assert_eq!(take_arrival(), None);
     }
 
     #[test]

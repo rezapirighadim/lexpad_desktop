@@ -364,9 +364,17 @@ fn screen_of(app: &AppHandle, win: &WebviewWindow) -> Option<placement::Screen> 
 
 /// Lexpad's window, opened or brought forward, at an in-app path (a word's
 /// page, a session, Settings → Video player); the path is checked as the
-/// web app checks its own (`commands::app_path`).
+/// web app checks its own (`commands::app_path`). `from` names the Player's
+/// door and `film` whether a film is open there (uiux 2026-11-16 §4.2 R4):
+/// the learning window hears them as `lexpad:arrive` and says the film
+/// waits. A Player from before sends neither, and nothing is said.
 #[tauri::command]
-pub fn open_lexpad(app: AppHandle, path: Option<String>) -> Result<(), String> {
+pub fn open_lexpad(
+    app: AppHandle,
+    path: Option<String>,
+    from: Option<String>,
+    film: Option<bool>,
+) -> Result<(), String> {
     let path = match path {
         Some(p) => {
             crate::commands::app_path(&p).ok_or("not an app path")?;
@@ -374,7 +382,8 @@ pub fn open_lexpad(app: AppHandle, path: Option<String>) -> Result<(), String> {
         }
         None => None,
     };
-    main_window::open(&app, path);
+    let arrival = from.and_then(|f| main_window::Arrival::new(&f, film.unwrap_or(false)));
+    main_window::open_from(&app, path, arrival);
     Ok(())
 }
 

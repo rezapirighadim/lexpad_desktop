@@ -822,6 +822,7 @@ pub fn run() {
             commands::api_fetch,
             commands::main_signed_in,
             commands::main_take_pending,
+            commands::main_take_arrival,
             commands::open_in_browser,
             commands::set_open_on_launch,
             commands::set_open_in_browser,

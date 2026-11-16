@@ -43,6 +43,7 @@ fn main() {
             "api_fetch",
             "main_signed_in",
             "main_take_pending",
+            "main_take_arrival",
             "open_in_browser",
             "set_open_on_launch",
             "set_open_in_browser",

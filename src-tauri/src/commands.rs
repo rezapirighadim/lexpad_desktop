@@ -844,6 +844,13 @@ pub fn main_take_pending() -> Option<String> {
     main_window::take_pending()
 }
 
+/// The Player's door Lexpad's window was opened by before it was listening
+/// (`lexpad:arrive`, uiux 2026-11-16 §4.2 R4).
+#[tauri::command]
+pub fn main_take_arrival() -> Option<main_window::Arrival> {
+    main_window::take_arrival()
+}
+
 /// Whether `path` is a plain path of the web app: one leading slash, no
 /// second one after it, no backslash, no whitespace or control characters,
 /// and still the web app's origin once joined to it. The same rule as the
