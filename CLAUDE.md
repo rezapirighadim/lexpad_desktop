@@ -321,7 +321,8 @@ The Player's page is the web app's `/player` route (lexpad_front `features/playe
   16 Nov 2026): `open_lexpad` takes an optional `from` (the Player's door: `topbar`,
   `home_card`, `words`, `key`…; checked by `main_window::Arrival::new`, short lower-case names
   only) and `film` (whether a film is open there; the Player pauses it first). The learning window
-  hears `lexpad:arrive {from, film}` at once if it is open, else asks once as it starts listening
+  hears `lexpad:arrive {from, film}` at once if it is open (the menu's ⌘1 with the Player in front
+  goes through the Player's page, `player:menu` "lexpad", so it pauses and names the door too), else asks once as it starts listening
   (`main_take_arrival`, like `main_take_pending`), and on its first three arrivals says the film
   waits, with "Back to the film ⌘2" (`open_window('player')`). An older Player sends neither and
   nothing is said. The Player's own changes of that release (lines that never move with the bars,
