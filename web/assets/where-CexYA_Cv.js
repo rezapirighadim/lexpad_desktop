@@ -1,1 +1,0 @@
-import{t as e}from"./apple-CI03ZQtf.js";function t(){return!e()}export{t};
