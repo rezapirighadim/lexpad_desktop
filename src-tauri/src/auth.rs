@@ -486,9 +486,175 @@ pub async fn listen() -> std::io::Result<(TcpListener, u16)> {
     Ok((listener, port))
 }
 
+// ------------------------------------------- the Mac App Store copy, in-app
+
+/// The callback a sign-in sheet caught (the Mac App Store copy's
+/// ASWebAuthenticationSession, signin_mas.rs): the answer when it is exactly
+/// our scheme's callback with our state, else `None`.
+#[cfg_attr(not(all(feature = "mas", target_os = "macos")), allow(dead_code))]
+pub fn answer_from_callback(raw: &str, state: &str) -> Option<Answer> {
+    match classify_app_url(raw, state) {
+        Request::Answer(answer) => Some(answer),
+        _ => None,
+    }
+}
+
+/// A Sign in with Apple nonce: the value the API is sent, and its SHA-256 in
+/// lowercase hex, which is all Apple sees (it copies it into the identity
+/// token, and the API refuses a token whose nonce is not the hash of the
+/// value sent with it, so a token alone cannot be replayed).
+#[cfg_attr(not(all(feature = "mas", target_os = "macos")), allow(dead_code))]
+pub struct AppleNonce {
+    pub value: String,
+    pub hash: String,
+}
+
+#[cfg_attr(not(all(feature = "mas", target_os = "macos")), allow(dead_code))]
+pub fn apple_nonce() -> AppleNonce {
+    let value = random_token();
+    let hash = Sha256::digest(value.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    AppleNonce { value, hash }
+}
+
+/// What Apple's own sheet gave (SignIn.swift): the identity token, and the
+/// authorization code and the name when Apple sent them (the name only on
+/// the first authorisation).
+#[derive(Debug, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(not(all(feature = "mas", target_os = "macos")), allow(dead_code))]
+pub struct AppleCredential {
+    pub id_token: String,
+    #[serde(default)]
+    pub code: Option<String>,
+    #[serde(default)]
+    pub display_name: Option<String>,
+}
+
+impl AppleCredential {
+    /// The sheet's JSON, when it holds a token.
+    #[cfg_attr(not(all(feature = "mas", target_os = "macos")), allow(dead_code))]
+    pub fn parse(text: &str) -> Option<AppleCredential> {
+        let c: AppleCredential = serde_json::from_str(text).ok()?;
+        (!c.id_token.is_empty()).then_some(c)
+    }
+}
+
+/// How one of the Mac App Store copy's sign-in sheets ended (SignIn.swift's
+/// status and text).
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(not(all(feature = "mas", target_os = "macos")), allow(dead_code))]
+pub enum SheetEnd {
+    /// The callback URL, or Apple's credential as JSON.
+    Done(String),
+    /// The learner closed it, or a newer sign-in or Cancel ended it.
+    Cancelled,
+    /// It could not start or failed; the reason is for the log only.
+    Failed(String),
+}
+
+impl SheetEnd {
+    #[cfg_attr(not(all(feature = "mas", target_os = "macos")), allow(dead_code))]
+    pub fn from_status(status: i32, text: String) -> SheetEnd {
+        match status {
+            0 => SheetEnd::Done(text),
+            1 => SheetEnd::Cancelled,
+            _ => SheetEnd::Failed(text),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_sheets_callback_is_answered_only_with_our_state() {
+        let st = "s1";
+        assert_eq!(
+            answer_from_callback("lexpad://auth/callback?code=c1&state=s1", st),
+            Some(Answer::Code("c1".into()))
+        );
+        assert_eq!(
+            answer_from_callback("lexpad://auth/callback?error=access_denied&state=s1", st),
+            Some(Answer::Denied)
+        );
+        assert_eq!(
+            answer_from_callback("lexpad://auth/callback?code=c1&state=s2", st),
+            None
+        );
+        assert_eq!(
+            answer_from_callback("lexpad://auth/other?code=c1&state=s1", st),
+            None
+        );
+        assert_eq!(
+            answer_from_callback("https://lexpad.app/callback?code=c1&state=s1", st),
+            None
+        );
+        assert_eq!(
+            answer_from_callback("lexpad://auth/callback?code=c1&state=s1#x", st),
+            None
+        );
+    }
+
+    #[test]
+    fn the_apple_nonce_is_sent_whole_and_shown_to_apple_hashed() {
+        let n = apple_nonce();
+        // The API takes 16 to 128 characters.
+        assert!((16..=128).contains(&n.value.len()));
+        assert_eq!(n.hash.len(), 64);
+        assert!(n
+            .hash
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+        // SHA-256("abc"), FIPS 180-2.
+        let abc: String = Sha256::digest(b"abc")
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        assert_eq!(
+            abc,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert_ne!(apple_nonce().value, n.value);
+    }
+
+    #[test]
+    fn apples_credential_needs_a_token() {
+        assert_eq!(
+            AppleCredential::parse(r#"{"idToken":"t","code":"c","displayName":"Ada L"}"#),
+            Some(AppleCredential {
+                id_token: "t".into(),
+                code: Some("c".into()),
+                display_name: Some("Ada L".into())
+            })
+        );
+        assert_eq!(
+            AppleCredential::parse(r#"{"idToken":"t"}"#).map(|c| (c.code, c.display_name)),
+            Some((None, None))
+        );
+        assert_eq!(AppleCredential::parse(r#"{"idToken":""}"#), None);
+        assert_eq!(AppleCredential::parse("not json"), None);
+    }
+
+    #[test]
+    fn a_sheets_status_reads_as_done_cancelled_or_failed() {
+        assert_eq!(
+            SheetEnd::from_status(0, "u".into()),
+            SheetEnd::Done("u".into())
+        );
+        assert_eq!(SheetEnd::from_status(1, String::new()), SheetEnd::Cancelled);
+        assert_eq!(
+            SheetEnd::from_status(2, "why".into()),
+            SheetEnd::Failed("why".into())
+        );
+        assert_eq!(
+            SheetEnd::from_status(7, "?".into()),
+            SheetEnd::Failed("?".into())
+        );
+    }
 
     #[test]
     fn pkce_is_rfc7636_s256() {

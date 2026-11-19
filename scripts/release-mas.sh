@@ -119,11 +119,13 @@ entitlements=src-tauri/mas/Lexpad.entitlements
 # codesign's parser is strict where plutil is not (a `--` in a comment).
 xmllint --noout src-tauri/mas/Lexpad.entitlements src-tauri/mas/ffmpeg.entitlements
 if [ "$local_build" = 1 ]; then
-  # Only a provisioning profile may grant the identity keys; a local copy
-  # without one must not ask for them, or macOS refuses to start it.
+  # Only a provisioning profile may grant the identity keys and Sign in with
+  # Apple; a local copy without one must not ask for them, or macOS refuses to
+  # start it (its Apple button then goes on to the connect page, signin_mas.rs).
   entitlements=$(mktemp -t lexpad-mas).plist
   cp src-tauri/mas/Lexpad.entitlements "$entitlements"
-  /usr/libexec/PlistBuddy -c 'Delete :com.apple.application-identifier' -c 'Delete :com.apple.developer.team-identifier' "$entitlements"
+  /usr/libexec/PlistBuddy -c 'Delete :com.apple.application-identifier' -c 'Delete :com.apple.developer.team-identifier' \
+    -c 'Delete :com.apple.developer.applesignin' "$entitlements"
 fi
 
 # Everything in the app readable by everyone (App Store Connect error 90255):
@@ -154,6 +156,14 @@ codesign -d --entitlements - --xml "$app" >"$ents_file" 2>/dev/null || true
   echo "release-mas: the signed app lacks com.apple.security.device.audio-input" >&2
   exit 1
 }
+# Sign in with Apple finishes in Apple's own sheet (App Review Guideline 4).
+if [ "$local_build" = 0 ]; then
+  /usr/libexec/PlistBuddy -c 'Print :com.apple.developer.applesignin:0' "$ents_file" 2>/dev/null | grep -qx Default || {
+    rm -f "$ents_file"
+    echo "release-mas: the signed app lacks com.apple.developer.applesignin" >&2
+    exit 1
+  }
+fi
 rm -f "$ents_file"
 for tool in ffmpeg ffprobe; do
   ents=$(codesign -d --entitlements :- "$app/Contents/MacOS/$tool" 2>/dev/null)

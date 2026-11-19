@@ -313,6 +313,50 @@ impl Api {
             return Err(Failure::Error);
         }
         let session: AuthSession = res.json().await.map_err(|_| Failure::Error)?;
+        self.adopt(session).await
+    }
+
+    /// Signs in with Apple's identity token from the Mac App Store copy's own
+    /// Sign in with Apple sheet (signin_mas.rs): `POST /auth/apple`, the same
+    /// call the iPhone app makes, with this app's device (platform desktop,
+    /// which the API treats as delegated whatever the door: it cannot connect
+    /// other clients, change the password or allow an assistant). The token
+    /// goes straight from Apple to the core to the API; no web page sees it.
+    /// `Failure::Error` for any refusal (a bad token, an account in its
+    /// deletion grace): the caller then offers the connect page instead.
+    #[cfg_attr(not(all(feature = "mas", target_os = "macos")), allow(dead_code))]
+    pub async fn sign_in_with_apple(
+        &self,
+        credential: &crate::auth::AppleCredential,
+        nonce: &str,
+        device: &Device,
+    ) -> Result<User, Failure> {
+        let mut body = json!({ "idToken": credential.id_token, "nonce": nonce, "device": device });
+        if let Some(code) = &credential.code {
+            body["code"] = json!(code);
+        }
+        if let Some(name) = &credential.display_name {
+            // The API keeps at most 120 characters of a name.
+            body["displayName"] = json!(name.chars().take(120).collect::<String>());
+        }
+        let res = self
+            .http
+            .post(format!("{}/auth/apple", self.base))
+            .json(&body)
+            .send()
+            .await
+            .map_err(|_| Failure::Offline)?;
+        if !res.status().is_success() {
+            log::warn!("Sign in with Apple refused: {}", res.status());
+            return Err(Failure::Error);
+        }
+        let session: AuthSession = res.json().await.map_err(|_| Failure::Error)?;
+        self.adopt(session).await
+    }
+
+    /// Keeps a session the API just opened for this app (the refresh token
+    /// in the credential store, the access token in memory).
+    async fn adopt(&self, session: AuthSession) -> Result<User, Failure> {
         let (Some(refresh), Some(user)) = (session.refresh_token, session.user) else {
             return Err(Failure::Error);
         };
@@ -1103,6 +1147,52 @@ mod tests {
             .unwrap();
         assert_eq!(user.email, "e@example.com");
         assert_eq!(store.load().unwrap().refresh_token, "rt-2");
+    }
+
+    #[tokio::test]
+    async fn sign_in_with_apple_keeps_a_desktop_session() {
+        let base = serve(|line, _, body| {
+            assert!(line.starts_with("POST /api/v1/auth/apple"));
+            let v: Value = serde_json::from_str(body).unwrap();
+            assert_eq!(v["idToken"], "apple-token");
+            assert_eq!(v["nonce"], "the-nonce-value-0123");
+            assert_eq!(v["code"], "apple-code");
+            assert_eq!(v["displayName"].as_str().unwrap().chars().count(), 120);
+            assert_eq!(v["device"]["platform"], "desktop");
+            (200, SESSION.into())
+        })
+        .await;
+        let store = Arc::new(Memory::default());
+        let api = Api::new(&base, store.clone());
+        let device = Device {
+            platform: "desktop",
+            device_id: "d".into(),
+            device_name: "macOS".into(),
+            app_version: "0.1.0".into(),
+        };
+        let credential = crate::auth::AppleCredential {
+            id_token: "apple-token".into(),
+            code: Some("apple-code".into()),
+            display_name: Some("a".repeat(200)),
+        };
+        let user = api
+            .sign_in_with_apple(&credential, "the-nonce-value-0123", &device)
+            .await
+            .unwrap();
+        assert_eq!(user.email, "e@example.com");
+        assert_eq!(store.load().unwrap().refresh_token, "rt-2");
+
+        // A refusal (a bad token, an account in its deletion grace) keeps nothing.
+        let base = serve(|_, _, _| (409, r#"{"code":"account_pending_deletion"}"#.into())).await;
+        let store = Arc::new(Memory::default());
+        let api = Api::new(&base, store.clone());
+        assert_eq!(
+            api.sign_in_with_apple(&credential, "the-nonce-value-0123", &device)
+                .await
+                .err(),
+            Some(Failure::Error)
+        );
+        assert!(store.load().is_none());
     }
 
     #[tokio::test]

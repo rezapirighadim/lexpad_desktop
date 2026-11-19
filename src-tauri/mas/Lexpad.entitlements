@@ -4,8 +4,8 @@
   The Mac App Store build's entitlements (docs/mac-app-store-plan.md, "Sandbox").
   Every key here is needed by something the app does; nothing else is asked for.
   scripts/release-mas.sh signs Lexpad.app with this file; the local test build
-  (release-mas.sh with its local flag) drops the two identity keys, which only a provisioning
-  profile may grant.
+  (release-mas.sh with its local flag) drops the identity keys and Sign in with Apple, which
+  only a provisioning profile may grant.
 -->
 <plist version="1.0">
 <dict>
@@ -33,5 +33,12 @@
   <string>6Z95MR26LZ.app.lexpad.ios</string>
   <key>com.apple.developer.team-identifier</key>
   <string>6Z95MR26LZ</string>
+  <!-- Sign in with Apple in Apple's own sheet, so it finishes inside the app
+       (App Review Guideline 4; src/signin_mas.rs). The App ID has the
+       capability and the provisioning profile grants it. -->
+  <key>com.apple.developer.applesignin</key>
+  <array>
+    <string>Default</string>
+  </array>
 </dict>
 </plist>

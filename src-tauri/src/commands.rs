@@ -50,6 +50,10 @@ pub struct StateDto {
     /// `services` in the Mac App Store build: ⌘⇧L is the Services key there.
     #[serde(skip_serializing_if = "Option::is_none")]
     shortcut_via: Option<&'static str>,
+    /// `app` in the Mac App Store build: signing in happens inside the app
+    /// (signin_mas.rs), so the small windows never speak of a browser tab.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sign_in_via: Option<&'static str>,
     /// Whether that service is live yet this run (services_live.rs); `live` elsewhere.
     services: crate::services_live::ServiceState,
 }
@@ -164,6 +168,7 @@ pub async fn state(app: AppHandle, state: State<'_, AppState>) -> Result<StateDt
         permission_stale,
         version: config::VERSION,
         shortcut_via: config::MAS.then_some("services"),
+        sign_in_via: config::MAS.then_some("app"),
         services: services_now(),
     })
 }
@@ -314,6 +319,19 @@ pub async fn connect(
     state: State<'_, AppState>,
     provider: Option<String>,
 ) -> Result<User, String> {
+    // The Mac App Store copy signs in inside the app (signin_mas.rs).
+    #[cfg(all(feature = "mas", target_os = "macos"))]
+    if config::MAS {
+        let user = connect_in_app(
+            &app,
+            &state,
+            &window,
+            auth::Provider::parse(provider.as_deref()),
+        )
+        .await?;
+        open_setup_if_no_notebook(&app, &state, window.label()).await;
+        return Ok(user);
+    }
     let pkce = auth::new_pkce();
     let st = auth::new_state();
     // The Mac copies: the browser comes back to the `lexpad` scheme (auth.rs,
@@ -369,6 +387,143 @@ pub async fn connect(
     Ok(user)
 }
 
+/// The Mac App Store copy's sign-in (signin_mas.rs, App Review Guideline 4):
+/// Apple's own sheet for Apple, else the connect page in
+/// ASWebAuthenticationSession's sheet over the window that asked. Cancel in
+/// the window (`cancel_connect`), a newer sign-in and CONNECT_TIMEOUT end the
+/// sheet; the learner closing it is "cancelled", as in the browser.
+#[cfg(all(feature = "mas", target_os = "macos"))]
+async fn connect_in_app(
+    app: &AppHandle,
+    state: &AppState,
+    window: &tauri::Window,
+    provider: Option<auth::Provider>,
+) -> Result<User, String> {
+    use crate::signin_mas;
+    let anchor = signin_mas::anchor_of(window);
+    let cancel = Arc::new(tokio::sync::Notify::new());
+    if let Some(old) = state
+        .connect_cancel
+        .lock()
+        .map_err(|_| "lock")?
+        .replace(cancel.clone())
+    {
+        old.notify_one();
+    }
+    let result = async {
+        if provider == Some(auth::Provider::Apple) {
+            match sign_in_with_apple(state, anchor, &cancel).await {
+                AppleOutcome::SignedIn(user) => {
+                    signed_in(app);
+                    return Ok(user);
+                }
+                AppleOutcome::Ended(word) => return Err(word),
+                // Apple's sheet or the API refused: the connect page, with
+                // Apple asked for, still inside the app.
+                AppleOutcome::Refused => {}
+            }
+        }
+        let pkce = auth::new_pkce();
+        let st = auth::new_state();
+        let url = auth::connect_url(
+            config::APP_ORIGIN,
+            auth::APP_REDIRECT,
+            &st,
+            &pkce.challenge,
+            provider,
+        );
+        let scheme = auth::APP_REDIRECT.split(':').next().unwrap_or_default();
+        let end = tokio::select! {
+            end = tokio::time::timeout(auth::CONNECT_TIMEOUT, signin_mas::web(&url, scheme, anchor)) => end,
+            () = cancel.notified() => {
+                signin_mas::cancel_web();
+                return Err("cancelled".to_owned());
+            }
+        };
+        let raw = match end {
+            Ok(auth::SheetEnd::Done(raw)) => raw,
+            Ok(auth::SheetEnd::Cancelled) => return Err("cancelled".to_owned()),
+            Ok(auth::SheetEnd::Failed(why)) => {
+                log::warn!("the sign-in sheet failed: {why}");
+                return Err(err(Failure::Error));
+            }
+            Err(_) => {
+                signin_mas::cancel_web();
+                return Err("timeout".to_owned());
+            }
+        };
+        match auth::answer_from_callback(&raw, &st) {
+            Some(Answer::Code(code)) => {
+                trade_code(app, state, &code, &pkce.verifier, auth::APP_REDIRECT).await
+            }
+            Some(Answer::Denied) => Err("cancelled".to_owned()),
+            None => Err(err(Failure::Error)),
+        }
+    }
+    .await;
+    if let Ok(mut c) = state.connect_cancel.lock() {
+        if c.as_ref().is_some_and(|c| Arc::ptr_eq(c, &cancel)) {
+            *c = None;
+        }
+    }
+    result
+}
+
+#[cfg(all(feature = "mas", target_os = "macos"))]
+enum AppleOutcome {
+    SignedIn(User),
+    /// Cancelled, offline or timed out: the window's word for it.
+    Ended(String),
+    /// Apple's sheet or the API refused; the connect page may still work.
+    Refused,
+}
+
+/// Apple's own sheet, then `POST /auth/apple` with its identity token and
+/// the nonce whose hash Apple signed into it.
+#[cfg(all(feature = "mas", target_os = "macos"))]
+async fn sign_in_with_apple(
+    state: &AppState,
+    anchor: usize,
+    cancel: &tokio::sync::Notify,
+) -> AppleOutcome {
+    use crate::signin_mas;
+    let nonce = auth::apple_nonce();
+    let end = tokio::select! {
+        end = tokio::time::timeout(auth::CONNECT_TIMEOUT, signin_mas::apple(&nonce.hash, anchor)) => end,
+        () = cancel.notified() => {
+            signin_mas::cancel_apple();
+            return AppleOutcome::Ended("cancelled".into());
+        }
+    };
+    let text = match end {
+        Ok(auth::SheetEnd::Done(text)) => text,
+        Ok(auth::SheetEnd::Cancelled) => return AppleOutcome::Ended("cancelled".into()),
+        Ok(auth::SheetEnd::Failed(why)) => {
+            log::warn!("Sign in with Apple's sheet failed: {why}");
+            return AppleOutcome::Refused;
+        }
+        Err(_) => {
+            signin_mas::cancel_apple();
+            return AppleOutcome::Ended("timeout".into());
+        }
+    };
+    let Some(credential) = auth::AppleCredential::parse(&text) else {
+        return AppleOutcome::Refused;
+    };
+    let Ok(device) = this_device(state) else {
+        return AppleOutcome::Refused;
+    };
+    match state
+        .api
+        .sign_in_with_apple(&credential, &nonce.value, &device)
+        .await
+    {
+        Ok(user) => AppleOutcome::SignedIn(user),
+        Err(Failure::Offline) => AppleOutcome::Ended(err(Failure::Offline)),
+        Err(_) => AppleOutcome::Refused,
+    }
+}
+
 /// Signed in from the Player, the card, the panel or Settings (or after a
 /// restart) with an account that has no notebook yet: Lexpad's window opens
 /// on its first run (the two languages and a first word), the only place a
@@ -396,22 +551,32 @@ async fn trade_code(
     verifier: &str,
     redirect: &str,
 ) -> Result<User, String> {
-    let device_id = state.settings.lock().map_err(|_| "lock")?.device_id.clone();
-    let device = Device {
-        platform: "desktop",
-        device_id,
-        device_name: config::device_name().into(),
-        app_version: config::VERSION.into(),
-    };
+    let device = this_device(state)?;
     let user = state
         .api
         .exchange_code(code, verifier, redirect, &device)
         .await
         .map_err(err)?;
-    let _ = app.emit("session:changed", ());
-    // Words saved before signing in go to the account now.
-    flush_words(app);
+    signed_in(app);
     Ok(user)
+}
+
+/// This computer, as a sign-in names it to the API.
+fn this_device(state: &AppState) -> Result<Device, String> {
+    let device_id = state.settings.lock().map_err(|_| "lock")?.device_id.clone();
+    Ok(Device {
+        platform: "desktop",
+        device_id,
+        device_name: config::device_name().into(),
+        app_version: config::VERSION.into(),
+    })
+}
+
+/// A session was just opened: the windows hear it, and the words saved
+/// before signing in go to the account now.
+fn signed_in(app: &AppHandle) {
+    let _ = app.emit("session:changed", ());
+    flush_words(app);
 }
 
 /// A Mac copy's sign-in begun before Lexpad was quit, answered by the
