@@ -121,9 +121,16 @@ mod tests {
                 AUDIO_INPUT,
                 "com.apple.application-identifier",
                 "com.apple.developer.team-identifier",
+                "com.apple.developer.applesignin",
             ]
         );
         assert!(ENTITLEMENTS.contains("<string>6Z95MR26LZ.app.lexpad.ios</string>"));
+        // Sign in with Apple in Apple's own sheet (signin_mas.rs, App Review
+        // Guideline 4): the App ID's capability, granted by the profile.
+        let flat: String = ENTITLEMENTS.split_whitespace().collect();
+        assert!(flat.contains(
+            "<key>com.apple.developer.applesignin</key><array><string>Default</string></array>"
+        ));
         // App Review 2.4.5(i): no listening socket in this copy.
         assert!(!ENTITLEMENTS.contains("<key>com.apple.security.network.server</key>"));
         assert_eq!(

@@ -123,8 +123,9 @@ fn main() {
     .expect("failed to run tauri-build");
 }
 
-/// The Mac App Store build's Swift: the StoreKit 2 bridge (src/appstore.rs) and
-/// the subtitles beside a film (Related.swift, media/files.rs), in
+/// The Mac App Store build's Swift: the StoreKit 2 bridge (src/appstore.rs),
+/// the subtitles beside a film (Related.swift, media/files.rs) and signing in
+/// inside the app (SignIn.swift, src/signin_mas.rs), in
 /// swift/LexpadStore, compiled with swiftc into a static library for the
 /// target's architecture and linked with StoreKit. Only with `--features mas`
 /// on macOS; the dmg and Windows carry no Swift at all.
@@ -169,6 +170,7 @@ fn swift_store() {
             &sdk,
             "swift/LexpadStore/Sources/LexpadStore/LexpadStore.swift",
             "swift/LexpadStore/Sources/LexpadStore/Related.swift",
+            "swift/LexpadStore/Sources/LexpadStore/SignIn.swift",
             "-o",
         ])
         .arg(out.join("libLexpadStore.a"))
@@ -188,5 +190,7 @@ fn swift_store() {
     println!("cargo:rustc-link-search=native={sdk}/usr/lib/swift");
     println!("cargo:rustc-link-lib=static=LexpadStore");
     println!("cargo:rustc-link-lib=framework=StoreKit");
+    // SignIn.swift: ASWebAuthenticationSession and Sign in with Apple.
+    println!("cargo:rustc-link-lib=framework=AuthenticationServices");
     println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/lib/swift");
 }

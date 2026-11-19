@@ -52,6 +52,8 @@ mod services_macos;
 mod settings;
 #[cfg(target_os = "macos")]
 mod signin_macos;
+#[cfg(all(feature = "mas", target_os = "macos"))]
+mod signin_mas;
 #[cfg(feature = "smoke-test")]
 mod smoke;
 mod state;
