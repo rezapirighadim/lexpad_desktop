@@ -12,6 +12,7 @@ import { PERMISSION_MISSING, PERMISSION_POLL_MS, PERMISSION_STALE } from '../lib
 import type { Backend } from '../lib/backend.js';
 import { failureOf, noticeOf } from '../lib/backend.js';
 import { limitText, offersPro } from '../lib/limits.js';
+import { signInWords } from '../lib/signIn.js';
 import type { LimitNotice } from '../lib/types.js';
 import { compose, pick, plan, wordsOf } from '../lib/compose.js';
 import { reportFragment } from '../lib/report.js';
@@ -151,14 +152,9 @@ export class Popup {
   /* ------------------------------------------------------- signed out */
 
   private showSignedOut(): void {
+    const words = signInWords(this.state?.signInVia);
     this.frame('Sign in to Lexpad', '');
-    this.root.append(
-      el(
-        'div',
-        'note',
-        'Sign in to add words to your notebook. It opens your browser; Lexpad never sees your password.',
-      ),
-    );
+    this.root.append(el('div', 'note', `Sign in to add words to your notebook. ${words.how}`));
     const note = el('div', 'note');
     const actions = el('div', 'actions');
     const connect = button('btn primary', 'Sign in…', () => void go());
@@ -166,9 +162,9 @@ export class Popup {
     this.root.append(note, actions);
     const go = async (): Promise<void> => {
       connect.disabled = true;
-      connect.textContent = 'Waiting for your browser…';
+      connect.textContent = words.waiting;
       note.className = 'note';
-      note.textContent = 'Finish in the browser tab that just opened.';
+      note.textContent = words.finish;
       const cancel = button('btn', 'Cancel', () => void this.backend.cancelConnect());
       actions.append(cancel);
       try {
@@ -186,7 +182,7 @@ export class Popup {
             : reason === 'offline'
               ? 'You seem to be offline. Try again in a moment.'
               : reason === 'timeout'
-                ? 'The browser did not answer in time. Try again.'
+                ? words.timeout
                 : 'Could not sign in. Try again.';
       }
     };

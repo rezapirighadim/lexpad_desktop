@@ -64,6 +64,8 @@ export interface State {
   version: string;
   /** `services` in the Mac App Store build: the shortcut is the Services menu's key. */
   shortcutVia?: 'services';
+  /** `app` in the Mac App Store build: signing in happens inside the app, never in the browser. */
+  signInVia?: 'app';
   /**
    * Whether that service is live yet (the core's probe, services_live.rs):
    * `pending` while macOS reads the new app's services on a first launch,

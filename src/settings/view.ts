@@ -7,6 +7,7 @@ import type { SettingsBackend } from '../lib/backend.js';
 import { PERMISSION_POLL_MS, PERMISSION_STALE } from '../lib/accessibility.js';
 import { failureOf } from '../lib/backend.js';
 import { acceleratorOf, isMac, prettyShortcut } from '../lib/shortcut.js';
+import { signInWords } from '../lib/signIn.js';
 import type { AppInfo, Settings, State } from '../lib/types.js';
 
 /** The film's credit, as src-tauri/clip/CREDITS.txt and the About box give it (CC BY 3.0). */
@@ -92,6 +93,7 @@ export class SettingsView {
     const s = section('Account');
     const row = el('div', 'row');
     const note = el('p', 'note');
+    const words = signInWords(state.signInVia);
     if (state.connected && state.user) {
       const who = el('div', 'grow');
       who.append(
@@ -117,16 +119,22 @@ export class SettingsView {
       };
     } else {
       row.append(
-        el('div', 'grow', 'Not signed in. Signing in opens your browser; Lexpad never sees your password.'),
+        el(
+          'div',
+          'grow',
+          state.signInVia === 'app'
+            ? `Not signed in. ${words.how}`
+            : 'Not signed in. Signing in opens your browser; Lexpad never sees your password.',
+        ),
       );
       const connect = button('btn primary', 'Sign in…', () => void go());
       row.append(connect);
       s.append(row, note);
       const go = async (): Promise<void> => {
         connect.disabled = true;
-        connect.textContent = 'Waiting for your browser…';
+        connect.textContent = words.waiting;
         note.className = 'note';
-        note.textContent = 'Finish in the browser tab that just opened.';
+        note.textContent = words.finish;
         const cancel = button('btn', 'Cancel', () => void this.backend.cancelConnect());
         row.append(cancel);
         try {
@@ -142,7 +150,7 @@ export class SettingsView {
             reason === 'cancelled'
               ? 'Nothing was signed in.'
               : reason === 'timeout'
-                ? 'The browser did not answer in time. Try again.'
+                ? words.timeout
                 : 'Could not sign in. Try again.';
         }
       };
