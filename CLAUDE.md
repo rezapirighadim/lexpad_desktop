@@ -62,6 +62,7 @@ src-tauri/src/placement.rs       where windows go: the work area of the monitor 
 src-tauri/src/smoke.rs           CI's placement smoke test, only with `--features smoke-test` (never shipped)
 src-tauri/src/main_window.rs     Lexpad's window: the web app from web/, its config, navigation lock, place (tested)
 src-tauri/src/proxy.rs           what the window may send to the API through the core (tested)
+src-tauri/src/export.rs          an export from the window, written as a new file in Downloads (tested)
 src-tauri/src/msix.rs            Windows, the Store's package only: start on login as its StartupTask, is_packaged
 src-tauri/src/release.rs         the newest desktop versions from lexpad.app/version.json, for the window's update line (tested)
 msix/                            the Microsoft Store's MSIX: AppxManifest.xml (Partner Center identity) and Assets/ (icons.py)
@@ -141,8 +142,11 @@ scripts/mas-asc-listing.py       the macOS version, listing text and review deta
   system browser (https and mailto only, `may_open_outside`), never into the window. A clicked link
   (`target="_blank"`, `window.open`) must reach those handlers: the opener plugin is built
   with `open_js_links_on_click(false)`, since its default script cancels such a click and calls
-  its own `open_url`, which no window is granted (links did nothing up to 0.3.14). Files the
-  page saves go to Downloads.
+  its own `open_url`, which no window is granted (links did nothing up to 0.3.14). An export
+  (Settings → Import & export) is written by the core to Downloads (`export.rs`, `save_export`:
+  a plain .json, .csv or .txt name only, always a new file, the name it got goes back to the
+  page); never the share sheet, which on a Mac cannot keep a file. Anything else the page
+  downloads goes to Downloads too, under a free name.
 - **Opening it**: Open Lexpad (panel, tray menu), a click on the Dock icon, a second launch, a
   word from the panel (`/words/<id>`, also before the page listens: `main_take_pending`), the
   Player's doors (`open_lexpad`, with the door's `lexpad:arrive`), a

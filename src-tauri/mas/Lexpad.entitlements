@@ -21,7 +21,9 @@
        drops or opens with Lexpad; it only reads them. -->
   <key>com.apple.security.files.user-selected.read-only</key>
   <true/>
-  <!-- Exports the learner saves from Lexpad's window go to Downloads. -->
+  <!-- Settings → Import & export → Export writes the notebook's file to
+       Downloads (src/export.rs, save_export): a new file each time, nothing
+       there is read or changed. -->
   <key>com.apple.security.files.downloads.read-write</key>
   <true/>
   <!-- The Player's Say it back: the microphone, for WebKit's speech

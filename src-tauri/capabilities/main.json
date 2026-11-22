@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "Lexpad's window, the whole web app: every API call through the core (which holds the session and checks each call), whether there is a session, connecting in the browser and signing out, a page of the web app in the browser, the desktop section of Settings (shortcut, reading the selection, quick-add notebook, start-up, notifications, where Lexpad opens), the reminder plan, the newest desktop versions on lexpad.app (read by the core), Apple's in-app purchase in the Mac App Store build (StoreKit through the core; elsewhere it answers unavailable), and what the Watch page and Settings \u2192 Video player need of the video player: whether there is one, Continue watching, which app opens each video type, the words waiting for sign-in, whether Player home is there to choose under \u201cWhen I open Lexpad\u201d (read only), and opening the Player's window (which plays; this window does not). Nothing else: no file system, no shell, no window control.",
+  "description": "Lexpad's window, the whole web app: every API call through the core (which holds the session and checks each call), whether there is a session, connecting in the browser and signing out, a page of the web app in the browser, the desktop section of Settings (shortcut, reading the selection, quick-add notebook, start-up, notifications, where Lexpad opens), the reminder plan, the newest desktop versions on lexpad.app (read by the core), Apple's in-app purchase in the Mac App Store build (StoreKit through the core; elsewhere it answers unavailable), and what the Watch page and Settings \u2192 Video player need of the video player: whether there is one, Continue watching, which app opens each video type, the words waiting for sign-in, whether Player home is there to choose under \u201cWhen I open Lexpad\u201d (read only), and opening the Player's window (which plays; this window does not). and saving an export the learner asked for as a new file in the Downloads folder (the core picks the place and takes only a plain .json, .csv or .txt name). Nothing else: no other file access, no shell, no window control.",
   "windows": ["main"],
   "permissions": [
     "core:event:allow-listen",
@@ -27,6 +27,7 @@
     "allow-open-notification-settings",
     "allow-app-info",
     "allow-latest-release",
+    "allow-save-export",
     "allow-store-can-make-payments",
     "allow-store-products",
     "allow-store-purchase",

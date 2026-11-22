@@ -27,6 +27,7 @@ mod e2e;
 #[cfg(test)]
 mod e2e_main;
 mod everywhere;
+mod export;
 mod jump_list;
 mod launch;
 mod line_tools;
@@ -833,6 +834,7 @@ pub fn run() {
             commands::schedule_reminders,
             commands::open_notification_settings,
             commands::latest_release,
+            export::save_export,
             media::commands::media_engine,
             media::commands::media_pick,
             media::commands::media_take_pending,
