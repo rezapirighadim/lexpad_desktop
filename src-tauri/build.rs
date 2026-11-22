@@ -54,6 +54,7 @@ fn main() {
             "latest_release",
             // An export from Lexpad's window, written to Downloads (export.rs).
             "save_export",
+            "show_export",
             // Apple's in-app purchase, in the Mac App Store build (appstore.rs);
             // elsewhere each answers "unavailable".
             "store_can_make_payments",

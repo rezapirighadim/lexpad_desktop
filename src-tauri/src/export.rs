@@ -11,6 +11,9 @@
 //!   leave something that runs there;
 //! - never over a file that is already there: a second export on the same day
 //!   becomes `name (2).json`.
+//!
+//! The page then says where the file is, and may ask for it to be shown in
+//! Finder or Explorer ([`show_export`]), by that same checked name.
 
 use std::fs::OpenOptions;
 use std::io::{self, Write as _};
@@ -18,6 +21,7 @@ use std::path::{Path, PathBuf};
 
 use base64::Engine as _;
 use tauri::{AppHandle, Manager};
+use tauri_plugin_opener::OpenerExt as _;
 
 use crate::api::Failure;
 
@@ -100,6 +104,19 @@ pub fn save_export(app: AppHandle, name: String, data: String) -> Result<String,
         .map_err(|_| refused())?;
     let dir = app.path().download_dir().map_err(|_| refused())?;
     write_new(&dir, name, &bytes).map_err(|_| refused())
+}
+
+/// Shows an export in the system's file manager (Finder, Explorer) with the
+/// file selected: the "Show in Finder" beside the page's "Saved" line. Only a
+/// name [`save_export`] could have written, and only if that file is there.
+#[tauri::command]
+pub fn show_export(app: AppHandle, name: String) -> Result<(), String> {
+    let name = safe_name(&name).ok_or_else(refused)?;
+    let path = app.path().download_dir().map_err(|_| refused())?.join(name);
+    if !path.is_file() {
+        return Err(refused());
+    }
+    app.opener().reveal_item_in_dir(path).map_err(|_| refused())
 }
 
 /// The windows' word for "it did not work" (`Failure::Error`).

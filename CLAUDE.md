@@ -145,7 +145,9 @@ scripts/mas-asc-listing.py       the macOS version, listing text and review deta
   its own `open_url`, which no window is granted (links did nothing up to 0.3.14). An export
   (Settings → Import & export) is written by the core to Downloads (`export.rs`, `save_export`:
   a plain .json, .csv or .txt name only, always a new file, the name it got goes back to the
-  page); never the share sheet, which on a Mac cannot keep a file. Anything else the page
+  page, which says so in a box under Export with "Show in Finder" / "Show in folder":
+  `show_export`, the same checked name, the file selected); never the share sheet, which on a
+  Mac cannot keep a file. Anything else the page
   downloads goes to Downloads too, under a free name.
 - **Opening it**: Open Lexpad (panel, tray menu), a click on the Dock icon, a second launch, a
   word from the panel (`/words/<id>`, also before the page listens: `main_take_pending`), the

@@ -118,7 +118,8 @@ One codebase. The Mac App Store build is `--features mas` plus the overlay
 - `com.apple.security.files.user-selected.read-only`: films and subtitles the learner opens.
 - `com.apple.security.files.downloads.read-write`: Settings → Import & export → Export writes
   the notebook's file to Downloads (`src/export.rs`, command `save_export`): a new file each
-  time, numbered if the name is taken; nothing there is read or changed. App Review asked where
+  time, numbered if the name is taken; nothing there is read or changed. The page then says
+  "Saved to your Downloads folder." with the file's name and "Show in Finder" (`show_export`). App Review asked where
   this is used (21 Nov 2026, 0.3.37, guideline 2.4.5(i)): up to 0.3.37 the window offered the
   export to the system share sheet, which has no "save", so nothing was ever written there.
 - `com.apple.security.device.audio-input`: the microphone for the Player's Say it back, which

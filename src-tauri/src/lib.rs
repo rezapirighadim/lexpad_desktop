@@ -835,6 +835,7 @@ pub fn run() {
             commands::open_notification_settings,
             commands::latest_release,
             export::save_export,
+            export::show_export,
             media::commands::media_engine,
             media::commands::media_pick,
             media::commands::media_take_pending,
