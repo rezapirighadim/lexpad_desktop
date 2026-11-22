@@ -145,8 +145,14 @@ vocabulary,flashcards,spaced repetition,leitner,subtitles,video player,language 
 ```
 Lexpad is a personal vocabulary notebook with spaced repetition. Learners add the words they meet themselves; the app never generates or pre-fills vocabulary. AI only writes a short meaning and example for a word the learner added, and only after the learner allows it. Every AI card and every Lex answer has a "Report" link.
 
-SIGNING IN
-Click "Sign in…" (or "Continue with Google / Apple" on the first window). Lexpad opens the Mac's default browser on lexpad.app, where you sign in with the demo account above (or with Apple), and the browser hands the sign-in back to the app: it opens lexpad://auth/callback, and macOS may ask "Open Lexpad?" (choose Open). The app never sees a password. This is the standard sign-in for native apps (RFC 8252, private-use URI scheme redirect with PKCE). The app does not listen on any port and has no network server entitlement.
+SIGNING IN (changed in 0.3.37 after the 19 Nov review, Guideline 4)
+Signing in no longer sends you to the default browser. Click "Sign in…" (or "Continue with Google / Apple" on the first window):
+- Sign in with Apple uses the native Apple sheet (Sign in with Apple, AuthenticationServices) and finishes inside the app.
+- Google and e-mail use ASWebAuthenticationSession. macOS shows its standard prompt ""Lexpad" Wants to Use "app.lexpad.app" to Sign In"; choose Continue. The sign-in page opens in the system's authentication sheet (macOS may show it with the user's default browser through that same API). Sign in with the demo account above; the sheet closes by itself and the app is signed in.
+The app never sees a password, does not listen on any port and has no network server entitlement.
+
+DELETING THE ACCOUNT
+Settings > Account > Delete account, inside the app window. It asks once to confirm, then deletes the account and signs out.
 
 ADDING A WORD FROM ANOTHER APP
 Select a word in Safari or TextEdit and press Command-Shift-L, or right-click it and choose Services > Add to Lexpad. The app is sandboxed and does not use Accessibility; macOS hands it only the selected text through the Services menu.

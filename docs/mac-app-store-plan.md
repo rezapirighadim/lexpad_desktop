@@ -116,8 +116,12 @@ One codebase. The Mac App Store build is `--features mas` plus the overlay
 - `com.apple.security.app-sandbox`: required (2.4.5(i)).
 - `com.apple.security.network.client`: the API and lexpad.app.
 - `com.apple.security.files.user-selected.read-only`: films and subtitles the learner opens.
-- `com.apple.security.files.downloads.read-write`: exports saved from Lexpad's window go to
-  Downloads, as today.
+- `com.apple.security.files.downloads.read-write`: Settings → Import & export → Export writes
+  the notebook's file to Downloads (`src/export.rs`, command `save_export`): a new file each
+  time, numbered if the name is taken; nothing there is read or changed. The page then says
+  "Saved to your Downloads folder." with the file's name and "Show in Finder" (`show_export`). App Review asked where
+  this is used (21 Nov 2026, 0.3.37, guideline 2.4.5(i)): up to 0.3.37 the window offered the
+  export to the system share sheet, which has no "save", so nothing was ever written there.
 - `com.apple.security.device.audio-input`: the microphone for the Player's Say it back, which
   runs WebKit's speech recognition (`webkitSpeechRecognition`) in the Player's webview; the
   sandbox refuses the microphone without it. `Info.mas.plist` carries the two strings macOS shows
@@ -200,6 +204,18 @@ cold start, the second click, cancel and two installed copies. The API allows th
 through `DESKTOP_APP_REDIRECT_URIS`; the web app's `/connect-desktop` takes that exact string. No password is typed in the app, so Guideline 4.8 (Sign in
 with Apple) is met by the web sign-in page itself, which offers Apple next to Google.
 
+**Inside the app since 0.3.37.** Apple rejected 0.3.33 under Guideline 4 (19 Nov 2026): "the
+user is taken to the default web browser to sign in or register… acceptable… if
+ASWebAuthenticationSession is used… Sign in with Apple should always be completed without
+leaving the app." So this copy (`src/signin_mas.rs`, `swift/…/SignIn.swift`) shows the same
+connect page in ASWebAuthenticationSession's sheet over Lexpad's window (the browser's cookies,
+the callback caught by the sheet), and Apple's button opens Apple's own Sign in with Apple sheet
+(ASAuthorizationAppleIDProvider, entitlement `com.apple.developer.applesignin` from the
+profile); its identity token goes from the core to `POST /auth/apple` (device platform
+`desktop`, a delegated session by platform). If Apple's sheet or the API refuses, the connect page
+opens in the sheet with Apple asked for. No screen of this copy says "browser" about signing in.
+Account deletion (5.1.1(v)) is Settings → Account → Delete account in Lexpad's window.
+
 ## Pro purchase
 
 - StoreKit 2 in Swift (`src-tauri/swift/LexpadStore/Sources/LexpadStore/LexpadStore.swift`),
@@ -277,7 +293,8 @@ with Apple) is met by the web sign-in page itself, which offers Apple next to Go
 | Pro not offered as IAP although sold elsewhere          | 3.1.3(f)       | Pro is sold in the app                                                                                                                                                                                                                                                       |
 | Subscription disclosure                                 | 3.1.2          | the iPhone's sheet: length, price, renewal, cancel, Terms, Privacy, Restore                                                                                                                                                                                                  |
 | Naming other platforms ("get the Android app")          | 2.3.10         | Android, Google Play and the Microsoft Store are hidden in mas; an e2e scan guards it (section "Other platforms inside the app")                                                                                                                                             |
-| Reviewer cannot sign in                                 | 2.1            | apple-reviewer@lexpad.app (the iPhone's, owner 1 Nov 2026); the notes explain sign-in opens the browser                                                                                                                                                                      |
+| Reviewer cannot sign in                                 | 2.1            | apple-reviewer@lexpad.app (the iPhone's, owner 1 Nov 2026); the notes explain sign-in happens in a sheet inside the app (since 0.3.37)                                                                                                                                       |
+| Sign-in in the default browser                          | 4              | rejected 0.3.33 (19 Nov 2026): ASWebAuthenticationSession and Apple's own Sign in with Apple sheet since 0.3.37                                                                                                                                                              |
 | `network.server` questioned                             | 2.4.5(i)       | removed (9 Nov 2026): sign-in comes back as `lexpad://auth/callback`, no listener                                                                                                                                                                                            |
 | Generative AI content                                   | 1.1/1.2        | Report on every AI card (already there)                                                                                                                                                                                                                                      |
 | Metadata                                                | 2.3            | real screenshots of this build, numbers from lexpad.app, no unsupported services                                                                                                                                                                                             |

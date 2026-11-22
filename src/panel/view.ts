@@ -14,6 +14,7 @@ import type { PanelBackend } from '../lib/backend.js';
 import type { RecentEntry } from '../lib/media/api.js';
 import { failureOf } from '../lib/backend.js';
 import { isMac, prettyShortcut } from '../lib/shortcut.js';
+import { signInWords } from '../lib/signIn.js';
 import { ago } from '../lib/time.js';
 import type { Notebook, RecentWord, State } from '../lib/types.js';
 import { watchRow, type WatchRow } from './watch.js';
@@ -117,7 +118,7 @@ export class Panel {
     const active = document.activeElement;
     const activeId = active instanceof HTMLElement && this.root.contains(active) ? active.id : '';
     this.root.replaceChildren(
-      ...(state.connected ? this.connected(state, recent, phoneUsed, watch) : this.signedOut(watch)),
+      ...(state.connected ? this.connected(state, recent, phoneUsed, watch) : this.signedOut(state, watch)),
       this.footer(),
     );
     const input = this.root.querySelector<HTMLInputElement>('.add input');
@@ -395,23 +396,18 @@ export class Panel {
     return row;
   }
 
-  private signedOut(watch: WatchRow): HTMLElement[] {
+  private signedOut(state: State, watch: WatchRow): HTMLElement[] {
+    const words = signInWords(state.signInVia);
     const box = el('div', 'connect');
-    box.append(
-      el(
-        'p',
-        '',
-        'Sign in to add words from any app. It opens your browser; Lexpad never sees your password.',
-      ),
-    );
+    box.append(el('p', '', `Sign in to add words from any app. ${words.how}`));
     const note = el('p', 'note');
     const connect = button('btn primary', 'Sign in…', () => void go());
     box.append(connect, note);
     const go = async (): Promise<void> => {
       connect.disabled = true;
-      connect.textContent = 'Waiting for your browser…';
+      connect.textContent = words.waiting;
       note.className = 'note';
-      note.textContent = 'Finish in the browser tab that just opened.';
+      note.textContent = words.finish;
       try {
         await this.backend.connect();
         await this.open();
@@ -426,7 +422,7 @@ export class Panel {
             : reason === 'offline'
               ? 'You seem to be offline. Try again in a moment.'
               : reason === 'timeout'
-                ? 'The browser did not answer in time. Try again.'
+                ? words.timeout
                 : 'Could not sign in. Try again.';
       }
     };

@@ -27,6 +27,7 @@ mod e2e;
 #[cfg(test)]
 mod e2e_main;
 mod everywhere;
+mod export;
 mod jump_list;
 mod launch;
 mod line_tools;
@@ -52,6 +53,8 @@ mod services_macos;
 mod settings;
 #[cfg(target_os = "macos")]
 mod signin_macos;
+#[cfg(all(feature = "mas", target_os = "macos"))]
+mod signin_mas;
 #[cfg(feature = "smoke-test")]
 mod smoke;
 mod state;
@@ -831,6 +834,8 @@ pub fn run() {
             commands::schedule_reminders,
             commands::open_notification_settings,
             commands::latest_release,
+            export::save_export,
+            export::show_export,
             media::commands::media_engine,
             media::commands::media_pick,
             media::commands::media_take_pending,

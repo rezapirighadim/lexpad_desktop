@@ -53,6 +53,7 @@ src-tauri/src/services_live.rs   the probe's rules: when ⌘⇧L's service is li
 src-tauri/src/api.rs             the API client: the only holder of tokens (tested with a local server)
 src-tauri/src/auth.rs            RFC 8252 sign-in: PKCE, state; lexpad://auth/callback on macOS (kept across a quit), loopback on Windows (tested)
 src-tauri/src/signin_macos.rs    whether this bundle registers `lexpad`, and passing a callback to the other Mac copy
+src-tauri/src/signin_mas.rs      the Mac App Store copy signs in inside the app: Apple's sheet, the connect page in ASWebAuthenticationSession (SignIn.swift)
 scripts/check-mac-dmg.sh         Gatekeeper's checks on a .dmg and its app (stapled tickets, every Mach-O signed); release-mac.sh runs it
 src-tauri/src/store.rs           the session in the Keychain / Credential Manager (keyring crate)
 src-tauri/src/commands.rs        everything a window may ask; capabilities/*.json say which window may ask what
@@ -61,6 +62,7 @@ src-tauri/src/placement.rs       where windows go: the work area of the monitor 
 src-tauri/src/smoke.rs           CI's placement smoke test, only with `--features smoke-test` (never shipped)
 src-tauri/src/main_window.rs     Lexpad's window: the web app from web/, its config, navigation lock, place (tested)
 src-tauri/src/proxy.rs           what the window may send to the API through the core (tested)
+src-tauri/src/export.rs          an export from the window, written as a new file in Downloads (tested)
 src-tauri/src/msix.rs            Windows, the Store's package only: start on login as its StartupTask, is_packaged
 src-tauri/src/release.rs         the newest desktop versions from lexpad.app/version.json, for the window's update line (tested)
 msix/                            the Microsoft Store's MSIX: AppxManifest.xml (Partner Center identity) and Assets/ (icons.py)
@@ -133,14 +135,20 @@ scripts/mas-asc-listing.py       the macOS version, listing text and review deta
   (a password, linking Google or Apple, connecting another client or an assistant) the window
   opens in the browser (`open_in_browser`, a checked same-origin path).
 - **Signing in is the same RFC 8252 connect**: the window's sign-in screen is one button that
-  runs `connect` (system browser, loopback, PKCE). No password is ever typed in the window, and
+  runs `connect` (system browser, loopback, PKCE; inside the app in the Mac App Store copy, see
+  "The Mac App Store build"). No password is ever typed in the window, and
   Google and Apple accounts work, since their sign-in happens in the real browser.
 - **The window may only show the app's own pages** (`is_app_page`); any other address goes to the
   system browser (https and mailto only, `may_open_outside`), never into the window. A clicked link
   (`target="_blank"`, `window.open`) must reach those handlers: the opener plugin is built
   with `open_js_links_on_click(false)`, since its default script cancels such a click and calls
-  its own `open_url`, which no window is granted (links did nothing up to 0.3.14). Files the
-  page saves go to Downloads.
+  its own `open_url`, which no window is granted (links did nothing up to 0.3.14). An export
+  (Settings → Import & export) is written by the core to Downloads (`export.rs`, `save_export`:
+  a plain .json, .csv or .txt name only, always a new file, the name it got goes back to the
+  page, which says so in a box under Export with "Show in Finder" / "Show in folder":
+  `show_export`, the same checked name, the file selected); never the share sheet, which on a
+  Mac cannot keep a file. Anything else the page
+  downloads goes to Downloads too, under a free name.
 - **Opening it**: Open Lexpad (panel, tray menu), a click on the Dock icon, a second launch, a
   word from the panel (`/words/<id>`, also before the page listens: `main_take_pending`), the
   Player's doors (`open_lexpad`, with the door's `lexpad:arrive`), a
@@ -457,6 +465,20 @@ copy (docs/mac-app-store-plan.md). One codebase: `--features mas` plus
   return is absent) with `isEligibleForIntroOffer` on each product, StoreKit's answer for this
   Apple ID in the product's group: the web app shows an Apple offer price only on the path Apple
   will apply, and none without the field (welcome offer contract §1a).
+- **Signing in never leaves the app** (App Review Guideline 4, rejection of 0.3.33 on 19 Nov
+  2026: "the user is taken to the default web browser to sign in"). `connect` here
+  (`signin_mas.rs`, `SignIn.swift`): Apple → Apple's own Sign in with Apple sheet
+  (`ASAuthorizationAppleIDProvider`, nonce whose SHA-256 Apple signs in), then `POST /auth/apple`
+  from the core with device platform `desktop` (delegated by platform, `Principal.IsDelegated`);
+  any refusal there (no Apple ID, an account in its deletion grace) goes on to the connect page.
+  Google, e-mail and that fallback: the same connect page (PKCE, state,
+  `lexpad://auth/callback`) in `ASWebAuthenticationSession`'s sheet over the window that asked,
+  with the browser's cookies (not ephemeral); the sheet catches the callback itself
+  (`auth::answer_from_callback`). Cancel, a newer sign-in and `CONNECT_TIMEOUT` end the sheet.
+  The entitlement `com.apple.developer.applesignin` comes from the profile (the local test copy
+  drops it, so its Apple button uses the sheet). The small windows (`signInVia: app`,
+  `src/lib/signIn.ts`) and the web app (`signInWords.ts`) never speak of a browser tab here.
+  Account deletion is in the window: Settings → Account → Delete account (`DELETE /me`).
 - **No update line** (`latest_release` answers `install: appstore`, no versions), start on login
   through `SMAppService`, no private API (the panel's corners are a layer mask).
 - **The dmg is untouched.** `scripts/release-mas.sh` restores Cargo.toml and Cargo.lock after the

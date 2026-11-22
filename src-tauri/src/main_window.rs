@@ -7,8 +7,9 @@
 //! the page runs, and the page sends every API call back through the core
 //! (`api_fetch`, checked by `proxy.rs`). The window may navigate only within
 //! the app's own pages; any other address is opened in the system browser
-//! (https and mailto only), never inside it. A file the page saves (an
-//! export) goes to the Downloads folder.
+//! (https and mailto only), never inside it. An export is written to the
+//! Downloads folder by the core (`export.rs`, `save_export`); anything else
+//! the page downloads goes there too, under a name nothing has yet.
 //!
 //! The window is made when it is first opened and destroyed when it is
 //! closed, so a Lexpad in the menu bar costs nothing while it is shut; its
@@ -220,7 +221,8 @@ fn build(app: &AppHandle) -> tauri::Result<()> {
                     .map(|n| n.to_owned())
                     .unwrap_or_else(|| "Lexpad export".into());
                 if let Some(dir) = &downloads {
-                    *destination = dir.join(name);
+                    // Never an existing file: macOS fails such a download.
+                    *destination = crate::export::free_path(dir, &name.to_string_lossy());
                 }
             }
             true
