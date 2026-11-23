@@ -515,6 +515,14 @@ pub fn args(plan: &Plan, info: &MediaInfo, path: &str, start: f64, caps: &Caps) 
             "disabled",
             "-output_ts_offset",
             &format!("{TIMELINE_OFFSET:.3}"),
+            // No edit list: `empty_moov` writes the init segment before any
+            // packet, so the edit list that should shift copied H.264 with
+            // B-frames back by its reorder delay is never written, and the
+            // picture played two frames (83 ms at 24 fps) after the sound
+            // and the subtitles. Without it each fragment starts at the
+            // first frame's decode time, so every frame keeps its own time.
+            "-use_editlist",
+            "0",
             "-movflags",
             "frag_keyframe+empty_moov+default_base_moof+frag_discont",
             "-frag_duration",
@@ -616,6 +624,9 @@ mod tests {
         assert!(a.contains("first_pts=600000"));
         assert!(a.contains("-ac 2"));
         assert!(!a.contains("-hwaccel"));
+        // B-frames keep their time: no edit list that `empty_moov` drops
+        // (engine_tests::picture_and_sound_start_together_with_b_frames).
+        assert!(a.contains("-use_editlist 0 -movflags frag_keyframe+empty_moov"));
     }
 
     #[test]
