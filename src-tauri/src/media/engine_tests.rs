@@ -687,3 +687,197 @@ async fn a_boosted_run_is_twice_as_loud_and_never_clips() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The packets of one stream (`v` or `a`) as FFprobe reads them, edit lists
+/// applied as both webviews apply them: (pts, keyframe) in presentation order.
+async fn packets(tools: &Tools, file: &Path, stream: &str) -> Vec<(f64, bool)> {
+    let out = tools::output(
+        &tools.ffprobe,
+        &[
+            "-v",
+            "error",
+            "-select_streams",
+            stream,
+            "-show_entries",
+            "packet=pts_time,flags",
+            "-of",
+            "csv=p=0",
+            file.to_str().unwrap(),
+        ],
+        Duration::from_secs(60),
+    )
+    .await
+    .unwrap();
+    let mut p: Vec<(f64, bool)> = String::from_utf8_lossy(&out)
+        .lines()
+        .filter_map(|l| {
+            let mut f = l.split(',');
+            let pts = f.next()?.parse().ok()?;
+            Some((pts, f.next().is_some_and(|k| k.starts_with('K'))))
+        })
+        .collect();
+    p.sort_by(|a, b| a.0.total_cmp(&b.0));
+    p
+}
+
+/// The first key frame's time and the first sound's.
+async fn first_picture_and_sound(tools: &Tools, file: &Path) -> (f64, f64) {
+    let v = packets(tools, file, "v").await;
+    let a = packets(tools, file, "a").await;
+    let key = v.iter().find(|p| p.1).expect("a key frame").0;
+    (key, a.first().expect("sound").0)
+}
+
+/// A copied H.264 stream with B-frames starts its picture on the file's own
+/// timeline, with the sound: the muxer once put the picture of a remuxed run
+/// two frames (83 ms at 24 fps) after the sound and the subtitles, because
+/// the shift its B-frames need went into an edit list that `empty_moov`
+/// never writes. Remux, audio transcode, a seek run, a video transcode and a
+/// file without B-frames; skipped where no encoder here makes B-frames.
+#[tokio::test(flavor = "multi_thread")]
+async fn picture_and_sound_start_together_with_b_frames() {
+    let Some(tools) = tools_or_skip() else {
+        return;
+    };
+    let caps = tools::caps(&tools).await;
+    let dir =
+        std::env::temp_dir().join(format!("lexpad-bframes-{}", uuid::Uuid::new_v4().simple()));
+    std::fs::create_dir_all(&dir).unwrap();
+    const FPS: f64 = 24.0;
+    let frame = 1.0 / FPS;
+    let clip = |audio: &'static str, bf: &'static str, video: &'static str| {
+        vec![
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=320x240:rate=24:duration=12",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:sample_rate=48000:duration=12",
+            "-c:v",
+            video,
+            "-pix_fmt",
+            "yuv420p",
+            "-bf",
+            bf,
+            "-g",
+            "48",
+            "-b:v",
+            "1M",
+            "-c:a",
+            audio,
+        ]
+    };
+    let made = tools::output(
+        &tools.ffmpeg,
+        &[
+            &["-hide_banner", "-loglevel", "error", "-y"][..],
+            &clip("aac", "2", "h264_videotoolbox")[..],
+            &[dir.join("bf.mkv").to_str().unwrap()][..],
+        ]
+        .concat(),
+        Duration::from_secs(60),
+    )
+    .await;
+    let bf = dir.join("bf.mkv");
+    let has_b = match made {
+        Ok(_) => {
+            let json = tools::probe_json(&tools, &bf).await.unwrap();
+            json["streams"][0]["has_b_frames"].as_i64().unwrap_or(0) > 0
+        }
+        Err(_) => false,
+    };
+    if !has_b {
+        eprintln!("no H.264 encoder with B-frames here: the B-frame timing test is skipped");
+        let _ = std::fs::remove_dir_all(&dir);
+        return;
+    }
+    let ac3 = make(
+        &tools,
+        &dir,
+        "bf-ac3.mkv",
+        &clip("ac3", "2", "h264_videotoolbox"),
+    )
+    .await;
+    let nobf = make(
+        &tools,
+        &dir,
+        "nobf.mkv",
+        &clip("aac", "0", "h264_videotoolbox"),
+    )
+    .await;
+    let mpeg4 = make(&tools, &dir, "bf-mpeg4.mkv", &clip("aac", "2", "mpeg4")).await;
+
+    for (file, mode) in [
+        (&bf, Mode::Remux),
+        (&ac3, Mode::AudioTranscode),
+        (&nobf, Mode::Remux),
+        (&mpeg4, Mode::VideoTranscode),
+    ] {
+        let json = tools::probe_json(&tools, file).await.unwrap();
+        let info = Arc::new(probe::parse(&json).unwrap());
+        // The source's key frames, on the run's timeline (`-start_at_zero`).
+        let start_time = json["format"]["start_time"]
+            .as_str()
+            .and_then(|s| s.parse::<f64>().ok())
+            .unwrap_or(0.0);
+        let keys: Vec<f64> = packets(&tools, file, "v")
+            .await
+            .into_iter()
+            .filter(|p| p.1)
+            .map(|p| p.0 - start_time)
+            .collect();
+        let session = Session::new(
+            "s".into(),
+            "f".into(),
+            file.to_path_buf(),
+            info,
+            tools.clone(),
+            caps,
+            Options::default(),
+        )
+        .unwrap();
+        assert_eq!(session.plan().mode, mode, "{}", file.display());
+        let offset = session.plan().time_offset;
+        for start in [0.0, 5.0] {
+            let run = session.start_run(start).unwrap();
+            let bytes = pull_all(&run).await;
+            let (init, _) = first_fragment(&bytes);
+            assert!(init, "a run begins with an init segment");
+            let out = dir.join("run.mp4");
+            std::fs::write(&out, &bytes).unwrap();
+            let (picture, sound) = first_picture_and_sound(&tools, &out).await;
+            eprintln!(
+                "{} {mode:?} from {start}: first picture {picture:.3}, first sound {sound:.3}",
+                file.file_name().unwrap().to_string_lossy()
+            );
+            if start == 0.0 {
+                assert!(
+                    (picture - sound).abs() < frame,
+                    "picture {picture:.3} and sound {sound:.3} start together"
+                );
+                assert!(
+                    (picture - offset).abs() < 0.001,
+                    "picture at the offset: {picture:.3}"
+                );
+            } else if mode == Mode::VideoTranscode {
+                // A transcode starts its picture at the seek itself.
+                assert!(
+                    (picture - (start + offset)).abs() < frame,
+                    "seek picture {picture:.3} at {start} + offset"
+                );
+            } else {
+                // A copy starts at the key frame before the seek, on the
+                // file's timeline: never shifted by the B-frames' delay.
+                let key = keys.iter().rev().find(|k| **k <= start + 0.001).unwrap();
+                assert!(
+                    (picture - (key + offset)).abs() < 0.001,
+                    "seek picture {picture:.3} is the key frame at {key:.3} + offset"
+                );
+            }
+        }
+        session.stop();
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -223,7 +223,10 @@ page written by us (designed separately); this repository holds the engine.
   `http://lexmedia.localhost` (Windows): `/f/<session>` byte ranges for `direct`,
   `/s/<session>/<run>?from=<offset>` pulls of a run's fragmented MP4 (`media/stream.rs`). A run
   is one FFmpeg from a start time with `-copyts` and a fixed `TIMELINE_OFFSET`, so every run is
-  on one timeline; a seek outside the buffer starts a new run. A run holds at most 48 MB the
+  on one timeline; a seek outside the buffer starts a new run. The muxer writes no edit list
+  (`-use_editlist 0`): `empty_moov` cannot carry one, and the shift it held for copied H.264
+  with B-frames put the picture 83 ms after the sound up to 0.3.39
+  (`engine_tests::picture_and_sound_start_together_with_b_frames`). A run holds at most 48 MB the
   page has not pulled, then FFmpeg waits (back-pressure). Only the player windows are answered.
   The CSP's `connect-src` and `media-src` allow this scheme; nothing else was opened.
 - **Files by id only.** The core grants what the learner dropped (Tauri's drag-drop event),
