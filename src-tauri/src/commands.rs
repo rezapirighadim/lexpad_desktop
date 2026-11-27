@@ -942,7 +942,15 @@ pub enum BodyEvent {
 
 /// Response headers the page may read: what the client looks at. Nothing
 /// about cookies or the session.
-const RESPONSE_HEADERS: &[&str] = &["content-type", "etag", "retry-after", "content-disposition"];
+const RESPONSE_HEADERS: &[&str] = &[
+    "content-type",
+    "etag",
+    "retry-after",
+    "content-disposition",
+    // The podcast audio proxy's byte ranges (`Kind::PodcastAudio`).
+    "content-range",
+    "accept-ranges",
+];
 
 /// Sends one request from Lexpad's window to the API with the session only
 /// the core holds (see `proxy.rs` for what the window may send), and
@@ -960,7 +968,11 @@ pub async fn api_fetch(
         err(Failure::Error)
     })?;
     let had_session = state.api.user().await.is_some();
-    let mut res = state.api.forward(&checked).await.map_err(err)?;
+    let mut res = match checked.kind {
+        proxy::Kind::Api => state.api.forward(&checked).await,
+        proxy::Kind::PodcastAudio => state.api.forward_audio(&checked).await,
+    }
+    .map_err(err)?;
     let status = res.status().as_u16();
     // A 401 the core could not refresh away has ended the session: the
     // other windows (the panel, Settings) hear it too.

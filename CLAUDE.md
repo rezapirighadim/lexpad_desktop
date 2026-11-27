@@ -4,7 +4,7 @@ The desktop app for Lexpad, on macOS and Windows: select a word in **any** app, 
 shortcut (⌘⇧L / Ctrl+Shift+L), and a small card shows its meaning while it goes into your
 notebook with the sentence you met it in. It is the browser extension's card for the whole
 computer. Since 0.2 it is also **the whole Lexpad app** in a window of its own (Today, practice,
-the notebook, Lex, Progress, Settings), working offline. Tauri 2: a Rust core (`src-tauri/`),
+the notebook, Lex, Podcasts, Progress, Settings), working offline. Tauri 2: a Rust core (`src-tauri/`),
 three small TypeScript pages (`src/`) and the web app's own build (`web/`). It is a client of the
 same API as the web app (`lexpad_back`); the connect page and the window's app live in the web app
 (`lexpad_front`), and the extension is `lexpad_extension`.
@@ -132,7 +132,10 @@ scripts/mas-asc-listing.py       the macOS version, listing text and review deta
   API call goes to the core (`api_fetch`), which checks it (`proxy.rs`: the API's own origin under
   `/api/v1/`, the client's headers only, no sign-in, refresh, password, other-session or assistant
   calls; the activity headers `X-Lexpad-Surface` / `X-Lexpad-Context` / `X-Lexpad-App-Session` only
-  when well formed, and a surface only when it is the desktop app's own, `desktop.`…) and sends it with the desktop app's own delegated session from the credential store,
+  when well formed, and a surface only when it is the desktop app's own, `desktop.`…; one other
+  shape, a GET of the podcast audio proxy `/podcast-audio/<id>/a.<ext>?t=<token>` with at most a
+  `Range`, `proxy::Kind::PodcastAudio`, goes through `Api::forward_audio` with no session and no
+  redirect followed) and sends it with the desktop app's own delegated session from the credential store,
   refreshing it single-flight, streaming the body back over a channel. No server change was
   needed: the delegated session may do everything the app does day to day, and what it may not
   (a password, linking Google or Apple, connecting another client or an assistant) the window
@@ -504,7 +507,16 @@ copy (docs/mac-app-store-plan.md). One codebase: `--features mas` plus
 - **Pictures and films on the asset domain may be shown, never fetched** (4 Nov 2026, Settings →
   Guides and Today box videos, uiux/2026-11-04-settings-guides §D8). `img-src` and `media-src` allow
   `https://assets.lexpad.app` (posters, list pictures, guide films; plain `<img>`/`<video>` loads,
-  no credentials); `connect-src` does not, so a window still cannot `fetch` the network. One
+  no credentials); `connect-src` does not, so a window still cannot `fetch` the network.
+  **Podcasts (27 Nov 2026, owner: every feature in the desktop app)** add the API's origin
+  `https://api.lexpad.app` to `img-src` and `media-src` only: the episode plays from the server's
+  audio proxy (a token in the address, no credentials) and show artwork may be stored on the API
+  (`/assets/<sha256>`). A publisher's address is never allowed; the web app plays only the proxy here
+  (lexpad_front `features/podcasts/engine/hostSource.ts`), and the live transcript's own reads of the
+  audio go through `api_fetch` (above). Lexpad's window answers the microphone like the Player's
+  (`line_tools::page_permission`) for Say it back in Now Playing. A local stack build plays podcasts
+  only after its API origin is added to those two lists. `main_window::tests::
+the_content_policy_shows_media_from_our_hosts_and_fetches_nothing` holds the policy. One
   `tauri.conf.json` CSP serves all four builds (dmg, Windows exe, MS Store msix, Mac App Store: the
   MAS config does not override `security`). The server's `guides` flag gets `minVersion.desktop`
   only once this build is live in all four stores.
