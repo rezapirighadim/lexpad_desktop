@@ -1,0 +1,1 @@
+import{t as e}from"./react--nwWWpNE.js";import{t}from"./cx-CykQDk87.js";var n={toggle:`l1V8s1`,on:`RHLJ-m`,knob:`xV0WPX`},r=e();function i({label:e,checked:i,onChange:a}){return(0,r.jsx)(`button`,{type:`button`,role:`switch`,"aria-checked":i,"aria-label":e,className:t(n.toggle,i&&n.on),onClick:()=>{a(!i)},children:(0,r.jsx)(`span`,{className:n.knob})})}export{i as t};

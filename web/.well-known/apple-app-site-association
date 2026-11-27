@@ -185,6 +185,22 @@
           },
           {
             "/": "/notifications/?*"
+          },
+          {
+            "/": "/podcasts",
+            "comment": "the release's places (F1, 23 Nov 2026): the Podcasts tab, an episode playing, the Player tab's home"
+          },
+          {
+            "/": "/podcasts/*"
+          },
+          {
+            "/": "/listen/?*"
+          },
+          {
+            "/": "/player-home"
+          },
+          {
+            "/": "/player-home/*"
           }
         ]
       }

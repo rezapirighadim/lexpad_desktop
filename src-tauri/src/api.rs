@@ -233,6 +233,10 @@ pub struct Api {
     /// exchange, because Lex's answers stream for as long as they take, but
     /// a limit on connecting and on each silence.
     stream_http: reqwest::Client,
+    /// For the window's reads of the podcast audio proxy (`forward_audio`):
+    /// as `stream_http`, but a redirect is handed back, never followed, so
+    /// the core reaches only the API's own address.
+    audio_http: reqwest::Client,
     base: String,
     store: Arc<dyn SessionStore>,
     inner: Mutex<Inner>,
@@ -253,10 +257,18 @@ impl Api {
             .user_agent(crate::config::user_agent())
             .build()
             .expect("HTTP client");
+        let audio_http = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(15))
+            .read_timeout(FORWARD_SILENCE)
+            .redirect(reqwest::redirect::Policy::none())
+            .user_agent(crate::config::user_agent())
+            .build()
+            .expect("HTTP client");
         Self {
             refusals: std::sync::Mutex::new(std::collections::HashMap::new()),
             http,
             stream_http,
+            audio_http,
             base: format!("{}/api/v1", api_origin.trim_end_matches('/')),
             store,
             inner: Mutex::new(Inner {
@@ -635,6 +647,21 @@ impl Api {
             return Ok(res);
         }
         Err(Failure::SignedOut)
+    }
+
+    /// A read of the podcast audio proxy from Lexpad's window (`proxy.rs`,
+    /// `Kind::PodcastAudio`): the token in the address is the grant, so no
+    /// session goes with it, and a redirect (an expired token, the server's
+    /// proxy off) comes back as it is for the page to treat as a failure.
+    pub async fn forward_audio(
+        &self,
+        req: &crate::proxy::Checked,
+    ) -> Result<reqwest::Response, Failure> {
+        let mut out = self.audio_http.get(req.url.clone());
+        for (name, value) in &req.headers {
+            out = out.header(name.as_str(), value.as_str());
+        }
+        out.send().await.map_err(|_| Failure::Offline)
     }
 
     /// Whether this account has ever used a Lexpad phone app (Android or
@@ -1102,6 +1129,53 @@ mod tests {
         let res = api.forward(&checked(&base, "/me")).await.unwrap();
         assert_eq!(res.status().as_u16(), 200);
         assert_eq!(res.text().await.unwrap(), r#"{"id":"u"}"#);
+    }
+
+    #[tokio::test]
+    async fn a_podcast_audio_read_goes_without_the_session_and_never_follows_a_redirect() {
+        // A server of its own: it answers a redirect to itself and records every request head.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let heads = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let seen = heads.clone();
+        let target = base.clone();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut s, _)) = listener.accept().await else {
+                    return;
+                };
+                let mut buf = vec![0u8; 4096];
+                let n = s.read(&mut buf).await.unwrap_or(0);
+                seen.lock()
+                    .unwrap()
+                    .push(String::from_utf8_lossy(&buf[..n]).to_ascii_lowercase());
+                let resp = format!(
+                    "HTTP/1.1 302 Found\r\nLocation: {target}/followed\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                );
+                let _ = s.write_all(resp.as_bytes()).await;
+            }
+        });
+        let checked = crate::proxy::check(
+            &base,
+            &crate::proxy::Request {
+                method: "GET".into(),
+                url: format!("{base}/podcast-audio/ep1/a.mp3?t=tok"),
+                headers: vec![
+                    ("Range".into(), "bytes=0-99".into()),
+                    ("Authorization".into(), "Bearer forged".into()),
+                ],
+                body: None,
+            },
+        )
+        .unwrap();
+        let api = Api::new(&base, signed_in());
+        let res = api.forward_audio(&checked).await.unwrap();
+        assert_eq!(res.status().as_u16(), 302);
+        let heads = heads.lock().unwrap().clone();
+        assert_eq!(heads.len(), 1, "the redirect was followed: {heads:?}");
+        assert!(heads[0].starts_with("get /podcast-audio/ep1/a.mp3?t=tok "));
+        assert!(heads[0].contains("range: bytes=0-99"));
+        assert!(!heads[0].contains("authorization"), "{}", heads[0]);
     }
 
     #[tokio::test]

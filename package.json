@@ -1,6 +1,6 @@
 {
   "name": "lexpad-desktop",
-  "version": "0.3.39",
+  "version": "0.3.40",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
   "description": "Lexpad for macOS and Windows: select a word in any app, press the shortcut, and it goes into your notebook with its meaning.",
@@ -15,7 +15,7 @@
     "tauri": "tauri",
     "app:dev": "tauri dev",
     "app:build": "tauri build",
-    "icons": "python3 scripts/icons.py && tauri icon icons-src/app-1024.png && python3 scripts/icons.py --app-ico",
+    "icons": "python3 scripts/icons.py && tauri icon icons-src/app-1024.png && python3 scripts/icons.py --app-ico --icns",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "format": "prettier --write .",

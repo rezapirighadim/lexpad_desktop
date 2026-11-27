@@ -1,0 +1,1 @@
+import{r as e}from"./rolldown-runtime-hePW80VL.js";import{x as t}from"./react--nwWWpNE.js";var n=e(t(),1),r,i=new Set;function a(e,t){let n=t?e:r===e?void 0:r;if(n!==r){r=n;for(let e of[...i])e()}}function o(e){return i.add(e),()=>i.delete(e)}function s(){return r}function c(e){let t=(0,n.useSyncExternalStore)(o,s,s);return e!==void 0&&t===e}export{c as n,a as t};

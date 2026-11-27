@@ -1,0 +1,1 @@
+var e=`/intro/v4/account`;function t(e){return{intro4:e}}function n(e){return typeof e==`object`&&!!e}function r(e){if(!n(e)||!n(e.intro4))return;let{mode:t,muted:r,from:i}=e.intro4;if((t===`signUp`||t===`signIn`)&&(i===`scenes`||i===`haveAccount`))return{mode:t,muted:r===!0,from:i}}export{t as n,r,e as t};

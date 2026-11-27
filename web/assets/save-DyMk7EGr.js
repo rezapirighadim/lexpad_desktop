@@ -1,0 +1,1 @@
+import{g as e}from"./mutations-DzaE3Zv1.js";import{c as t}from"./store-BbcPS8Tf.js";function n(n){e(n).then(()=>t())}export{n as t};

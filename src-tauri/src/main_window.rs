@@ -227,6 +227,9 @@ fn build(app: &AppHandle) -> tauri::Result<()> {
             }
             true
         })
+        // Say it back in Now Playing (Podcasts, 27 Nov 2026) and Lex's voice: the microphone the
+        // same way as the Player's window, and nothing else (line_tools.rs).
+        .on_permission_request(|_, kind| crate::line_tools::page_permission(kind))
         .build()?;
     restore(app, &win, saved);
     win.show()?;
@@ -523,5 +526,55 @@ mod tests {
         let r = initial_place(&[s], Some((-100.0, 100.0)), None, false).unwrap();
         assert_eq!((r.w, r.h), (1560.0, 1140.0));
         assert!(s.work.holds(&r));
+    }
+
+    /// One content policy serves all four builds (dmg, Windows, Microsoft Store, Mac App Store;
+    /// `tauri.mas.conf.json` has no `security`). The windows may fetch nothing on the network:
+    /// `connect-src` is IPC and the engine's scheme only. Pictures and media may be shown from
+    /// the asset domain (guides, Today box) and from the API (Podcasts, 27 Nov 2026: the audio
+    /// proxy and the artwork it stores), nowhere else.
+    #[test]
+    fn the_content_policy_shows_media_from_our_hosts_and_fetches_nothing() {
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let csp = &conf["app"]["security"]["csp"];
+        let words = |key: &str| -> Vec<String> {
+            csp[key]
+                .as_str()
+                .unwrap_or_else(|| panic!("{key}"))
+                .split_whitespace()
+                .map(str::to_owned)
+                .collect()
+        };
+        assert_eq!(
+            words("connect-src"),
+            [
+                "ipc:",
+                "http://ipc.localhost",
+                "lexmedia:",
+                "http://lexmedia.localhost"
+            ]
+        );
+        for key in ["img-src", "media-src"] {
+            assert_eq!(
+                words(key),
+                [
+                    "'self'",
+                    "data:",
+                    "blob:",
+                    "lexmedia:",
+                    "http://lexmedia.localhost",
+                    "https://assets.lexpad.app",
+                    "https://api.lexpad.app",
+                ],
+                "{key}"
+            );
+        }
+        for key in ["default-src", "script-src", "style-src", "font-src"] {
+            assert_eq!(words(key), ["'self'"], "{key}");
+        }
+        let mas: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.mas.conf.json")).unwrap();
+        assert!(mas["app"]["security"].is_null());
     }
 }
