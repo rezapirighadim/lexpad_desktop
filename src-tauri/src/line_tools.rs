@@ -2,7 +2,7 @@
 //! `uiux/2026-11-09-player-line-tools/spec.md` §6.3, §F): Say it back runs
 //! the Web Speech API (`webkitSpeechRecognition`) inside the Player's own
 //! webview, WKWebView on macOS and WebView2 on Windows. The core answers the
-//! webview's microphone request for the Player window, and opens the system's
+//! webview's microphone request for the Player window and Lexpad's window (Podcasts' Say it back, 27 Nov 2026), and opens the system's
 //! privacy settings when the learner has said no. The Playback menu's line
 //! tools are `app_menu`'s.
 

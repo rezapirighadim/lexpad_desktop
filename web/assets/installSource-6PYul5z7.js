@@ -1,0 +1,1 @@
+import{t as e}from"./platform-CIacuSfJ.js";var t,n;function r(){return n??=(async()=>{try{return await e.installSource()}catch{return`unknown`}})().then(e=>(t=e,n=void 0,e)),n}function i(){return t===void 0?new Promise(e=>{let t=setTimeout(()=>{e(`unknown`)},300);r().then(n=>{clearTimeout(t),e(n)})}):Promise.resolve(t)}export{i as t};

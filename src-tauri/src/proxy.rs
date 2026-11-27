@@ -19,6 +19,14 @@
 //!   learner is signed in in full (the server refuses them to this
 //!   delegated session as well; this is the second lock);
 //! - a body no bigger than `MAX_BODY`.
+//!
+//! One other shape crosses (owner, 27 Nov 2026: Podcasts in the desktop
+//! app): a GET of the API's podcast audio proxy,
+//! `/podcast-audio/<episodeId>/a.<ext>?t=<token>`, with at most a `Range`,
+//! which the live transcript reads its windows from (op 88). The token in the
+//! address is the whole grant, so it goes without the session, and the core
+//! never follows its redirect to a publisher (`Kind::PodcastAudio`,
+//! `Api::forward_audio`).
 
 use serde::Deserialize;
 use url::Url;
@@ -110,6 +118,15 @@ pub struct Request {
     pub body: Option<String>,
 }
 
+/// Which way a checked request goes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    /// A call under `/api/v1/`, sent with the desktop app's session.
+    Api,
+    /// A read of the podcast audio proxy: no session, no redirect followed.
+    PodcastAudio,
+}
+
 /// A request the core will send.
 #[derive(Clone, Debug)]
 pub struct Checked {
@@ -117,6 +134,55 @@ pub struct Checked {
     pub url: Url,
     pub headers: Vec<(String, String)>,
     pub body: Option<Vec<u8>>,
+    pub kind: Kind,
+}
+
+/// The audio proxy's path on the API (lexpad_back `audioproxy.PathPrefix`).
+const AUDIO_PREFIX: &str = "/podcast-audio/";
+
+/// Whether `path` is `/podcast-audio/<episodeId>/a.<ext>`: an id of the
+/// API's plain characters, a short lower-case extension, nothing else.
+fn audio_path(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix(AUDIO_PREFIX) else {
+        return false;
+    };
+    let Some((id, file)) = rest.split_once('/') else {
+        return false;
+    };
+    let Some(ext) = file.strip_prefix("a.") else {
+        return false;
+    };
+    (1..=64).contains(&id.len())
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+        && (1..=5).contains(&ext.len())
+        && ext
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+}
+
+/// Whether the query is exactly one `t` of the token's characters.
+fn audio_query(url: &Url) -> bool {
+    let pairs: Vec<(String, String)> = url.query_pairs().into_owned().collect();
+    matches!(pairs.as_slice(), [(name, token)]
+        if name == "t"
+            && (1..=512).contains(&token.len())
+            && token
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"-_.~".contains(&b)))
+}
+
+/// A byte range as the live transcript asks for it: `bytes=<from>-[<to>]`.
+fn valid_range(value: &str) -> bool {
+    let Some(spec) = value.strip_prefix("bytes=") else {
+        return false;
+    };
+    let Some((from, to)) = spec.split_once('-') else {
+        return false;
+    };
+    let digits = |s: &str| s.len() <= 15 && s.bytes().all(|b| b.is_ascii_digit());
+    !from.is_empty() && digits(from) && digits(to)
 }
 
 /// Why a request was refused. Never shown to anyone; the window gets a
@@ -155,6 +221,9 @@ pub fn check(api_origin: &str, req: &Request) -> Result<Checked, Refused> {
     if raw.contains("/../") || raw.contains("/./") || raw.contains("%2f") || raw.contains("%5c") {
         return Err(Refused::Address);
     }
+    if url.path().starts_with(AUDIO_PREFIX) {
+        return check_audio(method, url, req);
+    }
     let Some(call) = url.path().strip_prefix("/api/v1/") else {
         return Err(Refused::Address);
     };
@@ -191,6 +260,38 @@ pub fn check(api_origin: &str, req: &Request) -> Result<Checked, Refused> {
         url,
         headers,
         body,
+        kind: Kind::Api,
+    })
+}
+
+/// A read of the podcast audio proxy: GET only, its exact shape, no body, and
+/// of the headers only `Range` (well formed) and `Accept`.
+fn check_audio(method: reqwest::Method, url: Url, req: &Request) -> Result<Checked, Refused> {
+    if method != reqwest::Method::GET {
+        return Err(Refused::Method);
+    }
+    if !audio_path(url.path()) || !audio_query(&url) {
+        return Err(Refused::Address);
+    }
+    if req.body.is_some() {
+        return Err(Refused::Body);
+    }
+    let headers = req
+        .headers
+        .iter()
+        .map(|(name, value)| (name.to_ascii_lowercase(), value.clone()))
+        .filter(|(name, value)| match name.as_str() {
+            "range" => valid_range(value),
+            "accept" => !value.chars().any(|c| c.is_control()),
+            _ => false,
+        })
+        .collect();
+    Ok(Checked {
+        method,
+        url,
+        headers,
+        body: None,
+        kind: Kind::PodcastAudio,
     })
 }
 
@@ -283,6 +384,86 @@ mod tests {
                 "{m} {u}"
             );
         }
+    }
+
+    const AUDIO: &str =
+        "https://api.lexpad.app/podcast-audio/01JBQ0000000000000PLAYER01/a.mp3?t=AbC-12_x.y~z";
+
+    #[test]
+    fn the_podcast_audio_proxy_crosses_with_a_range_only_and_no_session() {
+        let mut r = req("GET", AUDIO);
+        r.headers = vec![
+            ("Range".into(), "bytes=0-65535".into()),
+            ("Authorization".into(), "Bearer forged".into()),
+            ("Cookie".into(), "a=b".into()),
+            ("X-Lexpad-Surface".into(), "desktop.app".into()),
+            ("Accept".into(), "*/*".into()),
+        ];
+        let checked = check(API, &r).unwrap();
+        assert_eq!(checked.kind, Kind::PodcastAudio);
+        assert_eq!(checked.url.as_str(), AUDIO);
+        assert_eq!(
+            checked.headers,
+            vec![
+                ("range".to_string(), "bytes=0-65535".to_string()),
+                ("accept".to_string(), "*/*".to_string()),
+            ]
+        );
+        let mut open_ended = req("GET", AUDIO);
+        open_ended.headers = vec![("range".into(), "bytes=1024-".into())];
+        assert_eq!(check(API, &open_ended).unwrap().headers.len(), 1);
+        for bad in [
+            "bytes=-500",
+            "bytes=1-2,4-5",
+            "items=0-1",
+            "bytes=a-b",
+            "bytes=0-1\n",
+        ] {
+            let mut r = req("GET", AUDIO);
+            r.headers = vec![("range".into(), bad.into())];
+            assert!(check(API, &r).unwrap().headers.is_empty(), "{bad}");
+        }
+        assert_eq!(
+            check(API, &req("GET", "https://api.lexpad.app/api/v1/me"))
+                .unwrap()
+                .kind,
+            Kind::Api
+        );
+    }
+
+    #[test]
+    fn only_the_audio_proxys_own_shape_crosses() {
+        for m in ["POST", "PUT", "DELETE"] {
+            assert_eq!(
+                check(API, &req(m, AUDIO)).map(|_| ()),
+                Err(Refused::Method),
+                "{m}"
+            );
+        }
+        for u in [
+            "https://api.lexpad.app/podcast-audio/ep1/a.mp3",
+            "https://api.lexpad.app/podcast-audio/ep1/a.mp3?t=x&u=y",
+            "https://api.lexpad.app/podcast-audio/ep1/a.mp3?t=x&t=y",
+            "https://api.lexpad.app/podcast-audio/ep1/a.mp3?t=",
+            "https://api.lexpad.app/podcast-audio/ep1/a.mp3?t=a%2Fb",
+            "https://api.lexpad.app/podcast-audio/ep1/b.mp3?t=x",
+            "https://api.lexpad.app/podcast-audio/ep1/a.MP3?t=x",
+            "https://api.lexpad.app/podcast-audio/ep1/a.toolong?t=x",
+            "https://api.lexpad.app/podcast-audio/ep1/sub/a.mp3?t=x",
+            "https://api.lexpad.app/podcast-audio//a.mp3?t=x",
+            "https://api.lexpad.app/podcast-audio/e.p/a.mp3?t=x",
+            "https://api.lexpad.app/podcast-audio/ep1/a.mp3/x?t=x",
+            "https://api.lexpad.app/podcast-audio/ep1/a.mp3?t=x#f",
+            "https://evil.example/podcast-audio/ep1/a.mp3?t=x",
+            "http://api.lexpad.app/podcast-audio/ep1/a.mp3?t=x",
+            "https://api.lexpad.app/podcast-audio/../api/v1/oauth/token?t=x",
+            "https://api.lexpad.app/podcast-audio/ep1%2f..%2f/a.mp3?t=x",
+        ] {
+            assert!(check(API, &req("GET", u)).is_err(), "{u}");
+        }
+        let mut with_body = req("GET", AUDIO);
+        with_body.body = Some("AAAA".into());
+        assert_eq!(check(API, &with_body).map(|_| ()), Err(Refused::Body));
     }
 
     #[test]

@@ -1,0 +1,1 @@
+import{t as e}from"./react--nwWWpNE.js";import{t}from"./textAttrs-BcOgHnMM.js";import{t as n}from"./scope-C8G0e-3_.js";var r=e();function i({notebook:e,children:i}){let a=n(e);return(0,r.jsx)(t.Provider,{value:a,children:i})}export{i as t};

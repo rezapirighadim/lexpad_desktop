@@ -1,0 +1,1 @@
+import{cn as e,mn as t}from"./session-C5x1XH8a.js";function n(){return t().lexTab21}function r(){let n=t().lexTab21,r=e();return n&&!r}export{n,r as t};
