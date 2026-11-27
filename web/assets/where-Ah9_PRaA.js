@@ -1,1 +1,0 @@
-import{t as e}from"./apple-DiouPZ4b.js";function t(){return!e()}export{t};

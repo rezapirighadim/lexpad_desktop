@@ -1,0 +1,1 @@
+import{_n as e}from"./session-D_EnMBFf.js";function t(){return e.getState().plan.secondsPerCard??9}function n(){return e.getState().plan.recall??.9}var r=60;function i(e){return e*t()<r}function a(e){return Math.max(1,Math.round(e*t()/r))}export{i,n,t as r,a as t};

@@ -1,0 +1,1 @@
+var e=``+new URL(`logo-kindle-v1-CoxIH79j.png`,import.meta.url).href;export{e as t};
