@@ -1,1 +1,0 @@
-import{St as e}from"./session-D_EnMBFf.js";import{l as t,u as n}from"./client-K2-QdX0k.js";var r=6e4,i;function a(t=Date.now()){return(i===void 0||t-i.at>r)&&(i={at:t,on:e.media().then(e=>e.see,()=>!1)}),i.on}function o(){i=void 0}var s={setSee:e=>(o(),t(`/lex/media/settings`,{method:`PUT`,body:{see:e}})),clear:()=>n(`/lex/media/items`,{method:`DELETE`})};export{a as n,s as t};
