@@ -74,8 +74,11 @@ src-tauri/src/e2e.rs             the local end-to-end test (ignored by default),
 src-tauri/src/e2e_main.rs        the window's end-to-end test (ignored), with scripts/e2e-main.{sh,mjs}
 docs/e2e/                        the last end-to-end run: what ran, screenshots, evidence
 docs/screenshots/                the panel in light and dark, and the tray icons (scripts/panel-screenshots.mjs, icons.py --preview)
-scripts/icons.py                 every icon, drawn from landing/site/assets/favicon-v2.svg (`pnpm icons`);
-                                 it rewrites icon.ico after `tauri icon` (BMP layers 16-96 px, PNG 256, planes 1)
+scripts/icons.py                 every icon, drawn from icons-src/lexpad-icon-v3.svg, the owner's v3 icon of 22 Nov
+                                 2026, as on iPhone and Android (`pnpm icons`; delete the icons/android and icons/ios
+                                 that `tauri icon` adds); after `tauri icon` it rewrites icon.ico (BMP layers 16-96 px,
+                                 PNG 256, planes 1) and icon.icns (each size drawn on its own, 16/32 px hinted; iconutil).
+                                 The panel's and the card's inline marks are the same v3 mark
 scripts/icon-check.ps1           CI: the exe's icon layers, the shortcuts, and what Explorer draws at each size
 docs/windows-manual-test.md      the Windows checklist, since Windows cannot run here
 src-tauri/src/media/             the video player's media engine (see "The video player's engine" below)

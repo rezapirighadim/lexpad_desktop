@@ -22,8 +22,9 @@ import { watchRow, type WatchRow } from './watch.js';
 /** Right-to-left scripts, for the direction and the face. */
 const RTL = new RegExp('[֐-ࣿיִ-﷿ﹰ-﻿]');
 
+/* The app icon (v3, icons-src/lexpad-icon-v3.svg), 28 px. */
 const MARK =
-  '<svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#2E7B4E"/><rect x="10" y="8" width="12" height="16" rx="2" fill="none" stroke="#fff" stroke-width="2"/><path d="M14 8v16M17 12h2M17 15h2" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>';
+  '<svg viewBox="0 0 512 512" width="28" height="28" aria-hidden="true"><rect width="512" height="512" rx="128" fill="#2E7B4E"/><g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round"><path d="M112.5 304V240A143.5 130 0 0 1 399.5 240V304" stroke-width="26"/><rect x="161.5" y="196" width="189" height="216" rx="34" stroke-width="28"/><path d="M220.3 196V412" stroke-width="23" stroke-linecap="butt"/><path d="M268.6 278L307.6 304L268.6 330Z" fill="#fff" stroke-width="13"/></g></svg>';
 /* The phone and the globe, 18 px, as the web app's rail draws them (uiux 2026-10-31-ecosystem-cards §6.1). */
 const PHONE =
   '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg>';

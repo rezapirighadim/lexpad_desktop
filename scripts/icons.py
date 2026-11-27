@@ -1,12 +1,19 @@
-"""Draws the app icon and the menu-bar / tray icons from the Lexpad mark.
+"""Draws the app icon and the menu-bar / tray icons from the Lexpad mark (v3).
 
-The mark is read from the landing site's favicon (landing/site/assets/favicon-v2.svg,
-or the path in LEXPAD_MARK): its notebook rectangle and the spine and lines in
-its one path. Each icon is drawn again at its own size from that geometry,
-eight times over and scaled down, rather than one big image shrunk, so every
-size is sharp.
+The mark is read from icons-src/lexpad-icon-v3.svg (or the path in LEXPAD_MARK),
+the owner-approved icon of 22 Nov 2026 (uiux/2026-11-22-brand/logo-b/final in the
+workspace; the iPhone and Android apps carry the same one): a headphone arch over
+a notebook with a spine and a play triangle, white on green, on a 512-unit grid.
+Each icon is drawn again at its own size from that geometry, eight times over
+and scaled down, rather than one big image shrunk, so every size is sharp; the
+smallest sizes get slightly heavier strokes (STROKE_BOOST) so the lines stay lines.
 
-  icons-src/app-1024.png              the app icon; `pnpm tauri icon` makes every size from it
+  icons-src/app-1024.png              the app icon on the macOS grid (an 824-point rounded
+                                      square on a 1024 canvas); `tauri icon` makes the PNGs
+                                      and the Windows files from it
+  src-tauri/icons/icon.icns           macOS (Dock, Finder, the App Store): every size drawn
+                                      on its own, with the grid's soft shadow, packed by
+                                      iconutil (`--icns`, after `tauri icon`)
   src-tauri/icons/tray-template.png   macOS menu bar, 1x (16 x 18 px for a 16 x 18 pt slot)
   src-tauri/icons/tray-template@2x.png  the same at 2x (32 x 36 px)
                                       Template images: black on transparent, so macOS
@@ -26,22 +33,26 @@ size is sharp.
                                       scripts/msix.ps1 indexes them with makepri.
 
 Run: pnpm icons   (python3 scripts/icons.py && tauri icon icons-src/app-1024.png
-                   && python3 scripts/icons.py --app-ico)
+                   && python3 scripts/icons.py --app-ico --icns)
      python3 scripts/icons.py --preview   also writes docs/screenshots/tray-icons.png:
-     the template on a light and a dark menu bar at 1x and 2x, and every tray.ico frame.
+     the template on a light and a dark menu bar at 1x and 2x, and every tray.ico frame,
+     and docs/screenshots/app-icon-sizes.png: the macOS icon at 16, 32, 128, 512 and 1024.
 """
 import io
 import os
 import re
+import shutil
 import struct
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from xml.etree import ElementTree
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parent.parent
-MARK = Path(os.environ.get('LEXPAD_MARK', ROOT.parent / 'landing' / 'site' / 'assets' / 'favicon-v2.svg'))
+MARK = Path(os.environ.get('LEXPAD_MARK', ROOT / 'icons-src' / 'lexpad-icon-v3.svg'))
 SS = 8  # supersampling factor
 
 # The menu-bar slot. tray-icon draws the status item's image 18 pt tall; the
@@ -49,158 +60,233 @@ SS = 8  # supersampling factor
 # above and below), and the slot is only as wide as the glyph needs.
 TEMPLATE_W, TEMPLATE_H = 16, 18
 GLYPH_H = 15.0  # points
-TEMPLATE_STROKE = 1.6  # points; the favicon's 2-unit stroke is too heavy at 15 pt
-# At 1x a 1.6-pixel stroke is a blur; one whole pixel on pixel centres reads as a line.
-TEMPLATE_STROKE_1X = 1.0
+
+# Strokes a little heavier where the mark is tiny: at 15 pt the icon's own
+# strokes are 1.2 pt, lighter than the system's menu-bar glyphs; the Android
+# notification icon makes the same 1.25x choice at 24 dp.
+STROKE_BOOST = 1.25
 
 # Windows small-icon sizes: 100%, 125%, 150%, 200% and 300% scaling.
 ICO_SIZES = (16, 20, 24, 32, 48)
-TRAY_GLYPH = 0.75  # the notebook's height as a share of the tray square
-TRAY_STROKE_PX = 16  # one pixel of stroke per 16 pixels of icon
+TRAY_GLYPH = 0.78  # the mark's height as a share of the tray square
+
+# The macOS app icon grid (Apple's template): an 824-point rounded square,
+# corner 185, centred on 1024, with a soft shadow below it.
+MAC_CANVAS, MAC_SQUARE, MAC_RADIUS = 1024, 824, 185
+MAC_SHADOW = {'dy': 12, 'blur': 14, 'alpha': 0.30}  # at 1024; scaled with the size
+# The sizes an .icns holds (iconutil's names), each drawn on its own.
+ICNS = (16, 32, 64, 128, 256, 512, 1024)
+ICNS_NAMES = {
+    16: ['icon_16x16.png'],
+    32: ['icon_16x16@2x.png', 'icon_32x32.png'],
+    64: ['icon_32x32@2x.png'],
+    128: ['icon_128x128.png'],
+    256: ['icon_128x128@2x.png', 'icon_256x256.png'],
+    512: ['icon_256x256@2x.png', 'icon_512x512.png'],
+    1024: ['icon_512x512@2x.png'],
+}
+
+
+def _nums(text: str) -> list[float]:
+    return [float(n) for n in re.findall(r'-?\d*\.?\d+', text)]
 
 
 def load_mark(path: Path) -> dict:
-    """The favicon's geometry: background colour, the notebook rect, the strokes, the stroke width."""
+    """The icon's geometry on its grid: ground colour, arch, notebook, spine, play triangle."""
     ns = {'s': 'http://www.w3.org/2000/svg'}
     svg = ElementTree.parse(path).getroot()
-    size = float(svg.get('viewBox').split()[2])
-    rects = svg.findall('s:rect', ns)
-    background = next(r for r in rects if r.get('fill') not in (None, 'none'))
-    book = next(r for r in rects if r.get('fill') == 'none')
-    path_el = svg.find('s:path', ns)
-    lines = []
-    x = y = 0.0
-    start = None
-    for cmd, args in re.findall(r'([MmHhVvLl])([^MmHhVvLl]*)', path_el.get('d')):
-        nums = [float(n) for n in re.findall(r'-?\d*\.?\d+', args)]
-        if cmd == 'M':
-            x, y = nums[0], nums[1]
-            start = (x, y)
-            continue
-        if cmd == 'h':
-            x += nums[0]
-        elif cmd == 'H':
-            x = nums[0]
-        elif cmd == 'v':
-            y += nums[0]
-        elif cmd == 'V':
-            y = nums[0]
-        elif cmd == 'L':
-            x, y = nums[0], nums[1]
-        elif cmd == 'l':
-            x, y = x + nums[0], y + nums[1]
-        lines.append((start, (x, y)))
-        start = (x, y)
-    hex_colour = background.get('fill').lstrip('#')
+    size = _nums(svg.get('viewBox'))[2]
+    ground = next(r for r in svg.iter('{%s}rect' % ns['s']) if r.get('fill') not in (None, 'none'))
+    group = svg.find('s:g', ns)
+    arch, spine, play = None, None, None
+    for el in group.findall('s:path', ns):
+        d = el.get('d')
+        if 'A' in d:
+            arch = el
+        elif el.get('fill') not in (None, 'none'):
+            play = el
+        else:
+            spine = el
+    book = group.find('s:rect', ns)
+    # Arch: "M x0 yLeg V yc A rx ry 0 0 1 x1 yc V yLeg"
+    a = _nums(arch.get('d'))
+    x0, leg, yc, rx, ry, x1 = a[0], a[1], a[2], a[3], a[4], a[8]
+    s = _nums(spine.get('d'))
+    t = _nums(play.get('d'))
+    hexc = ground.get('fill').lstrip('#')
     return {
         'size': size,
-        'background': tuple(int(hex_colour[i : i + 2], 16) for i in (0, 2, 4)) + (255,),
-        'rect': tuple(float(book.get(k)) for k in ('x', 'y', 'width', 'height')),
-        'radius': float(book.get('rx', 0)),
-        'lines': lines,
-        'stroke': float(book.get('stroke-width', 2)),
+        'background': tuple(int(hexc[i : i + 2], 16) for i in (0, 2, 4)) + (255,),
+        'arch': {'cx': (x0 + x1) / 2, 'cy': yc, 'rx': rx, 'ry': ry, 'legs': (x0, x1), 'leg_end': leg,
+                 'w': float(arch.get('stroke-width'))},
+        'book': {'rect': tuple(float(book.get(k)) for k in ('x', 'y', 'width', 'height')),
+                 'r': float(book.get('rx')), 'w': float(book.get('stroke-width'))},
+        'spine': {'x': s[0], 'y0': s[1], 'y1': s[2], 'w': float(spine.get('stroke-width'))},
+        'play': {'points': [(t[i], t[i + 1]) for i in range(0, 6, 2)], 'w': float(play.get('stroke-width'))},
     }
 
 
-def notebook_mask(size: tuple[int, int], mark: dict, scale: float, ox: float, oy: float, stroke: float, snap: bool) -> Image.Image:
-    """The notebook (rect, spine, lines) as an alpha mask at SS times the output size.
+def mark_mask(mark: dict, size: tuple[int, int], scale: float, ox: float, oy: float, boost: float = 1.0,
+              spine: bool = True) -> Image.Image:
+    """The mark as an alpha mask of `size` (already supersampled): grid units times `scale` plus (ox, oy).
 
-    Mark units are scaled by `scale` and offset by (ox, oy), all in supersampled
-    pixels; `stroke` is in output pixels. With `snap`, the stroke is a whole
-    number of output pixels and every edge lands on a pixel boundary, so a
-    one-pixel line stays one crisp pixel instead of two grey ones.
+    `boost` multiplies every stroke width around the same centre lines; without
+    `spine` the notebook has no spine (16 px, where it only fills the notebook in).
     """
-    mask = Image.new('L', size, 0)
-    d = ImageDraw.Draw(mask)
-    x, y, w, h = mark['rect']
-    if snap:
-        stroke = max(1, round(stroke))
-    sw = stroke * SS
-    half = sw / 2
+    def P(x: float, y: float) -> tuple[float, float]:
+        return (ox + x * scale, oy + y * scale)
 
-    def at(v: float) -> float:
-        # A stroke centre: on a pixel centre for an odd width, on an edge for an even one.
-        if not snap:
-            return v
-        offset = 0.5 if stroke % 2 else 0.0
-        return (round(v / SS - offset) + offset) * SS
+    def layer() -> tuple[Image.Image, ImageDraw.ImageDraw]:
+        m = Image.new('L', size, 0)
+        return m, ImageDraw.Draw(m)
 
-    def p(px: float, py: float) -> tuple[float, float]:
-        return (at(ox + px * scale), at(oy + py * scale))
+    parts = []
+    # The headphone arch: the upper half of a stroked ellipse, then two legs with round ends.
+    a = mark['arch']
+    h = a['w'] * boost / 2
+    m, d = layer()
+    (cx, cy), k = P(a['cx'], a['cy']), scale
+    d.ellipse([cx - (a['rx'] + h) * k, cy - (a['ry'] + h) * k, cx + (a['rx'] + h) * k, cy + (a['ry'] + h) * k], fill=255)
+    d.ellipse([cx - (a['rx'] - h) * k, cy - (a['ry'] - h) * k, cx + (a['rx'] - h) * k, cy + (a['ry'] - h) * k], fill=0)
+    d.rectangle([0, cy, size[0], size[1]], fill=0)
+    for lx in a['legs']:
+        (px, top), (_, end) = P(lx, a['cy']), P(lx, a['leg_end'])
+        d.rectangle([px - h * k, top - 1, px + h * k, end], fill=255)
+        d.ellipse([px - h * k, end - h * k, px + h * k, end + h * k], fill=255)
+    parts.append(m)
+    # The notebook: a stroked rounded rectangle.
+    b = mark['book']
+    x, y, w, hh = b['rect']
+    bw = b['w'] * boost / 2
+    m, d = layer()
+    (x0, y0), (x1, y1) = P(x, y), P(x + w, y + hh)
+    d.rounded_rectangle([x0 - bw * k, y0 - bw * k, x1 + bw * k, y1 + bw * k], radius=(b['r'] + bw) * k, fill=255)
+    d.rounded_rectangle([x0 + bw * k, y0 + bw * k, x1 - bw * k, y1 - bw * k], radius=max(0.0, b['r'] - bw) * k, fill=0)
+    parts.append(m)
+    # The spine: a butt-ended bar from the notebook's top edge to its bottom edge.
+    sp = mark['spine']
+    sw = sp['w'] * boost / 2
+    if spine:
+        m, d = layer()
+        (sx, sy0), (_, sy1) = P(sp['x'], sp['y0']), P(sp['x'], sp['y1'])
+        d.rectangle([sx - sw * k, sy0, sx + sw * k, sy1], fill=255)
+        parts.append(m)
+    # The play triangle: filled, with a round-joined stroke round it.
+    pl = mark['play']
+    pw = pl['w'] * boost / 2
+    m, d = layer()
+    pts = [P(*q) for q in pl['points']]
+    d.polygon(pts, fill=255)
+    for i, (qx, qy) in enumerate(pts):
+        nx, ny = pts[(i + 1) % 3]
+        d.line([(qx, qy), (nx, ny)], fill=255, width=max(1, round(2 * pw * k)))
+        d.ellipse([qx - pw * k, qy - pw * k, qx + pw * k, qy + pw * k], fill=255)
+    parts.append(m)
+    out = parts[0]
+    for p in parts[1:]:
+        out = ImageChops.lighter(out, p)
+    return out
 
-    def box(x0: float, y0: float, x1: float, y1: float, r: float, fill: int) -> None:
-        # Half-open, as an image is: Pillow's right and bottom edges are inclusive.
-        d.rounded_rectangle([round(x0), round(y0), round(x1) - 1, round(y1) - 1], radius=max(0, r), fill=fill)
 
-    (x0, y0), (x1, y1) = p(x, y), p(x + w, y + h)
-    r = mark['radius'] * scale
-    box(x0 - half, y0 - half, x1 + half, y1 + half, r + half, 255)
-    box(x0 + half, y0 + half, x1 - half, y1 - half, r - half, 0)
-    for a, b in mark['lines']:
-        (ax, ay), (bx, by) = p(*a), p(*b)
-        # A line with round caps is a capsule.
-        box(min(ax, bx) - half, min(ay, by) - half, max(ax, bx) + half, max(ay, by) + half, half, 255)
-    return mask
+def mark_bbox(mark: dict, boost: float, spine: bool = True) -> tuple[float, float, float, float]:
+    """The inked box of the mark in grid units (strokes included), measured from a render."""
+    n = 2048
+    scale = n / mark['size']
+    box = mark_mask(mark, (n, n), scale, 0, 0, boost, spine).getbbox()
+    return tuple(v / scale for v in box)
 
 
-def coloured_mark(mark: dict, px: int, radius_ratio: float, inset: float = 0.0, tray: bool = False) -> Image.Image:
-    """The favicon at `px` pixels: the green rounded square with the white notebook.
+def tile(mark: dict, px: int, radius_ratio: float, inset: float = 0.0, mark_share: float | None = None,
+         boost: float = 1.0, shadow: dict | None = None, spine: bool = True) -> Image.Image:
+    """The icon at `px` pixels: the green rounded square with the white mark.
 
-    `tray` draws it for a 16-48 px tray slot: the notebook fills more of the
-    square (TRAY_GLYPH) with a whole-pixel stroke (TRAY_STROKE_PX) on pixel
-    edges, because the favicon's proportions leave a 6-pixel notebook at 16 px.
+    Without `mark_share` the mark keeps the icon's own proportions (its grid
+    fills the square); with it, the mark's inked height is that share of the square.
     """
     big = px * SS
     img = Image.new('RGBA', (big, big), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
     pad = inset * big
-    d.rounded_rectangle([pad, pad, big - pad - 1, big - pad - 1], radius=(big - 2 * pad) * radius_ratio, fill=mark['background'])
-    if tray:
-        stroke = max(1, px // TRAY_STROKE_PX)
-        x, y, w, h = mark['rect']
-        scale = (TRAY_GLYPH * big - stroke * SS) / h
-        ox = (big - w * scale) / 2 - x * scale
-        oy = (big - h * scale) / 2 - y * scale
-    else:
-        scale = (big - 2 * pad) / mark['size']
-        stroke = mark['stroke'] * scale / SS
+    side = big - 2 * pad
+    square = Image.new('L', (big, big), 0)
+    ImageDraw.Draw(square).rounded_rectangle([pad, pad, big - pad, big - pad], radius=side * radius_ratio, fill=255)
+    if shadow:
+        sh = square.filter(ImageFilter.GaussianBlur(shadow['blur'] * big / MAC_CANVAS))
+        sh = ImageChops.offset(sh, 0, round(shadow['dy'] * big / MAC_CANVAS))
+        sh = sh.point(lambda v: round(v * shadow['alpha']))
+        img.paste(Image.new('RGBA', img.size, (0, 0, 0, 255)), (0, 0), sh)
+    img.paste(Image.new('RGBA', img.size, mark['background']), (0, 0), square)
+    if mark_share is None:
+        scale = side / mark['size']
         ox = oy = pad
-    mask = notebook_mask(img.size, mark, scale, ox, oy, stroke, snap=tray)
+    else:
+        bx0, by0, bx1, by1 = mark_bbox(mark, boost, spine)
+        scale = mark_share * side / (by1 - by0)
+        ox = (big - (bx1 - bx0) * scale) / 2 - bx0 * scale
+        oy = (big - (by1 - by0) * scale) / 2 - by0 * scale
+    mask = mark_mask(mark, img.size, scale, ox, oy, boost, spine)
     img.paste(Image.new('RGBA', img.size, (255, 255, 255, 255)), (0, 0), mask)
     return img.resize((px, px), Image.BOX)
 
 
+# The two smallest sizes (Finder's list, the menu's icons) are hinted by hand:
+# the mark fills more of the square with heavier strokes, and at 16 px the spine
+# goes (it only filled the notebook in). Chosen side by side, 27 Nov 2026.
+MAC_SMALL = {16: {'mark_share': 0.82, 'boost': 1.4, 'spine': False}, 32: {'mark_share': 0.72, 'boost': 1.4}}
+
+
+def mac_icon(mark: dict, px: int, shadow: bool = True) -> Image.Image:
+    """The macOS icon at `px`: Apple's grid; the mark's own proportions from 64 px up."""
+    return tile(mark, px, MAC_RADIUS / MAC_SQUARE, inset=(MAC_CANVAS - MAC_SQUARE) / 2 / MAC_CANVAS,
+                shadow=MAC_SHADOW if shadow else None, **MAC_SMALL.get(px, {}))
+
+
 def app_icon(mark: dict) -> None:
-    # The macOS grid: an 824-point rounded square centred on a 1024 canvas.
-    size = 1024
-    img = coloured_mark(mark, size, 185 / 824, inset=100 / 1024)
+    # The source for `tauri icon` (PNGs, Windows): the grid without the shadow,
+    # which Windows does not draw under its icons.
     out = ROOT / 'icons-src'
     out.mkdir(exist_ok=True)
-    img.save(out / 'app-1024.png')
+    mac_icon(mark, 1024, shadow=False).save(out / 'app-1024.png')
+
+
+def icns(mark: dict) -> None:
+    """src-tauri/icons/icon.icns: each size drawn on its own, packed by iconutil."""
+    tmp = Path(tempfile.mkdtemp()) / 'icon.iconset'
+    tmp.mkdir()
+    try:
+        for px in ICNS:
+            img = mac_icon(mark, px)
+            for name in ICNS_NAMES[px]:
+                img.save(tmp / name)
+        subprocess.run(['iconutil', '-c', 'icns', str(tmp), '-o', str(ROOT / 'src-tauri' / 'icons' / 'icon.icns')], check=True)
+    finally:
+        shutil.rmtree(tmp.parent)
 
 
 def template_icon(mark: dict, factor: int) -> Image.Image:
-    """The notebook alone, black on transparent, GLYPH_H points tall, centred in the slot."""
+    """The mark alone, black on transparent, GLYPH_H points tall, centred in the slot."""
     w, h = TEMPLATE_W * factor * SS, TEMPLATE_H * factor * SS
+    bx0, by0, bx1, by1 = mark_bbox(mark, STROKE_BOOST)
+    scale = GLYPH_H * factor * SS / (by1 - by0)
+    ox = (w - (bx1 - bx0) * scale) / 2 - bx0 * scale
+    oy = (h - (by1 - by0) * scale) / 2 - by0 * scale
+    mask = mark_mask(mark, (w, h), scale, ox, oy, STROKE_BOOST)
     img = Image.new('RGBA', (w, h), (0, 0, 0, 0))
-    _, _, rw, rh = mark['rect']
-    rx, ry = mark['rect'][0], mark['rect'][1]
-    stroke = TEMPLATE_STROKE_1X if factor == 1 else TEMPLATE_STROKE
-    # Scale so the outside of the stroked rect is GLYPH_H points tall.
-    scale = (GLYPH_H - stroke) * factor * SS / rh
-    ox = (w - rw * scale) / 2 - rx * scale
-    oy = (h - rh * scale) / 2 - ry * scale
-    mask = notebook_mask(img.size, mark, scale, ox, oy, stroke * factor, snap=factor == 1)
     img.paste(Image.new('RGBA', img.size, (0, 0, 0, 255)), (0, 0), mask)
     return img.resize((TEMPLATE_W * factor, TEMPLATE_H * factor), Image.BOX)
+
+
+def coloured_mark(mark: dict, px: int, tray: bool = False) -> Image.Image:
+    """The coloured square edge to edge with soft corners; for a tray slot the mark fills more of it."""
+    if tray:
+        return tile(mark, px, 0.22, mark_share=TRAY_GLYPH, boost=STROKE_BOOST)
+    return tile(mark, px, 0.22)
 
 
 def tray_icons(mark: dict) -> None:
     out = ROOT / 'src-tauri' / 'icons'
     template_icon(mark, 1).save(out / 'tray-template.png')
     template_icon(mark, 2).save(out / 'tray-template@2x.png')
-    # A tray icon is the mark edge to edge, with the favicon's soft corners.
-    frames = [coloured_mark(mark, s, 0.22, tray=True) for s in ICO_SIZES]
+    frames = [coloured_mark(mark, s, tray=True) for s in ICO_SIZES]
     frames[-1].save(out / 'tray.ico', format='ICO', sizes=[(s, s) for s in ICO_SIZES], append_images=frames[:-1])
 
 
@@ -279,7 +365,7 @@ MSIX_TARGET_SIZES = (16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 256)
 
 def msix_logo(mark: dict, w: int, h: int, share: float) -> Image.Image:
     side = max(1, round(min(w, h) * share))
-    glyph = coloured_mark(mark, side, 0.22, tray=side <= ICO_SIZES[-1])
+    glyph = coloured_mark(mark, side, tray=side <= ICO_SIZES[-1])
     img = Image.new('RGBA', (w, h), (0, 0, 0, 0))
     img.paste(glyph, ((w - side) // 2, (h - side) // 2), glyph)
     return img
@@ -337,9 +423,31 @@ def preview() -> None:
     sheet.save(out / 'tray-icons.png')
 
 
+def app_icon_sizes(mark: dict) -> None:
+    """The macOS icon at 16, 32, 128, 512 and 1024 px on light and dark, each at its real pixels."""
+    sizes = (16, 32, 128, 512, 1024)
+    gap = 24
+    width = sum(sizes) + gap * (len(sizes) + 1)
+    height = max(sizes) + 2 * gap
+    sheet = Image.new('RGBA', (width, height * 2), (255, 255, 255, 255))
+    ImageDraw.Draw(sheet).rectangle([0, height, width, 2 * height], fill=(30, 30, 30, 255))
+    for row in range(2):
+        x = gap
+        for px in sizes:
+            img = mac_icon(mark, px)
+            sheet.alpha_composite(img, (x, row * height + (height - px) // 2))
+            x += px + gap
+    out = ROOT / 'docs' / 'screenshots'
+    out.mkdir(parents=True, exist_ok=True)
+    sheet.save(out / 'app-icon-sizes.png')
+
+
 if __name__ == '__main__':
-    if '--app-ico' in sys.argv:
-        app_ico()
+    if '--app-ico' in sys.argv or '--icns' in sys.argv:
+        if '--app-ico' in sys.argv:
+            app_ico()
+        if '--icns' in sys.argv:
+            icns(load_mark(MARK))
         sys.exit(0)
     geometry = load_mark(MARK)
     app_icon(geometry)
@@ -347,3 +455,4 @@ if __name__ == '__main__':
     msix_assets(geometry)
     if '--preview' in sys.argv:
         preview()
+        app_icon_sizes(geometry)

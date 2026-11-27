@@ -26,8 +26,9 @@ const RTL = new RegExp('[֐-ࣿיִ-﷿ﹰ-﻿]');
 const DONE_MS = 1600;
 const MOVED_MS = 2400;
 
+/* The app icon's mark (v3), white, 16 px on the green chip: strokes 1.4x so they hold at that size. */
 const MARK =
-  '<svg width="14" height="14" viewBox="0 0 32 32" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"><rect x="10" y="8" width="12" height="16" rx="2"/><path d="M14 8v16M17 12h2M17 15h2"/></svg>';
+  '<svg width="16" height="16" viewBox="80 86 352 352" aria-hidden="true"><g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round"><path d="M112.5 304V240A143.5 130 0 0 1 399.5 240V304" stroke-width="36"/><rect x="161.5" y="196" width="189" height="216" rx="34" stroke-width="39"/><path d="M220.3 196V412" stroke-width="32" stroke-linecap="butt"/><path d="M268.6 278L307.6 304L268.6 330Z" fill="#fff" stroke-width="18"/></g></svg>';
 const FLAG =
   '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 21V4"/><path d="M5.5 4.5h12.2l-2.6 4.25 2.6 4.25H5.5"/></svg>';
 /* The Player's film, 16 px (lexpad_front features/player/ui/icons.tsx). */

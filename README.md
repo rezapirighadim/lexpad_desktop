@@ -227,10 +227,11 @@ open src-tauri/target/release/bundle/macos/Lexpad.app
 ```
 
 A development build keeps its session in its own Keychain entry and never adds itself to the
-login items. Icons are drawn by `pnpm icons` from the Lexpad mark (the landing site's
-`favicon-v2.svg`): the app icon, the macOS menu-bar template at 1x and 2x, and the Windows
-`tray.ico` (16, 20, 24, 32 and 48 px). `python3 scripts/icons.py --preview` also writes
-`docs/screenshots/tray-icons.png`.
+login items. Icons are drawn by `pnpm icons` from the Lexpad icon (v3, `icons-src/lexpad-icon-v3.svg`,
+the same as the iPhone and Android apps): the app icon and its `.icns` (every size drawn on its own),
+the macOS menu-bar template at 1x and 2x, the Windows `tray.ico` (16, 20, 24, 32 and 48 px) and
+the Store's logos. `python3 scripts/icons.py --preview` also writes
+`docs/screenshots/tray-icons.png` and `docs/screenshots/app-icon-sizes.png`.
 
 Screenshots of the panel (`docs/screenshots/`) are drawn from the built page in Chromium, with a
 sample account that lives only in the script:
